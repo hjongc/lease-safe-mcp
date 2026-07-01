@@ -81,12 +81,14 @@ assert(/Docker runtime smoke: included in registration preflight/.test(registrat
 assert(/package-ecosystem:\s*npm/.test(dependabot), "Dependabot must monitor npm dependencies");
 assert(/package-ecosystem:\s*github-actions/.test(dependabot), "Dependabot must monitor GitHub Actions");
 assert(/package-ecosystem:\s*docker/.test(dependabot), "Dependabot must monitor Docker base images");
+assert((dependabot.match(/version-update:semver-major/g) ?? []).length === 3, "Dependabot must ignore semver-major version update noise before registration");
 
 const submission = readFileSync("docs/submission.md", "utf8");
 const operations = readFileSync("docs/operations.md", "utf8");
 const readme = readFileSync("README.md", "utf8");
 const security = readFileSync("SECURITY.md", "utf8");
 assert(/Dependabot monitors npm packages, GitHub Actions, and Docker base images weekly/.test(operations), "operations runbook must describe all Dependabot ecosystems");
+assert(/Dependabot ignores semver-major version updates before registration/.test(operations), "operations runbook must document major dependency update policy");
 assert(!/submission branch/i.test(readme), "README must not tell operators to register a vague submission branch");
 assert(/Branch\/ref:\s*`main`/.test(readme), "README PlayMCP build instructions must point Branch/ref at main");
 for (const required of [
