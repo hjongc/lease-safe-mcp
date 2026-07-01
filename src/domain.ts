@@ -407,14 +407,23 @@ function extractFirstTag(xml: string, tags: string[]): string | undefined {
   return undefined;
 }
 
+function extractFirstPresentTag(xml: string, tags: string[]): string | undefined {
+  for (const tag of tags) {
+    const value = extractTag(xml, tag);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
 function publicDataNumberFromRequiredTag(xml: string, tags: string[], label: string): number {
-  const rawValue = extractFirstTag(xml, tags);
+  const rawValue = extractFirstPresentTag(xml, tags);
   if (rawValue === undefined) {
     throw new Error(`${label} missing required numeric field: ${tags.join(" or ")}`);
   }
 
-  const value = Number(rawValue.replace(/,/g, "").trim());
-  if (!Number.isFinite(value) || value < 0) {
+  const normalized = rawValue.replace(/,/g, "").trim();
+  const value = Number(normalized);
+  if (normalized === "" || !Number.isFinite(value) || value < 0) {
     throw new Error(`${label} returned invalid numeric field ${tags.join(" or ")}: ${rawValue}`);
   }
   return value;
@@ -424,8 +433,9 @@ function publicDataNumberFromOptionalTag(xml: string, tags: string[], label: str
   const rawValue = extractFirstTag(xml, tags);
   if (rawValue === undefined) return undefined;
 
-  const value = Number(rawValue.replace(/,/g, "").trim());
-  if (!Number.isFinite(value) || value < 0) {
+  const normalized = rawValue.replace(/,/g, "").trim();
+  const value = Number(normalized);
+  if (normalized === "" || !Number.isFinite(value) || value < 0) {
     throw new Error(`${label} returned invalid numeric field ${tags.join(" or ")}: ${rawValue}`);
   }
   return value;
