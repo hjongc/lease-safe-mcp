@@ -173,6 +173,12 @@ test("public-data smoke validates demo region before API calls", () => {
     process.env.PUBLIC_DATA_SMOKE_REGION = " ";
     assert.throws(() => publicDataSmokeRegion(), /PUBLIC_DATA_SMOKE_REGION must include at least 2 meaningful characters/);
 
+    process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구\n강남구";
+    assert.throws(() => publicDataSmokeRegion(), /must not include control characters, line breaks, tabs, or Markdown backticks/);
+
+    process.env.PUBLIC_DATA_SMOKE_REGION = "서울 `관악구`";
+    assert.throws(() => publicDataSmokeRegion(), /must not include control characters, line breaks, tabs, or Markdown backticks/);
+
     process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 010 1234 5678";
     assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details/);
 
