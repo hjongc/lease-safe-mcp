@@ -315,6 +315,31 @@ function numberFromTag(xml: string, tags: string[]): number {
   return Number(value.replace(/,/g, "").trim());
 }
 
+function contractDateFromTags(xml: string): string {
+  const year = extractFirstTag(xml, ["dealYear", "년"]);
+  const month = extractFirstTag(xml, ["dealMonth", "월"]);
+  const day = extractFirstTag(xml, ["dealDay", "일"]);
+  if (!year || !month || !day) return "날짜 미확인";
+
+  const parsedYear = Number(year);
+  const parsedMonth = Number(month);
+  const parsedDay = Number(day);
+  if (
+    !Number.isSafeInteger(parsedYear) ||
+    !Number.isSafeInteger(parsedMonth) ||
+    !Number.isSafeInteger(parsedDay) ||
+    parsedYear < 1900 ||
+    parsedMonth < 1 ||
+    parsedMonth > 12 ||
+    parsedDay < 1 ||
+    parsedDay > 31
+  ) {
+    return "날짜 미확인";
+  }
+
+  return `${parsedYear}-${String(parsedMonth).padStart(2, "0")}-${String(parsedDay).padStart(2, "0")}`;
+}
+
 function extractItems(xml: string, specNameField?: string): RentRecord[] {
   const items = [...xml.matchAll(/<item>(.*?)<\/item>/gs)].map(match => match[1]);
   return items
@@ -327,7 +352,7 @@ function extractItems(xml: string, specNameField?: string): RentRecord[] {
         area: numberFromTag(item, ["excluUseAr", "totalFloorAr", "전용면적", "계약면적"]) || undefined,
         depositManwon: deposit,
         monthlyRentManwon: monthlyRent,
-        contractDate: `${extractFirstTag(item, ["dealYear", "년"]) ?? ""}-${(extractFirstTag(item, ["dealMonth", "월"]) ?? "").padStart(2, "0")}-${(extractFirstTag(item, ["dealDay", "일"]) ?? "").padStart(2, "0")}`,
+        contractDate: contractDateFromTags(item),
         floor: extractFirstTag(item, ["floor", "층"]),
         contractType: extractFirstTag(item, ["contractType", "전월세구분"])
       };
@@ -345,7 +370,7 @@ function extractSaleItems(xml: string, specNameField?: string): SaleRecord[] {
         legalDong: extractFirstTag(item, ["umdNm", "법정동"]),
         area: numberFromTag(item, ["excluUseAr", "totalArea", "전용면적", "대지면적"]) || undefined,
         dealAmountManwon: dealAmount,
-        contractDate: `${extractFirstTag(item, ["dealYear", "년"]) ?? ""}-${(extractFirstTag(item, ["dealMonth", "월"]) ?? "").padStart(2, "0")}-${(extractFirstTag(item, ["dealDay", "일"]) ?? "").padStart(2, "0")}`,
+        contractDate: contractDateFromTags(item),
         floor: extractFirstTag(item, ["floor", "층"])
       };
     })

@@ -252,6 +252,43 @@ test("rent market comparison separates reported records from deposit median samp
   }
 });
 
+test("rent market comparison does not render fake dates when date tags are missing", async () => {
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악날짜누락</aptNm>
+            <umdNm>봉천동</umdNm>
+            <deposit>30,000</deposit>
+            <monthlyRent>0</monthlyRent>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    const text = await compareRentMarket({
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605"
+    });
+
+    assert.match(text, /날짜 미확인/);
+    assert.doesNotMatch(text, /--/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
 test("rent market comparison surfaces public-data error payloads", async () => {
   const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
   const previousFetch = globalThis.fetch;
