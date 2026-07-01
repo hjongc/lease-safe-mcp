@@ -661,6 +661,46 @@ test("rent market comparison does not render fake dates when date tags are missi
   }
 });
 
+test("rent market comparison does not render impossible calendar dates", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악날짜오류</aptNm>
+            <umdNm>봉천동</umdNm>
+            <deposit>30,000</deposit>
+            <monthlyRent>0</monthlyRent>
+            <dealYear>2026</dealYear>
+            <dealMonth>2</dealMonth>
+            <dealDay>31</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    const text = await compareRentMarket({
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202602"
+    });
+
+    assert.match(text, /날짜 미확인/);
+    assert.doesNotMatch(text, /2026-02-31/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
 test("rent market comparison surfaces public-data error payloads", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;

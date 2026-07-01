@@ -414,6 +414,11 @@ function publicDataNumberFromOptionalTag(xml: string, tags: string[], label: str
   return value;
 }
 
+function isRealCalendarDate(year: number, month: number, day: number): boolean {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
 function contractDateFromTags(xml: string): string {
   const year = extractFirstTag(xml, ["dealYear", "년"]);
   const month = extractFirstTag(xml, ["dealMonth", "월"]);
@@ -431,7 +436,8 @@ function contractDateFromTags(xml: string): string {
     parsedMonth < 1 ||
     parsedMonth > 12 ||
     parsedDay < 1 ||
-    parsedDay > 31
+    parsedDay > 31 ||
+    !isRealCalendarDate(parsedYear, parsedMonth, parsedDay)
   ) {
     return "날짜 미확인";
   }
