@@ -49,8 +49,11 @@ assert(/"\.mjs"/.test(secretScanSource), "secret scan must cover checked-in ESM 
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
 const registrationWorkflow = readFileSync(".github/workflows/registration-preflight.yml", "utf8");
 const dependabot = readFileSync(".github/dependabot.yml", "utf8");
-assert(/actions\/checkout@v5/.test(ci), "CI must use actions/checkout@v5");
-assert(/actions\/setup-node@v5/.test(ci), "CI must use actions/setup-node@v5");
+for (const workflow of [ci, registrationWorkflow]) {
+  assert(/actions\/checkout@[a-f0-9]{40}/.test(workflow), "GitHub workflows must pin actions/checkout by commit SHA");
+  assert(/actions\/setup-node@[a-f0-9]{40}/.test(workflow), "GitHub workflows must pin actions/setup-node by commit SHA");
+  assert(!/actions\/(?:checkout|setup-node)@v\d+/.test(workflow), "GitHub workflows must not use mutable action version tags");
+}
 for (const command of ["npm ci", "npm run scan:secrets", "npm test", "npm run validate:playmcp", "npm run smoke:http", "npm run smoke:rate-limit", "npm audit --omit=dev", "docker build", "npm run smoke:docker"]) {
   assert(ci.includes(command), `CI must run ${command}`);
 }
