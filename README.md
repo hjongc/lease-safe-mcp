@@ -78,7 +78,7 @@ Optional bearer-token protection is available for direct deployments:
 MCP_AUTH_TOKEN=replace-with-runtime-secret
 ```
 
-When `MCP_AUTH_TOKEN` is set, `POST /mcp` requires `Authorization: Bearer <token>`.
+When `MCP_AUTH_TOKEN` is set, it must be at least 16 characters and `POST /mcp` requires `Authorization: Bearer <token>`.
 
 Optional request-size hardening is available for deployments with stricter ingress limits:
 

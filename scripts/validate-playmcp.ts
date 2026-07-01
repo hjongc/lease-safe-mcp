@@ -80,6 +80,8 @@ const domain = readFileSync("src/domain.ts", "utf8");
 assert(/MCP_ALLOWED_HOSTS/.test(server), "server must support MCP_ALLOWED_HOSTS");
 assert(/plain hostnames or host:port values/.test(server), "server must reject unsafe MCP_ALLOWED_HOSTS entries");
 assert(/DATA_GO_KR_SERVICE_KEY is required in production/.test(server), "server must fail fast without DATA_GO_KR_SERVICE_KEY in production");
+assert(/timingSafeEqual/.test(server), "server must compare bearer tokens with timingSafeEqual");
+assert(/MCP_AUTH_TOKEN must be at least/.test(server), "server must reject weak MCP_AUTH_TOKEN values");
 assert(/MCP_MAX_BODY_BYTES/.test(server), "server must support a bounded MCP request body size");
 assert(/express\.json\(\{ limit: `\$\{maxBodyBytes\}b` \}\)/.test(server), "server JSON parser limit must match MCP_MAX_BODY_BYTES");
 assert(/MCP_RATE_LIMIT_PER_MINUTE/.test(server), "server must support MCP request rate limiting");

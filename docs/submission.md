@@ -26,7 +26,7 @@ Required:
 
 Optional:
 
-- `MCP_AUTH_TOKEN`: bearer token for direct deployments that need private access control
+- `MCP_AUTH_TOKEN`: bearer token of at least 16 characters for direct deployments that need private access control
 - `MCP_MAX_BODY_BYTES`: MCP POST request body limit, default `262144`
 - `MCP_RATE_LIMIT_PER_MINUTE`: MCP POST rate limit per client, default `120`, set `0` to disable
 - `PUBLIC_DATA_TIMEOUT_MS`: official public-data API timeout, default `8000`, maximum `60000`

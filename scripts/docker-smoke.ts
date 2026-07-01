@@ -160,7 +160,7 @@ async function stopContainer(containerId: string): Promise<void> {
 async function main() {
   const port = Number(process.env.DOCKER_SMOKE_PORT || await getFreePort());
   const endpoint = `http://127.0.0.1:${port}/mcp`;
-  const authToken = process.env.DOCKER_SMOKE_MCP_AUTH_TOKEN ?? "smoke-token";
+  const authToken = process.env.DOCKER_SMOKE_MCP_AUTH_TOKEN ?? "smoke-token-for-preflight";
 
   console.log(`Starting Docker smoke container ${containerName} from ${imageTag}`);
   const containerId = await collectOutput("docker", [

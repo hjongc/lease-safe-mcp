@@ -461,6 +461,46 @@ test("production app requires public-data key", () => {
   }
 });
 
+test("MCP auth token fails fast when configured too weakly", () => {
+  const authEnvName = "MCP_AUTH" + "_TOKEN";
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousAuthToken = process.env[authEnvName];
+  try {
+    process.env.NODE_ENV = "production";
+    process.env.MCP_ALLOWED_HOSTS = "127.0.0.1,localhost";
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+
+    process.env[authEnvName] = "short";
+    assert.throws(() => createApp(), /MCP_AUTH_TOKEN must be at least 16 characters/);
+
+    process.env[authEnvName] = "strong-test-token";
+    assert.doesNotThrow(() => createApp());
+  } finally {
+    if (previousNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+    if (previousAllowedHosts === undefined) {
+      delete process.env.MCP_ALLOWED_HOSTS;
+    } else {
+      process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
+    }
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+    if (previousAuthToken === undefined) {
+      delete process.env[authEnvName];
+    } else {
+      process.env[authEnvName] = previousAuthToken;
+    }
+  }
+});
+
 test("production app starts when required runtime configuration is present", () => {
   const previousNodeEnv = process.env.NODE_ENV;
   const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
