@@ -20,6 +20,7 @@ GitHub Actions live public-data smoke:
 ```bash
 gh secret set DATA_GO_KR_SERVICE_KEY --repo hjongc/lease-safe-mcp
 gh workflow run CI --repo hjongc/lease-safe-mcp --ref main
+gh workflow run "Registration Preflight" --repo hjongc/lease-safe-mcp --ref main
 ```
 
 PlayMCP runtime:
@@ -35,6 +36,7 @@ Never paste secrets into issues, commits, README examples, screenshots, or CI lo
 Collect this evidence before registering or updating the PlayMCP build:
 
 - `npm run preflight:registration` passes with `DATA_GO_KR_SERVICE_KEY` set locally.
+- GitHub Actions `Registration Preflight` workflow passes on the submitted commit.
 - Latest GitHub Actions `CI` run is green.
 - GitHub Actions `Live public-data smoke` is passed, not skipped, after the repository secret is configured.
 - Docker runtime smoke passes after image build.
@@ -58,11 +60,12 @@ Recommended demo input:
 ## Health And Smoke Checks
 
 - `GET /healthz` must return `ok: true`, `service: lease-safe`, `transport: streamable-http`, `stateless: true`, `maxBodyBytes`, `rateLimitPerMinute`, and `publicDataTimeoutMs`.
-- `npm run smoke:http` verifies local HTTP MCP handshake, tool metadata, bearer-auth rejection, a lightweight tool call, and oversized request rejection.
+- `npm run smoke:http` verifies local HTTP MCP handshake, tool metadata, unsupported-method rejection with `Allow: POST`, invalid-JSON rejection, unsupported-content-type rejection, bearer-auth rejection with `WWW-Authenticate`, oversized request rejection, a lightweight tool call, and official source registry access.
 - `npm run smoke:rate-limit` verifies the MCP POST rate limiter returns `429` with `Retry-After`.
-- `npm run smoke:docker` verifies the built image starts in production mode, answers `/healthz`, rejects unauthenticated and oversized MCP requests, and completes MCP handshake/list-tools.
+- `npm run smoke:docker` verifies the built image starts in production mode, answers `/healthz`, rejects unsupported methods, invalid JSON, unsupported content types, unauthenticated requests, and oversized MCP requests, then completes MCP handshake/list-tools and official source registry access.
 - `npm run smoke:public-data` verifies legal-dong lookup, all rent APIs, all sale APIs, and the flagship assessment against live official APIs. It fails when `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` is not positive or when a rent or sale API returns zero samples, because registration evidence must prove a real demo data path.
-- `npm run preflight:registration` runs the full release preflight and fails if live public-data smoke cannot run.
+- `npm run preflight:registration` runs the full release preflight and fails if live public-data smoke cannot run for every supported housing type.
+- GitHub Actions `Registration Preflight` runs `npm run preflight:registration` manually and fails when `DATA_GO_KR_SERVICE_KEY` is missing, so use it as shareable registration evidence.
 
 ## Incident Response
 
@@ -71,7 +74,7 @@ If API-backed tools fail:
 1. Check whether `DATA_GO_KR_SERVICE_KEY` is configured in the runtime and has active data.go.kr approvals.
 2. Run `npm run smoke:public-data` with the same key outside the deployment.
 3. If data.go.kr returns an auth or quota payload, keep the original error visible and rotate or re-approve the key.
-4. If requests time out or a region/month returns zero samples, lower demo scope only by changing `PUBLIC_DATA_SMOKE_HOUSING_TYPES` or choose a verified `PUBLIC_DATA_SMOKE_LAWD_CD` and `PUBLIC_DATA_SMOKE_DEAL_YMD`; do not add fake sample data.
+4. If requests time out or a region/month returns zero samples, narrow `PUBLIC_DATA_SMOKE_HOUSING_TYPES` only to isolate the failing source with `npm run smoke:public-data`, or choose a verified `PUBLIC_DATA_SMOKE_LAWD_CD` and `PUBLIC_DATA_SMOKE_DEAL_YMD`; do not use a narrowed smoke as registration evidence and do not add fake sample data.
 5. If all live public-data checks pass locally but fail in deployment, inspect host allowlist, egress/network policy, and runtime env injection.
 
 If a security issue or leaked secret is reported:
@@ -87,7 +90,7 @@ If a security issue or leaked secret is reported:
 1. Add or renew the data.go.kr service key approvals for all required APIs.
 2. Update the GitHub repository secret `DATA_GO_KR_SERVICE_KEY`.
 3. Update the PlayMCP runtime `DATA_GO_KR_SERVICE_KEY`.
-4. Run GitHub Actions `CI` and confirm live public-data smoke passes.
+4. Run GitHub Actions `CI` and `Registration Preflight`, then confirm live public-data smoke passes.
 5. Run the PlayMCP demo entry tool once with the recommended input.
 
 Do not remove the old key until both CI and the runtime smoke have passed with the new key.

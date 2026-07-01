@@ -23,7 +23,7 @@ It uses official public data and reviewed official guidance to help users:
 - Required tool annotations included
 - Compact Korean markdown outputs
 - Dockerfile included for PlayMCP in KC Git source build
-- GitHub Actions CI runs secret scan, tests, PlayMCP validation, local MCP HTTP smoke, bearer-auth rejection smoke, production dependency audit, Docker build, and Docker runtime smoke
+- GitHub Actions CI runs secret scan, tests, PlayMCP validation, local MCP HTTP smoke, MCP boundary rejection smoke, rate-limit smoke, production dependency audit, Docker build, and Docker runtime smoke
 
 ## Data Sources
 
@@ -136,7 +136,7 @@ Release preflight:
 npm run preflight
 ```
 
-`npm run preflight` runs secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke with bearer-auth rejection, MCP rate-limit smoke, production dependency audit, Docker build, Docker runtime smoke with bearer-auth rejection, and live public-data smoke when `DATA_GO_KR_SERVICE_KEY` is set.
+`npm run preflight` runs secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke with unsupported-method, invalid-JSON, unsupported-content-type, bearer-auth, and oversized-request rejection checks, MCP rate-limit smoke, production dependency audit, Docker build, Docker runtime smoke with the same MCP boundary checks, and live public-data smoke when `DATA_GO_KR_SERVICE_KEY` is set.
 
 Registration preflight:
 
@@ -144,7 +144,9 @@ Registration preflight:
 DATA_GO_KR_SERVICE_KEY=... npm run preflight:registration
 ```
 
-`npm run preflight:registration` runs the same checks but requires the live public-data smoke to run and pass. Use it before PlayMCP registration.
+`npm run preflight:registration` runs the same checks but requires the live public-data smoke to run and pass for every supported housing type. Use it before PlayMCP registration.
+
+For registration evidence in GitHub Actions, run the manual **Registration Preflight** workflow after adding `DATA_GO_KR_SERVICE_KEY` as a repository secret. Unlike the normal CI workflow, this workflow fails instead of skipping when the live public-data key is missing.
 
 Live public-data smoke before production rollout:
 
@@ -166,6 +168,8 @@ To narrow the live smoke while debugging one source:
 PUBLIC_DATA_SMOKE_HOUSING_TYPES=apartment,rowhouse DATA_GO_KR_SERVICE_KEY=... npm run smoke:public-data
 ```
 
+Do not use a narrowed `PUBLIC_DATA_SMOKE_HOUSING_TYPES` list as registration evidence. `npm run preflight:registration` fails unless all supported housing types are included.
+
 ## CI Gate
 
 The repository includes `.github/workflows/ci.yml` for the submission branch. It runs:
@@ -179,7 +183,7 @@ The repository includes `.github/workflows/ci.yml` for the submission branch. It
 - `docker build -t lease-safe-mcp-ci .`
 - `npm run smoke:docker`
 
-If the GitHub repository has a `DATA_GO_KR_SERVICE_KEY` secret, CI also runs the live public-data smoke against all supported housing types. Without that secret, the live API smoke is skipped and local pre-submission smoke should be run with the key.
+If the GitHub repository has a `DATA_GO_KR_SERVICE_KEY` secret, CI also runs the live public-data smoke against all supported housing types in registration mode. Without that secret, the live API smoke is skipped and local pre-submission smoke should be run with the key.
 
 ## Submission Checklist
 
@@ -189,6 +193,7 @@ Before registering in PlayMCP:
 - Review `docs/submission.md`
 - Review `docs/operations.md`
 - Run `npm run preflight:registration` locally with `DATA_GO_KR_SERVICE_KEY` set
+- Run the manual GitHub Actions `Registration Preflight` workflow on the submitted commit
 - Confirm the latest GitHub Actions CI run is green
 - Confirm GitHub Actions live public-data smoke is passed, not skipped
 - Configure the same `DATA_GO_KR_SERVICE_KEY` as a PlayMCP runtime environment variable

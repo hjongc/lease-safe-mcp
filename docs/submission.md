@@ -36,7 +36,7 @@ Do not commit runtime secrets. Configure them in PlayMCP or deployment environme
 
 The production server fails at startup if `MCP_ALLOWED_HOSTS` or `DATA_GO_KR_SERVICE_KEY` is missing. This is intentional: missing official-data configuration should be fixed before the demo, not hidden until a user calls the flagship tool.
 
-The server also rejects oversized MCP request bodies, rate-limits MCP POST traffic, fails clearly on public-data timeout, disables `x-powered-by`, and handles container shutdown signals so PlayMCP can stop the image cleanly.
+The server also rejects unsupported `/mcp` methods with `Allow: POST`, rejects invalid JSON and non-JSON MCP POST bodies before transport handling, advertises bearer authentication failures with `WWW-Authenticate` when `MCP_AUTH_TOKEN` is set, rejects oversized MCP request bodies, rate-limits MCP POST traffic, fails clearly on public-data timeout, disables `x-powered-by`, and handles container shutdown signals so PlayMCP can stop the image cleanly.
 
 ## Demo Scenario
 
@@ -88,10 +88,12 @@ Before registration:
 DATA_GO_KR_SERVICE_KEY=... npm run preflight:registration
 ```
 
-Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_KEY` is configured as a GitHub repository secret, CI also runs the live public-data smoke.
+Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_KEY` is configured as a GitHub repository secret, CI also runs the live public-data smoke in registration mode.
+
+For shareable registration evidence, trigger the manual GitHub Actions **Registration Preflight** workflow on the submitted commit. This workflow runs `npm run preflight:registration` and fails when `DATA_GO_KR_SERVICE_KEY` is missing instead of treating live public-data smoke as optional.
 
 CI also runs `npm run smoke:docker` after building the image, so registration should use a commit whose Docker image has been proven to boot and answer MCP requests before the optional live API smoke.
 
-The live public-data smoke is intentionally stricter than a connectivity check: `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` must be positive, and rent and sale APIs must return positive sample counts for the configured demo region/month. A zero-sample official response means the demo input is not registration-ready yet.
+The live public-data smoke is intentionally stricter than a connectivity check: `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` must be positive, `npm run preflight:registration` must cover every supported housing type, and rent and sale APIs must return positive sample counts for the configured demo region/month. A zero-sample official response means the demo input is not registration-ready yet.
 
-Use `docs/operations.md` as the final registration runbook. Registration is not evidence-complete until `npm run preflight:registration` and the GitHub Actions live public-data smoke are passed, not skipped.
+Use `docs/operations.md` as the final registration runbook. Registration is not evidence-complete until `npm run preflight:registration`, the GitHub Actions **Registration Preflight** workflow, and the GitHub Actions live public-data smoke are passed, not skipped.

@@ -59,6 +59,15 @@ function isAllowedPlaceholder(line: string): boolean {
   return allowedPlaceholders.includes(normalizePlaceholderLine(line));
 }
 
+function isAllowedSyntheticSecret(line: string): boolean {
+  return line.includes("LeaseSafePublicDataSmokeKey");
+}
+
+function scanStandalonePublicDataKey(line: string): boolean {
+  if (line.includes("\"integrity\"") || isAllowedSyntheticSecret(line)) return false;
+  return /(?:^|[^A-Za-z0-9+/])(?=[A-Za-z0-9+/=]{40,})(?=[A-Za-z0-9+/=]*\/)[A-Za-z0-9+/]{40,}={1,2}(?:$|[^A-Za-z0-9+/=])/.test(line);
+}
+
 export function scanLine(file: string, line: string, lineNumber: number): Finding[] {
   const findings: Finding[] = [];
   const relativeFile = relative(root, file);
@@ -75,6 +84,9 @@ export function scanLine(file: string, line: string, lineNumber: number): Findin
     if (pattern.test(line)) {
       findings.push({ file: relativeFile, reason, line: lineNumber });
     }
+  }
+  if (scanStandalonePublicDataKey(line)) {
+    findings.push({ file: relativeFile, reason: "possible decoded data.go.kr service key", line: lineNumber });
   }
   return findings;
 }

@@ -1,0 +1,36 @@
+name: Registration Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: registration-preflight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  registration-preflight:
+    name: Registration Evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    env:
+      DATA_GO_KR_SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run registration preflight
+        run: npm run preflight:registration

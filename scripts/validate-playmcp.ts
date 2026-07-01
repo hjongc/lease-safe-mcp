@@ -11,7 +11,7 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   dependencies?: Record<string, string>;
 };
 
-for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/registration-preflight.ts", "scripts/rate-limit-smoke.ts"]) {
+for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", ".github/workflows/registration-preflight.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/registration-preflight.ts", "scripts/rate-limit-smoke.ts"]) {
   readFileSync(file, "utf8");
 }
 
@@ -42,6 +42,7 @@ for (const pattern of [".git", ".env", ".env.*", "node_modules", "dist"]) {
 }
 
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+const registrationWorkflow = readFileSync(".github/workflows/registration-preflight.yml", "utf8");
 const dependabot = readFileSync(".github/dependabot.yml", "utf8");
 assert(/actions\/checkout@v5/.test(ci), "CI must use actions/checkout@v5");
 assert(/actions\/setup-node@v5/.test(ci), "CI must use actions/setup-node@v5");
@@ -49,6 +50,10 @@ for (const command of ["npm ci", "npm run scan:secrets", "npm test", "npm run va
   assert(ci.includes(command), `CI must run ${command}`);
 }
 assert(/DATA_GO_KR_SERVICE_KEY/.test(ci), "CI must support optional live public-data smoke through DATA_GO_KR_SERVICE_KEY");
+assert(/REQUIRE_LIVE_PUBLIC_DATA:\s*"1"/.test(ci), "CI live public-data smoke must use registration-mode coverage rules when a key is configured");
+assert(/workflow_dispatch/.test(registrationWorkflow), "registration preflight workflow must be manually dispatchable");
+assert(/DATA_GO_KR_SERVICE_KEY/.test(registrationWorkflow), "registration preflight workflow must inject DATA_GO_KR_SERVICE_KEY from secrets");
+assert(/npm run preflight:registration/.test(registrationWorkflow), "registration preflight workflow must run npm run preflight:registration");
 assert(/package-ecosystem:\s*npm/.test(dependabot), "Dependabot must monitor npm dependencies");
 assert(/package-ecosystem:\s*github-actions/.test(dependabot), "Dependabot must monitor GitHub Actions");
 
@@ -69,10 +74,28 @@ for (const required of [
   "MCP_RATE_LIMIT_PER_MINUTE",
   "PUBLIC_DATA_TIMEOUT_MS",
   "fails at startup",
+  "unsupported `/mcp` methods",
+  "non-JSON MCP POST bodies",
+  "WWW-Authenticate",
+  "every supported housing type",
+  "Registration Preflight",
   "npm run preflight:registration",
   "npm run preflight"
 ]) {
   assert(submission.includes(required), `submission pack missing: ${required}`);
+}
+
+for (const required of [
+  "unsupported-method rejection",
+  "invalid-JSON rejection",
+  "unsupported-content-type rejection",
+  "WWW-Authenticate",
+  "every supported housing type",
+  "Registration Preflight",
+  "official source registry access",
+  "Docker runtime smoke"
+]) {
+  assert(operations.includes(required), `operations runbook missing: ${required}`);
 }
 
 const server = readFileSync("src/server.ts", "utf8");
@@ -83,10 +106,15 @@ assert(/userinfo, query strings, fragments/.test(server), "server must reject UR
 assert(/DATA_GO_KR_SERVICE_KEY is required in production/.test(server), "server must fail fast without DATA_GO_KR_SERVICE_KEY in production");
 assert(/timingSafeEqual/.test(server), "server must compare bearer tokens with timingSafeEqual");
 assert(/MCP_AUTH_TOKEN must be at least/.test(server), "server must reject weak MCP_AUTH_TOKEN values");
+assert(/WWW-Authenticate/.test(server), "server must advertise bearer authentication on unauthorized MCP requests");
+assert(/Bearer realm="lease-safe"/.test(server), "server must use a stable bearer realm for unauthorized MCP requests");
+assert(/requireMcpBearerToken/.test(server), "server must authenticate MCP POST requests before parsing request bodies");
 assert(/parsePlainInteger/.test(server), "server must parse runtime numeric settings as plain integers");
 assert(/MCP_MAX_BODY_BYTES/.test(server), "server must support a bounded MCP request body size");
 assert(/express\.json\(\{ limit: `\$\{maxBodyBytes\}b` \}\)/.test(server), "server JSON parser limit must match MCP_MAX_BODY_BYTES");
 assert(/MCP_RATE_LIMIT_PER_MINUTE/.test(server), "server must support MCP request rate limiting");
+assert(/requireMcpJsonContentType/.test(server), "server must reject non-JSON MCP POST requests before transport handling");
+assert(/MCP POST requests must use application\/json/.test(server), "server must return a clear non-JSON MCP POST error");
 assert(/MCP_TEXT_LIMITS/.test(server), "server must define explicit MCP text input limits");
 assert(/regionSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.region\)/.test(server), "server must bound MCP region text inputs");
 assert(/situationSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.situation\)/.test(server), "server must bound MCP situation text inputs");
@@ -122,6 +150,11 @@ assert(/name:\s*"lease-safe"/.test(server), "MCP server name must be lease-safe"
 assert(!/name:\s*"[^"]*kakao[^"]*"/i.test(server), "MCP server name must not include kakao");
 assert(/StreamableHTTPServerTransport/.test(server), "server must use Streamable HTTP");
 assert(/sessionIdGenerator:\s*undefined/.test(server), "server must be stateless");
+assert(/methodNotAllowedForMcp/.test(server), "server must centralize MCP method rejection responses");
+assert(/setHeader\("Allow",\s*"POST"\)/.test(server), "server must advertise Allow: POST for unsupported MCP methods");
+assert(/app\.head\("\/mcp"/.test(server), "server must explicitly reject HEAD /mcp with method-not-allowed headers");
+assert(/app\.all\("\/mcp"/.test(server), "server must reject all unsupported MCP methods consistently");
+assert(/app\.post\([\s\S]*requireMcpBearerToken\(authToken\)[\s\S]*requireMcpJsonContentType[\s\S]*express\.json/.test(server), "server must authenticate MCP POST requests before content-type validation and JSON parsing");
 
 const registeredTools = [...server.matchAll(/server\.registerTool\(\s*"([^"]+)"/g)].map(match => match[1]);
 assert(registeredTools.length >= 3 && registeredTools.length <= 10, `tool count must be 3-10, got ${registeredTools.length}`);
@@ -179,6 +212,17 @@ const httpSmoke = readFileSync("scripts/http-smoke.ts", "utf8");
 assert(/healthz/.test(httpSmoke), "HTTP smoke must verify healthz");
 assert(/smokePortFromEnv/.test(httpSmoke), "HTTP smoke must fail fast on invalid port env values");
 assert(/auth_rejection/.test(httpSmoke), "HTTP smoke must verify bearer auth rejection");
+assert(/WWW-Authenticate:\s*Bearer/.test(httpSmoke), "HTTP smoke must verify bearer auth challenge headers");
+assert(/method_rejection/.test(httpSmoke), "HTTP smoke must verify unsupported MCP method rejection");
+assert(/verifyHeadMethodNotAllowed/.test(httpSmoke), "HTTP smoke must verify HEAD /mcp method rejection");
+assert(/"OPTIONS"/.test(httpSmoke), "HTTP smoke must verify OPTIONS /mcp method rejection");
+assert(/"PUT"/.test(httpSmoke), "HTTP smoke must verify a catch-all unsupported MCP method");
+assert(/Allow:\s*POST/.test(httpSmoke), "HTTP smoke must verify unsupported MCP methods advertise Allow: POST");
+assert(/invalid_json_rejection/.test(httpSmoke), "HTTP smoke must verify invalid JSON rejection");
+assert(/-32700/.test(httpSmoke), "HTTP smoke must verify invalid JSON returns the JSON-RPC parse error code");
+assert(/auth_before_parse/.test(httpSmoke), "HTTP smoke must verify unauthorized malformed JSON fails authentication before parsing");
+assert(/content_type_rejection/.test(httpSmoke), "HTTP smoke must verify unsupported content-type rejection");
+assert(/415/.test(httpSmoke), "HTTP smoke must verify unsupported content-type returns 415");
 assert(/rateLimitPerMinute/.test(httpSmoke), "HTTP smoke must verify rate limit health metadata");
 assert(/oversized_request/.test(httpSmoke), "HTTP smoke must verify oversized MCP request rejection");
 assert(/dist\/scripts\/smoke\.js/.test(httpSmoke), "HTTP smoke must run the MCP client smoke");
@@ -188,6 +232,17 @@ assert(/docker/.test(dockerSmoke), "Docker smoke must run a container");
 assert(/healthz/.test(dockerSmoke), "Docker smoke must verify healthz");
 assert(/smokePortFromEnv/.test(dockerSmoke), "Docker smoke must fail fast on invalid port env values");
 assert(/docker_auth_rejection/.test(dockerSmoke), "Docker smoke must verify bearer auth rejection");
+assert(/WWW-Authenticate:\s*Bearer/.test(dockerSmoke), "Docker smoke must verify bearer auth challenge headers");
+assert(/docker_method_rejection/.test(dockerSmoke), "Docker smoke must verify unsupported MCP method rejection");
+assert(/verifyHeadMethodNotAllowed/.test(dockerSmoke), "Docker smoke must verify HEAD /mcp method rejection");
+assert(/"OPTIONS"/.test(dockerSmoke), "Docker smoke must verify OPTIONS /mcp method rejection");
+assert(/"PUT"/.test(dockerSmoke), "Docker smoke must verify a catch-all unsupported MCP method");
+assert(/Allow:\s*POST/.test(dockerSmoke), "Docker smoke must verify unsupported MCP methods advertise Allow: POST");
+assert(/docker_invalid_json_rejection/.test(dockerSmoke), "Docker smoke must verify invalid JSON rejection");
+assert(/-32700/.test(dockerSmoke), "Docker smoke must verify invalid JSON returns the JSON-RPC parse error code");
+assert(/docker_auth_before_parse/.test(dockerSmoke), "Docker smoke must verify unauthorized malformed JSON fails authentication before parsing");
+assert(/docker_content_type_rejection/.test(dockerSmoke), "Docker smoke must verify unsupported content-type rejection");
+assert(/415/.test(dockerSmoke), "Docker smoke must verify unsupported content-type returns 415");
 assert(/rateLimitPerMinute/.test(dockerSmoke), "Docker smoke must verify rate limit health metadata");
 assert(/docker_oversized_request/.test(dockerSmoke), "Docker smoke must verify oversized MCP request rejection");
 assert(/dist\/scripts\/smoke\.js/.test(dockerSmoke), "Docker smoke must run the MCP client smoke");
@@ -199,7 +254,7 @@ assert(/Retry-After/.test(rateLimitSmoke), "rate-limit smoke must verify Retry-A
 assert(/429/.test(rateLimitSmoke), "rate-limit smoke must verify 429 rejection");
 
 const secretScan = readFileSync("scripts/secret-scan.ts", "utf8");
-for (const required of ["DATA_GO_KR_SERVICE_KEY", "MCP_AUTH_TOKEN", "Secret scan failed"]) {
+for (const required of ["DATA_GO_KR_SERVICE_KEY", "MCP_AUTH_TOKEN", "decoded data.go.kr", "Secret scan failed"]) {
   assert(secretScan.includes(required), `secret scan missing ${required}`);
 }
 
@@ -212,6 +267,8 @@ assert(/MONEY_INPUT_LIMITS\.depositManwon/.test(publicDataSmoke), "public-data s
 assert(/plain positive integer/.test(publicDataSmoke), "public-data smoke must require a plain integer deposit value");
 assert(/isAllZeroLawdCd/.test(publicDataSmoke), "public-data smoke must reject all-zero LAWD_CD values before API calls");
 assert(/isFutureDealYmd/.test(publicDataSmoke), "public-data smoke must reject future deal months before API calls");
+assert(/REQUIRE_LIVE_PUBLIC_DATA/.test(publicDataSmoke), "public-data smoke must know when registration preflight requires live evidence");
+assert(/must include all supported housing types in registration preflight/.test(publicDataSmoke), "registration preflight must reject narrowed public-data housing smoke");
 
 const releasePreflight = readFileSync("scripts/release-preflight.ts", "utf8");
 const registrationPreflight = readFileSync("scripts/registration-preflight.ts", "utf8");
