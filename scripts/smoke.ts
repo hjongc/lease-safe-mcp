@@ -36,6 +36,28 @@ function assertInputSchemaDescriptions(toolName: string, schema: unknown) {
   }
 }
 
+function textFromToolResult(toolName: string, result: unknown): string {
+  const content = (result as { content?: Array<{ type?: unknown; text?: unknown }> })?.content ?? [];
+  const textBlocks = content.filter(item => item.type === "text" && typeof item.text === "string");
+  if (textBlocks.length === 0) {
+    throw new Error(`Tool ${toolName} must return at least one text content block`);
+  }
+  return textBlocks.map(item => item.text as string).join("\n");
+}
+
+function assertToolOutputQuality(toolName: string, text: string) {
+  if (!hasKorean(text)) throw new Error(`Tool ${toolName} output must contain Korean text`);
+  if (text.length < 500) throw new Error(`Tool ${toolName} output is unexpectedly short`);
+  if (text.length > 12000) throw new Error(`Tool ${toolName} output is unexpectedly long`);
+  for (const required of ["## 계약 위험 신호 점검", "## 공식 출처", "## 확인 필요", "전월세안전내비"]) {
+    if (!text.includes(required)) throw new Error(`Tool ${toolName} output missing required phrase: ${required}`);
+  }
+  for (const requiredSource of ["인터넷등기소", "법제처", "국가법령정보센터", "HUG"]) {
+    if (!text.includes(requiredSource)) throw new Error(`Tool ${toolName} output missing official source: ${requiredSource}`);
+  }
+  if (/kakao/i.test(text)) throw new Error(`Tool ${toolName} output contains forbidden kakao string`);
+}
+
 function textFromResourceResult(result: unknown): string {
   const contents = (result as { contents?: Array<{ mimeType?: unknown; text?: unknown }> })?.contents ?? [];
   const content = contents.find(item => typeof item.text === "string");
@@ -159,6 +181,9 @@ async function main() {
   const latencyMs = performance.now() - startedAt;
   console.log(`latency_ms=${latencyMs.toFixed(1)}`);
   if (latencyMs > 3000) throw new Error(`Smoke latency exceeded 3000ms: ${latencyMs.toFixed(1)}ms`);
+  const resultText = textFromToolResult("check_lease_red_flags", result);
+  assertToolOutputQuality("check_lease_red_flags", resultText);
+  console.log(`tool_output_chars=${resultText.length}`);
   console.log(JSON.stringify(result, null, 2));
 
   const resources = await client.listResources();

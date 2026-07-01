@@ -149,6 +149,8 @@ assert(/supportedPlayMcpProtocolVersions/.test(smoke), "smoke must verify protoc
 assert(/getServerVersion/.test(smoke), "smoke must verify server identity");
 assert(/3-10 tools/.test(smoke), "smoke must verify tool count");
 assert(/MCP_AUTH_TOKEN/.test(smoke), "smoke must support bearer-token MCP endpoints");
+assert(/assertToolOutputQuality/.test(smoke), "smoke must verify MCP tool output quality");
+assert(/tool_output_chars/.test(smoke), "smoke must report validated tool output size");
 assert(/readResource/.test(smoke), "smoke must read the official source registry resource");
 assert(/official_sources/.test(smoke), "smoke must report validated official source count");
 
