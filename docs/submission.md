@@ -90,10 +90,10 @@ DATA_GO_KR_SERVICE_KEY=... npm run preflight:registration
 
 Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_KEY` is configured as a GitHub repository secret, CI also runs the live public-data smoke in registration mode.
 
-For shareable registration evidence, trigger the manual GitHub Actions **Registration Preflight** workflow on the submitted commit. This workflow runs `npm run preflight:registration` and fails when `DATA_GO_KR_SERVICE_KEY` is missing instead of treating live public-data smoke as optional.
+For shareable registration evidence, trigger the manual GitHub Actions **Registration Preflight** workflow on the submitted commit. This workflow runs `npm run preflight:registration`, fails when `DATA_GO_KR_SERVICE_KEY` is missing instead of treating live public-data smoke as optional, and publishes a GitHub Actions job summary with the commit, workflow run URL, required command, live public-data requirement, and Docker runtime smoke coverage.
 
 CI also runs `npm run smoke:docker` after building the image, so registration should use a commit whose Docker image has been proven to boot and answer MCP requests before the optional live API smoke.
 
 The live public-data smoke is intentionally stricter than a connectivity check: `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` must be positive, `npm run preflight:registration` must cover every supported housing type, and rent and sale APIs must return positive sample counts for the configured demo region/month. A zero-sample official response means the demo input is not registration-ready yet.
 
-Use `docs/operations.md` as the final registration runbook. Registration is not evidence-complete until `npm run preflight:registration`, the GitHub Actions **Registration Preflight** workflow, and the GitHub Actions live public-data smoke are passed, not skipped.
+Use `docs/operations.md` as the final registration runbook. Registration is not evidence-complete until `npm run preflight:registration`, the GitHub Actions **Registration Preflight** workflow summary, and the GitHub Actions live public-data smoke are passed, not skipped.

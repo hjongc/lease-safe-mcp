@@ -37,6 +37,7 @@ Collect this evidence before registering or updating the PlayMCP build:
 
 - `npm run preflight:registration` passes with `DATA_GO_KR_SERVICE_KEY` set locally.
 - GitHub Actions `Registration Preflight` workflow passes on the submitted commit.
+- GitHub Actions `Registration Preflight` job summary shows the submitted commit, workflow run URL, required command, live public-data requirement, and Docker runtime smoke coverage.
 - Latest GitHub Actions `CI` run is green.
 - GitHub Actions `Live public-data smoke` is passed, not skipped, after the repository secret is configured.
 - Docker runtime smoke passes after image build.
@@ -64,7 +65,7 @@ Recommended demo input:
 - `npm run smoke:rate-limit` verifies the MCP POST rate limiter returns `429` with `Retry-After`.
 - `npm run smoke:docker` verifies the built image starts in production mode, answers `/healthz`, rejects disallowed Host headers, unsupported methods, invalid JSON, unsupported content types, unauthenticated requests, and oversized MCP requests, then completes MCP handshake/list-tools and official source registry access.
 - `npm run smoke:public-data` verifies legal-dong lookup, all rent APIs, all sale APIs, and the flagship assessment against live official APIs. It fails when `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` is not positive or when a rent or sale API returns zero samples, because registration evidence must prove a real demo data path.
-- `npm run preflight:registration` runs the full release preflight and fails if live public-data smoke cannot run for every supported housing type.
+- `npm run preflight:registration` runs the full release preflight and fails if live public-data smoke cannot run for every supported housing type. The Docker build step retries transient Docker or registry failures up to 3 times, then still fails if the image cannot be built.
 - GitHub Actions `Registration Preflight` runs `npm run preflight:registration` manually and fails when `DATA_GO_KR_SERVICE_KEY` is missing, so use it as shareable registration evidence.
 
 ## Incident Response

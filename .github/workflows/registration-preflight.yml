@@ -34,3 +34,18 @@ jobs:
 
       - name: Run registration preflight
         run: npm run preflight:registration
+
+      - name: Publish registration evidence summary
+        if: ${{ always() }}
+        run: |
+          {
+            echo "## Lease Safe Registration Evidence"
+            echo ""
+            echo "- Job status: ${{ job.status }}"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Branch/ref: \`${GITHUB_REF_NAME}\`"
+            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "- Required command: \`npm run preflight:registration\`"
+            echo "- Live public-data smoke: required by registration preflight"
+            echo "- Docker runtime smoke: included in registration preflight"
+          } >> "$GITHUB_STEP_SUMMARY"

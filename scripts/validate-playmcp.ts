@@ -54,6 +54,12 @@ assert(/REQUIRE_LIVE_PUBLIC_DATA:\s*"1"/.test(ci), "CI live public-data smoke mu
 assert(/workflow_dispatch/.test(registrationWorkflow), "registration preflight workflow must be manually dispatchable");
 assert(/DATA_GO_KR_SERVICE_KEY/.test(registrationWorkflow), "registration preflight workflow must inject DATA_GO_KR_SERVICE_KEY from secrets");
 assert(/npm run preflight:registration/.test(registrationWorkflow), "registration preflight workflow must run npm run preflight:registration");
+assert(/GITHUB_STEP_SUMMARY/.test(registrationWorkflow), "registration preflight workflow must publish a shareable evidence summary");
+assert(/Lease Safe Registration Evidence/.test(registrationWorkflow), "registration preflight summary must be clearly titled");
+assert(/GITHUB_SHA/.test(registrationWorkflow), "registration preflight summary must include the submitted commit");
+assert(/GITHUB_RUN_ID/.test(registrationWorkflow), "registration preflight summary must include the workflow run URL");
+assert(/Live public-data smoke: required by registration preflight/.test(registrationWorkflow), "registration preflight summary must state live public-data evidence is required");
+assert(/Docker runtime smoke: included in registration preflight/.test(registrationWorkflow), "registration preflight summary must state Docker runtime evidence is included");
 assert(/package-ecosystem:\s*npm/.test(dependabot), "Dependabot must monitor npm dependencies");
 assert(/package-ecosystem:\s*github-actions/.test(dependabot), "Dependabot must monitor GitHub Actions");
 
@@ -79,6 +85,7 @@ for (const required of [
   "WWW-Authenticate",
   "every supported housing type",
   "Registration Preflight",
+  "workflow run URL",
   "npm run preflight:registration",
   "npm run preflight"
 ]) {
@@ -92,6 +99,7 @@ for (const required of [
   "WWW-Authenticate",
   "every supported housing type",
   "Registration Preflight",
+  "job summary",
   "official source registry access",
   "Docker runtime smoke"
 ]) {
@@ -319,6 +327,8 @@ assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"smoke:http"\]/.test(releasePr
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"smoke:rate-limit"\]/.test(releasePreflight), "release preflight must include npm run smoke:rate-limit");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["audit",\s*"--omit=dev"\]/.test(releasePreflight), "release preflight must include npm audit --omit=dev");
 assert(/command:\s*"docker"[\s\S]*args:\s*\["build"/.test(releasePreflight), "release preflight must include docker build");
+assert(/attempts:\s*3/.test(releasePreflight), "release preflight must retry transient Docker build failures");
+assert(releasePreflight.includes("attempt ${attempt}/${attempts}"), "release preflight must make Docker build retry attempts visible");
 assert(/command:\s*"node"[\s\S]*args:\s*\["dist\/scripts\/docker-smoke\.js"\]/.test(releasePreflight), "release preflight must include Docker runtime smoke");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"smoke:public-data"\]/.test(releasePreflight), "release preflight must include npm run smoke:public-data");
 assert(/DATA_GO_KR_SERVICE_KEY/.test(releasePreflight), "release preflight must gate live public-data smoke on DATA_GO_KR_SERVICE_KEY");
