@@ -86,6 +86,7 @@ for (const required of [
   "unsupported `/mcp` methods",
   "non-JSON MCP POST bodies",
   "WWW-Authenticate",
+  "X-Content-Type-Options",
   "every supported housing type",
   "Registration Preflight",
   "workflow run URL",
@@ -100,6 +101,7 @@ for (const required of [
   "invalid-JSON rejection",
   "unsupported-content-type rejection",
   "WWW-Authenticate",
+  "Cache-Control",
   "every supported housing type",
   "Registration Preflight",
   "job summary",
@@ -186,6 +188,9 @@ assert(/MAX_PUBLIC_DATA_RESPONSE_BYTES/.test(domain), "domain must bound officia
 assert(/publicDataTimeoutMs/.test(server), "server must validate the public-data timeout at startup");
 assert(/SIGTERM/.test(server), "server must handle SIGTERM for container shutdown");
 assert(/x-powered-by/.test(server), "server must disable x-powered-by");
+assert(/X-Content-Type-Options/.test(server), "server must set X-Content-Type-Options");
+assert(/Referrer-Policy/.test(server), "server must set Referrer-Policy");
+assert(/Cache-Control/.test(server), "server must set Cache-Control");
 assert(/name:\s*"lease-safe"/.test(server), "MCP server name must be lease-safe");
 assert(!/name:\s*"[^"]*kakao[^"]*"/i.test(server), "MCP server name must not include kakao");
 assert(/StreamableHTTPServerTransport/.test(server), "server must use Streamable HTTP");
@@ -266,6 +271,7 @@ assert(/국세청/.test(smoke) && /위택스/.test(smoke), "smoke output quality
 
 const httpSmoke = readFileSync("scripts/http-smoke.ts", "utf8");
 assert(/healthz/.test(httpSmoke), "HTTP smoke must verify healthz");
+assert(/assertSecurityHeaders/.test(httpSmoke), "HTTP smoke must verify security headers");
 assert(/smokePortFromEnv/.test(httpSmoke), "HTTP smoke must fail fast on invalid port env values");
 assert(/listen\(0,\s*"0\.0\.0\.0"/.test(httpSmoke), "HTTP smoke free-port probe must match the server bind address");
 assert(/host_rejection/.test(httpSmoke), "HTTP smoke must verify DNS rebinding Host rejection");
@@ -290,6 +296,7 @@ assert(/dist\/scripts\/smoke\.js/.test(httpSmoke), "HTTP smoke must run the MCP 
 const dockerSmoke = readFileSync("scripts/docker-smoke.ts", "utf8");
 assert(/docker/.test(dockerSmoke), "Docker smoke must run a container");
 assert(/healthz/.test(dockerSmoke), "Docker smoke must verify healthz");
+assert(/assertSecurityHeaders/.test(dockerSmoke), "Docker smoke must verify security headers");
 assert(/smokePortFromEnv/.test(dockerSmoke), "Docker smoke must fail fast on invalid port env values");
 assert(/docker_host_rejection/.test(dockerSmoke), "Docker smoke must verify DNS rebinding Host rejection");
 assert(/Invalid Host: evil\.example/.test(dockerSmoke), "Docker smoke must verify the host validation error shape");

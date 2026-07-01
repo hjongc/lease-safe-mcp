@@ -112,6 +112,7 @@ async function waitForHealth(port: number, containerId: string): Promise<number>
     try {
       const response = await fetch(healthUrl);
       if (response.ok) {
+        assertSecurityHeaders(response, "docker healthz");
         const body = await response.json() as { ok?: unknown; service?: unknown; maxBodyBytes?: unknown; rateLimitPerMinute?: unknown };
         if (
           body.ok === true &&
@@ -129,6 +130,18 @@ async function waitForHealth(port: number, containerId: string): Promise<number>
   }
 
   throw new Error(`Timed out waiting for ${healthUrl}: ${(lastError as Error | undefined)?.message ?? "no response"}`);
+}
+
+function assertSecurityHeaders(response: Response, label: string): void {
+  if (response.headers.get("x-content-type-options") !== "nosniff") {
+    throw new Error(`${label} response must set X-Content-Type-Options: nosniff.`);
+  }
+  if (response.headers.get("referrer-policy") !== "no-referrer") {
+    throw new Error(`${label} response must set Referrer-Policy: no-referrer.`);
+  }
+  if (response.headers.get("cache-control") !== "no-store") {
+    throw new Error(`${label} response must set Cache-Control: no-store.`);
+  }
 }
 
 async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): Promise<void> {

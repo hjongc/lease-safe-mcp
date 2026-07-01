@@ -61,6 +61,7 @@ Recommended demo input:
 ## Health And Smoke Checks
 
 - `GET /healthz` must return `ok: true`, `service: lease-safe`, `transport: streamable-http`, `stateless: true`, `maxBodyBytes`, `rateLimitPerMinute`, and `publicDataTimeoutMs`.
+- HTTP responses must set `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`.
 - `npm run smoke:http` verifies local HTTP MCP handshake, tool metadata, DNS-rebinding Host rejection, unsupported-method rejection with `Allow: POST`, invalid-JSON rejection, unsupported-content-type rejection, bearer-auth rejection with `WWW-Authenticate`, oversized request rejection, a lightweight tool call, and official source registry access.
 - `npm run smoke:rate-limit` verifies the MCP POST rate limiter returns `429` with `Retry-After`.
 - `npm run smoke:docker` verifies the built image starts in production mode, answers `/healthz`, rejects disallowed Host headers, unsupported methods, invalid JSON, unsupported content types, unauthenticated requests, and oversized MCP requests, then completes MCP handshake/list-tools and official source registry access.

@@ -354,6 +354,13 @@ function requireMcpBearerToken(expectedToken: string | undefined) {
   };
 }
 
+function setSecurityHeaders(_req: Request, res: Response, next: NextFunction): void {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store");
+  next();
+}
+
 export function createServer(): McpServer {
   const server = new McpServer(
     {
@@ -586,6 +593,7 @@ export function createApp() {
   const app = express();
 
   app.disable("x-powered-by");
+  app.use(setSecurityHeaders);
   app.use(hostHeaderValidation(allowedHosts));
 
   app.get("/", (_req: Request, res: Response) => {
