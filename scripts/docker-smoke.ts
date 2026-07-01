@@ -164,6 +164,27 @@ async function verifyMethodNotAllowed(endpoint: string, method: "GET" | "DELETE"
   }
 }
 
+async function verifyInvalidJsonRequest(endpoint: string, authToken: string): Promise<void> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${authToken}`,
+      "content-type": "application/json"
+    },
+    body: "{"
+  });
+
+  if (response.status !== 400) {
+    const text = await response.text();
+    throw new Error(`Expected invalid JSON Docker MCP request to return 400, got ${response.status}: ${text}`);
+  }
+
+  const body = await response.json() as { error?: { code?: unknown; message?: unknown } };
+  if (body.error?.code !== -32700 || body.error?.message !== "Invalid JSON request body.") {
+    throw new Error("Invalid JSON Docker MCP request did not return the expected JSON-RPC parse error.");
+  }
+}
+
 async function verifyUnauthorizedRequest(endpoint: string): Promise<void> {
   const response = await fetch(endpoint, {
     method: "POST",
@@ -225,6 +246,8 @@ async function main() {
     await verifyMethodNotAllowed(endpoint, "GET", "Method not allowed. Use POST /mcp for Streamable HTTP requests.");
     await verifyMethodNotAllowed(endpoint, "DELETE", "Method not allowed for stateless server.");
     console.log("docker_method_rejection=ok");
+    await verifyInvalidJsonRequest(endpoint, authToken);
+    console.log("docker_invalid_json_rejection=ok");
     await verifyUnauthorizedRequest(endpoint);
     console.log("docker_auth_rejection=ok");
     await verifyOversizedRequest(endpoint, maxBodyBytes);

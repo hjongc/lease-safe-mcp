@@ -102,6 +102,27 @@ async function verifyMethodNotAllowed(endpoint: string, method: "GET" | "DELETE"
   }
 }
 
+async function verifyInvalidJsonRequest(endpoint: string, authToken: string): Promise<void> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${authToken}`,
+      "content-type": "application/json"
+    },
+    body: "{"
+  });
+
+  if (response.status !== 400) {
+    const text = await response.text();
+    throw new Error(`Expected invalid JSON MCP request to return 400, got ${response.status}: ${text}`);
+  }
+
+  const body = await response.json() as { error?: { code?: unknown; message?: unknown } };
+  if (body.error?.code !== -32700 || body.error?.message !== "Invalid JSON request body.") {
+    throw new Error("Invalid JSON MCP request did not return the expected JSON-RPC parse error.");
+  }
+}
+
 async function verifyUnauthorizedRequest(endpoint: string): Promise<void> {
   const response = await fetch(endpoint, {
     method: "POST",
@@ -161,10 +182,11 @@ function stopServer(server: ChildProcess): Promise<void> {
 async function main() {
   const port = smokePortFromEnv("MCP_HTTP_SMOKE_PORT") ?? await getFreePort();
   const endpoint = `http://127.0.0.1:${port}/mcp`;
+  const authToken = process.env.MCP_AUTH_TOKEN ?? "smoke-token-for-preflight";
   const env = {
     ...process.env,
     MCP_ALLOWED_HOSTS: process.env.MCP_ALLOWED_HOSTS ?? `127.0.0.1:${port},localhost`,
-    MCP_AUTH_TOKEN: process.env.MCP_AUTH_TOKEN ?? "smoke-token-for-preflight",
+    MCP_AUTH_TOKEN: authToken,
     MCP_ENDPOINT: endpoint,
     PORT: String(port)
   };
@@ -181,6 +203,8 @@ async function main() {
     await verifyMethodNotAllowed(endpoint, "GET", "Method not allowed. Use POST /mcp for Streamable HTTP requests.");
     await verifyMethodNotAllowed(endpoint, "DELETE", "Method not allowed for stateless server.");
     console.log("method_rejection=ok");
+    await verifyInvalidJsonRequest(endpoint, authToken);
+    console.log("invalid_json_rejection=ok");
     await verifyUnauthorizedRequest(endpoint);
     console.log("auth_rejection=ok");
     await verifyOversizedRequest(endpoint, maxBodyBytes);
