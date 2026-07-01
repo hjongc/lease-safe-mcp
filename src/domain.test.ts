@@ -2012,6 +2012,27 @@ test("deposit-to-sale comparison renders zero percent as a calculated ratio", as
   }
 });
 
+test("one-shot lease assessment requires a positive deposit before official API calls", async () => {
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => {
+      throw new Error("fetch should not be called for zero-deposit lease assessment");
+    };
+
+    await assert.rejects(
+      assessLeaseSafety({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: 0
+      }),
+      /depositManwon must be a positive integer number of manwon for lease safety assessment/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("deposit-to-sale comparison rejects missing official date fields", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;

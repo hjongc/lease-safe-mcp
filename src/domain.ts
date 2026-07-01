@@ -282,6 +282,13 @@ function assertRequiredNonNegativeManwon(label: keyof typeof MONEY_INPUT_LIMITS,
   }
 }
 
+function assertRequiredPositiveManwon(label: keyof typeof MONEY_INPUT_LIMITS, value: unknown): asserts value is number {
+  assertRequiredNonNegativeManwon(label, value);
+  if (value <= 0) {
+    throw new Error(`${label} must be a positive integer number of manwon for lease safety assessment.`);
+  }
+}
+
 function assertSupportedHousingType(housingType: string): asserts housingType is HousingType {
   if (!["apartment", "rowhouse", "single_multi", "officetel"].includes(housingType)) {
     throw new Error("housingType must be one of apartment, rowhouse, single_multi, or officetel.");
@@ -948,7 +955,7 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
   dealYmd: string;
   depositManwon: number;
 }): Promise<string> {
-  assertRequiredNonNegativeManwon("depositManwon", input.depositManwon);
+  assertRequiredPositiveManwon("depositManwon", input.depositManwon);
   assertOptionalNonNegativeManwon("monthlyRentManwon", input.monthlyRentManwon);
   const [rentMarket, saleMarket] = await Promise.all([
     fetchRentMarketSnapshot(input),
