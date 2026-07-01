@@ -309,6 +309,10 @@ function compactPublicDataResponseExcerpt(body: string): string {
   return redactDataGoKrServiceKeys(body.replace(/\s+/g, " ").trim().slice(0, 200));
 }
 
+function compactPublicDataFieldValue(value: string): string {
+  return redactDataGoKrServiceKeys(value.replace(/\s+/g, " ").trim().slice(0, 80));
+}
+
 async function fetchPublicDataText(label: string, url: URL): Promise<string> {
   const timeoutMs = publicDataTimeoutMs();
   let response: Response;
@@ -524,7 +528,7 @@ function publicDataNumberFromRequiredTag(xml: string, tags: string[], label: str
   const normalized = rawValue.replace(/,/g, "").trim();
   const value = parsePublicDataInteger(normalized);
   if (normalized === "" || !Number.isFinite(value) || !Number.isSafeInteger(value) || value < 0) {
-    throw new Error(`${label} returned invalid numeric field ${tags.join(" or ")}: ${rawValue}`);
+    throw new Error(`${label} returned invalid numeric field ${tags.join(" or ")}: ${compactPublicDataFieldValue(rawValue)}`);
   }
   return value;
 }
@@ -546,7 +550,7 @@ function publicDataNumberFromOptionalTag(xml: string, tags: string[], label: str
   const normalized = rawValue.replace(/,/g, "").trim();
   const value = parsePublicDataDecimal(normalized);
   if (normalized === "" || !Number.isFinite(value) || value < 0) {
-    throw new Error(`${label} returned invalid numeric field ${tags.join(" or ")}: ${rawValue}`);
+    throw new Error(`${label} returned invalid numeric field ${tags.join(" or ")}: ${compactPublicDataFieldValue(rawValue)}`);
   }
   return value;
 }
@@ -578,7 +582,7 @@ function contractDateFromTags(xml: string, label: string): string {
     parsedDay > 31 ||
     !isRealCalendarDate(parsedYear, parsedMonth, parsedDay)
   ) {
-    throw new Error(`${label} returned invalid date field: ${year}-${month}-${day}`);
+    throw new Error(`${label} returned invalid date field: ${compactPublicDataFieldValue(year)}-${compactPublicDataFieldValue(month)}-${compactPublicDataFieldValue(day)}`);
   }
 
   return `${parsedYear}-${String(parsedMonth).padStart(2, "0")}-${String(parsedDay).padStart(2, "0")}`;

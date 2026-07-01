@@ -1149,6 +1149,47 @@ test("rent market comparison rejects malformed date fields", async () => {
   }
 });
 
+test("rent market comparison bounds and redacts invalid date field excerpts", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  const oversizedInvalidYear = `${VALID_TEST_SERVICE_KEY} ${"9".repeat(200)}`;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악긴날짜오류</aptNm>
+            <umdNm>봉천동</umdNm>
+            <deposit>30,000</deposit>
+            <monthlyRent>0</monthlyRent>
+            <dealYear>${oversizedInvalidYear}</dealYear>
+            <dealMonth>5</dealMonth>
+            <dealDay>10</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    await compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" });
+    assert.fail("Expected invalid date field to throw.");
+  } catch (error) {
+    const message = (error as Error).message;
+    assert.match(message, /국토교통부 전월세 실거래 API returned invalid date field/);
+    assert.match(message, /\[DATA_GO_KR_SERVICE_KEY 생략\]/);
+    assert.doesNotMatch(message, new RegExp(VALID_TEST_SERVICE_KEY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(message, /9{120}/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
 test("rent market comparison surfaces public-data error payloads", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
@@ -1284,6 +1325,47 @@ test("rent market comparison rejects malformed money fields", async () => {
       compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" }),
       /국토교통부 전월세 실거래 API returned invalid numeric field/
     );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
+test("rent market comparison bounds and redacts invalid numeric field excerpts", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  const oversizedInvalidValue = `${VALID_TEST_SERVICE_KEY} ${"x".repeat(200)}`;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악긴오류전세</aptNm>
+            <umdNm>봉천동</umdNm>
+            <deposit>${oversizedInvalidValue}</deposit>
+            <monthlyRent>0</monthlyRent>
+            <dealYear>2026</dealYear>
+            <dealMonth>5</dealMonth>
+            <dealDay>10</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    await compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" });
+    assert.fail("Expected invalid numeric field to throw.");
+  } catch (error) {
+    const message = (error as Error).message;
+    assert.match(message, /국토교통부 전월세 실거래 API returned invalid numeric field/);
+    assert.match(message, /\[DATA_GO_KR_SERVICE_KEY 생략\]/);
+    assert.doesNotMatch(message, new RegExp(VALID_TEST_SERVICE_KEY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(message, /x{120}/);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
