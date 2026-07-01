@@ -22,6 +22,15 @@ export function publicDataSmokeHousingTypes(): HousingType[] {
   if (!raw) return [...HOUSING_TYPES];
 
   const requested = raw.split(",").map(type => type.trim()).filter(Boolean);
+  if (requested.length === 0) {
+    throw new Error("PUBLIC_DATA_SMOKE_HOUSING_TYPES must include at least one supported housing type.");
+  }
+
+  const duplicates = requested.filter((type, index) => requested.indexOf(type) !== index);
+  if (duplicates.length > 0) {
+    throw new Error(`PUBLIC_DATA_SMOKE_HOUSING_TYPES contains duplicate values: ${[...new Set(duplicates)].join(",")}`);
+  }
+
   for (const type of requested) {
     if (!HOUSING_TYPES.includes(type as HousingType)) {
       throw new Error(`Unsupported PUBLIC_DATA_SMOKE_HOUSING_TYPES value: ${type}`);
@@ -32,8 +41,8 @@ export function publicDataSmokeHousingTypes(): HousingType[] {
 
 export function publicDataSmokeDepositManwon(): number {
   const value = Number(process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON ?? 30000);
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new Error("PUBLIC_DATA_SMOKE_DEPOSIT_MANWON must be a positive number for registration-ready deposit-to-sale evidence.");
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error("PUBLIC_DATA_SMOKE_DEPOSIT_MANWON must be a positive integer for registration-ready deposit-to-sale evidence.");
   }
   return value;
 }

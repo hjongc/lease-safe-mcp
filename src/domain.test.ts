@@ -13,7 +13,7 @@ import {
   routeOfficialHelp
 } from "./domain.js";
 import { createApp, httpPort, mcpMaxBodyBytes, mcpRateLimitPerMinute, pruneExpiredRateLimitWindows } from "./server.js";
-import { positiveSampleCount, publicDataSmokeDepositManwon } from "../scripts/public-data-smoke.js";
+import { positiveSampleCount, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes } from "../scripts/public-data-smoke.js";
 import { scanLine } from "../scripts/secret-scan.js";
 
 test("data availability names automatic APIs and no fake fallback", () => {
@@ -64,15 +64,44 @@ test("public-data smoke requires a positive demo deposit", () => {
     assert.equal(publicDataSmokeDepositManwon(), 42000);
 
     process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON = "0";
-    assert.throws(() => publicDataSmokeDepositManwon(), /positive number/);
+    assert.throws(() => publicDataSmokeDepositManwon(), /positive integer/);
 
     process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON = "-1";
-    assert.throws(() => publicDataSmokeDepositManwon(), /positive number/);
+    assert.throws(() => publicDataSmokeDepositManwon(), /positive integer/);
+
+    process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON = "30000.5";
+    assert.throws(() => publicDataSmokeDepositManwon(), /positive integer/);
   } finally {
     if (previousDeposit === undefined) {
       delete process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON;
     } else {
       process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON = previousDeposit;
+    }
+  }
+});
+
+test("public-data smoke validates requested housing types", () => {
+  const previousHousingTypes = process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES;
+  try {
+    delete process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES;
+    assert.deepEqual(publicDataSmokeHousingTypes(), ["apartment", "rowhouse", "single_multi", "officetel"]);
+
+    process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES = "apartment,rowhouse";
+    assert.deepEqual(publicDataSmokeHousingTypes(), ["apartment", "rowhouse"]);
+
+    process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES = ",";
+    assert.throws(() => publicDataSmokeHousingTypes(), /at least one supported housing type/);
+
+    process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES = "apartment,apartment";
+    assert.throws(() => publicDataSmokeHousingTypes(), /duplicate values/);
+
+    process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES = "apartment,condo";
+    assert.throws(() => publicDataSmokeHousingTypes(), /Unsupported PUBLIC_DATA_SMOKE_HOUSING_TYPES value: condo/);
+  } finally {
+    if (previousHousingTypes === undefined) {
+      delete process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES;
+    } else {
+      process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES = previousHousingTypes;
     }
   }
 });
