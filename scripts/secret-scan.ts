@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const root = process.cwd();
 const includeExtensions = new Set([".ts", ".js", ".json", ".md", ".yml", ".yaml", ".dockerignore", ".gitignore"]);
@@ -7,7 +8,7 @@ const ignoredDirectories = new Set([".git", "node_modules", "dist", "coverage"])
 const allowedPlaceholders = [
   "DATA_GO_KR_SERVICE_KEY=...",
   "DATA_GO_KR_SERVICE_KEY=your-data-go-kr-service-key",
-  "replace-with-runtime-secret"
+  "MCP_AUTH_TOKEN=replace-with-runtime-secret"
 ];
 
 interface Finding {
@@ -40,11 +41,25 @@ function listFiles(directory: string): string[] {
   return files;
 }
 
-function isAllowedPlaceholder(line: string): boolean {
-  return allowedPlaceholders.some(value => line.includes(value));
+function normalizePlaceholderLine(line: string): string {
+  let normalized = line.trim();
+  if (normalized.startsWith("- ")) normalized = normalized.slice(2).trim();
+  normalized = normalized.replace(/,$/, "").trim();
+  if (
+    (normalized.startsWith("`") && normalized.endsWith("`")) ||
+    (normalized.startsWith("\"") && normalized.endsWith("\"")) ||
+    (normalized.startsWith("'") && normalized.endsWith("'"))
+  ) {
+    normalized = normalized.slice(1, -1);
+  }
+  return normalized;
 }
 
-function scanLine(file: string, line: string, lineNumber: number): Finding[] {
+function isAllowedPlaceholder(line: string): boolean {
+  return allowedPlaceholders.includes(normalizePlaceholderLine(line));
+}
+
+export function scanLine(file: string, line: string, lineNumber: number): Finding[] {
   const findings: Finding[] = [];
   const relativeFile = relative(root, file);
   if (isAllowedPlaceholder(line)) return findings;
@@ -81,4 +96,6 @@ function main() {
   console.log("Secret scan passed");
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}

@@ -13,12 +13,32 @@ import {
   routeOfficialHelp
 } from "./domain.js";
 import { createApp, mcpMaxBodyBytes, mcpRateLimitPerMinute } from "./server.js";
+import { scanLine } from "../scripts/secret-scan.js";
 
 test("data availability names automatic APIs and no fake fallback", () => {
   const text = explainDataAvailability();
   assert.match(text, /법정동코드/);
   assert.match(text, /전월세 실거래가/);
   assert.match(text, /HUG/);
+});
+
+test("secret scan allows exact placeholders but rejects hidden values beside them", () => {
+  const dataKeyName = "DATA_GO_KR" + "_SERVICE_KEY";
+  const authTokenName = "MCP_AUTH" + "_TOKEN";
+  const publicDataPlaceholder = dataKeyName + "=your-data-go-kr-service-key";
+  const authPlaceholder = authTokenName + "=replace-with-runtime-secret";
+
+  assert.deepEqual(scanLine("README.md", authPlaceholder, 1), []);
+  assert.deepEqual(scanLine("scripts/secret-scan.ts", `  "${publicDataPlaceholder}",`, 1), []);
+
+  assert.equal(
+    scanLine("README.md", authPlaceholder + " also-real-token-value-1234567890", 1).length,
+    1
+  );
+  assert.equal(
+    scanLine("README.md", dataKeyName + "=... " + "AAAABBBBCCCCDDDDEEEEFFFF" + "%2F" + "GGGGHHHHIIIIJJJJKKKKLLLL" + "%3D%3D", 1).length,
+    1
+  );
 });
 
 test("legal dong helper calls official API and exposes LAWD code", async () => {
