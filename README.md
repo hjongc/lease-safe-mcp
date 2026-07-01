@@ -183,6 +183,7 @@ If the GitHub repository has a `DATA_GO_KR_SERVICE_KEY` secret, CI also runs the
 
 Before registering in PlayMCP:
 
+- Review `SECURITY.md`
 - Review `docs/submission.md`
 - Review `docs/operations.md`
 - Run `npm run preflight:registration` locally with `DATA_GO_KR_SERVICE_KEY` set

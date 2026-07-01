@@ -74,6 +74,14 @@ If API-backed tools fail:
 4. If requests time out, lower demo scope only by changing `PUBLIC_DATA_SMOKE_HOUSING_TYPES`; do not add fake sample data.
 5. If all live public-data checks pass locally but fail in deployment, inspect host allowlist, egress/network policy, and runtime env injection.
 
+If a security issue or leaked secret is reported:
+
+1. Do not discuss the secret value or exploit details in public issues, commits, screenshots, or logs.
+2. Rotate the affected runtime secret.
+3. Update GitHub Actions secrets and PlayMCP runtime environment.
+4. Run `npm run preflight:registration`.
+5. Review `SECURITY.md` before publishing the fix.
+
 ## Key Rotation
 
 1. Add or renew the data.go.kr service key approvals for all required APIs.
@@ -83,6 +91,12 @@ If API-backed tools fail:
 5. Run the PlayMCP demo entry tool once with the recommended input.
 
 Do not remove the old key until both CI and the runtime smoke have passed with the new key.
+
+## Dependency Maintenance
+
+- Dependabot monitors npm packages and GitHub Actions weekly.
+- Do not merge dependency PRs unless GitHub Actions CI is green.
+- For production dependencies, also check `npm audit --omit=dev` and `npm run validate:playmcp`.
 
 ## Boundaries
 

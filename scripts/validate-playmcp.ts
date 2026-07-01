@@ -11,7 +11,7 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   dependencies?: Record<string, string>;
 };
 
-for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", "README.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/registration-preflight.ts", "scripts/rate-limit-smoke.ts"]) {
+for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/registration-preflight.ts", "scripts/rate-limit-smoke.ts"]) {
   readFileSync(file, "utf8");
 }
 
@@ -42,15 +42,19 @@ for (const pattern of [".git", ".env", ".env.*", "node_modules", "dist"]) {
 }
 
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+const dependabot = readFileSync(".github/dependabot.yml", "utf8");
 assert(/actions\/checkout@v5/.test(ci), "CI must use actions/checkout@v5");
 assert(/actions\/setup-node@v5/.test(ci), "CI must use actions/setup-node@v5");
 for (const command of ["npm ci", "npm run scan:secrets", "npm test", "npm run validate:playmcp", "npm run smoke:http", "npm run smoke:rate-limit", "npm audit --omit=dev", "docker build", "npm run smoke:docker"]) {
   assert(ci.includes(command), `CI must run ${command}`);
 }
 assert(/DATA_GO_KR_SERVICE_KEY/.test(ci), "CI must support optional live public-data smoke through DATA_GO_KR_SERVICE_KEY");
+assert(/package-ecosystem:\s*npm/.test(dependabot), "Dependabot must monitor npm dependencies");
+assert(/package-ecosystem:\s*github-actions/.test(dependabot), "Dependabot must monitor GitHub Actions");
 
 const submission = readFileSync("docs/submission.md", "utf8");
 const operations = readFileSync("docs/operations.md", "utf8");
+const security = readFileSync("SECURITY.md", "utf8");
 for (const required of [
   "Lease Safe(전월세안전내비)",
   "lease-safe",
@@ -184,6 +188,16 @@ for (const required of [
   "Do not store secrets"
 ]) {
   assert(operations.includes(required), `operations runbook missing: ${required}`);
+}
+
+for (const required of [
+  "Reporting A Vulnerability",
+  "Secret Handling",
+  "Security Gates",
+  "Dependency Updates",
+  "npm run preflight:registration"
+]) {
+  assert(security.includes(required), `security policy missing: ${required}`);
 }
 
 console.log("Lease Safe PlayMCP validation passed");
