@@ -272,7 +272,10 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function parseLegalDongRows(payload: unknown): LegalDongRecord[] {
   const root = asRecord(payload);
-  const stanReginCd = Array.isArray(root?.StanReginCd) ? root.StanReginCd : [];
+  if (!Array.isArray(root?.StanReginCd)) {
+    throw new Error("행정표준코드 법정동코드 API returned unrecognized JSON payload.");
+  }
+  const stanReginCd = root.StanReginCd;
   const resultHead = stanReginCd
     .map(item => asRecord(item)?.head)
     .find(head => Array.isArray(head)) as unknown[] | undefined;
