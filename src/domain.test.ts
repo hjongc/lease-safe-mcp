@@ -8,6 +8,7 @@ import {
   compareRentMarket,
   explainDataAvailability,
   prepareContractQuestions,
+  publicDataTimeoutMs,
   resolveLegalDongCode,
   routeOfficialHelp
 } from "./domain.js";
@@ -152,6 +153,62 @@ test("rent market comparison surfaces public-data error payloads", async () => {
       delete process.env.DATA_GO_KR_SERVICE_KEY;
     } else {
       process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
+test("public-data timeout is explicit and fails fast on invalid configuration", () => {
+  const previousTimeout = process.env.PUBLIC_DATA_TIMEOUT_MS;
+  try {
+    delete process.env.PUBLIC_DATA_TIMEOUT_MS;
+    assert.equal(publicDataTimeoutMs(), 8000);
+
+    process.env.PUBLIC_DATA_TIMEOUT_MS = "2500";
+    assert.equal(publicDataTimeoutMs(), 2500);
+
+    process.env.PUBLIC_DATA_TIMEOUT_MS = "0";
+    assert.throws(() => publicDataTimeoutMs(), /PUBLIC_DATA_TIMEOUT_MS/);
+
+    process.env.PUBLIC_DATA_TIMEOUT_MS = "60001";
+    assert.throws(() => publicDataTimeoutMs(), /PUBLIC_DATA_TIMEOUT_MS/);
+
+    process.env.PUBLIC_DATA_TIMEOUT_MS = "slow";
+    assert.throws(() => publicDataTimeoutMs(), /PUBLIC_DATA_TIMEOUT_MS/);
+  } finally {
+    if (previousTimeout === undefined) {
+      delete process.env.PUBLIC_DATA_TIMEOUT_MS;
+    } else {
+      process.env.PUBLIC_DATA_TIMEOUT_MS = previousTimeout;
+    }
+  }
+});
+
+test("public-data timeout errors identify the official source boundary", async () => {
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousTimeout = process.env.PUBLIC_DATA_TIMEOUT_MS;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env.PUBLIC_DATA_TIMEOUT_MS = "25";
+    globalThis.fetch = async () => {
+      throw new DOMException("The operation was aborted.", "TimeoutError");
+    };
+
+    await assert.rejects(
+      compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" }),
+      /국토교통부 전월세 실거래 API request timed out after 25ms/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+    if (previousTimeout === undefined) {
+      delete process.env.PUBLIC_DATA_TIMEOUT_MS;
+    } else {
+      process.env.PUBLIC_DATA_TIMEOUT_MS = previousTimeout;
     }
   }
 });

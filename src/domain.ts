@@ -1,5 +1,8 @@
 import { LEGAL_DONG_API, RENT_API_SPECS, SALE_API_SPECS, renderSources, SOURCES, type HousingType } from "./sources.js";
 
+const DEFAULT_PUBLIC_DATA_TIMEOUT_MS = 8000;
+const MAX_PUBLIC_DATA_TIMEOUT_MS = 60000;
+
 export interface LeaseProfileInput {
   situation?: string;
   region?: string;
@@ -169,6 +172,41 @@ function dataGoKrServiceKey(): string {
   }
 }
 
+export function publicDataTimeoutMs(): number {
+  const rawTimeout = process.env.PUBLIC_DATA_TIMEOUT_MS?.trim();
+  if (!rawTimeout) return DEFAULT_PUBLIC_DATA_TIMEOUT_MS;
+
+  const parsed = Number(rawTimeout);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > MAX_PUBLIC_DATA_TIMEOUT_MS) {
+    throw new Error(`PUBLIC_DATA_TIMEOUT_MS must be a positive integer no greater than ${MAX_PUBLIC_DATA_TIMEOUT_MS}.`);
+  }
+  return parsed;
+}
+
+function isAbortLikeError(error: unknown): boolean {
+  const name = (error as { name?: unknown })?.name;
+  return name === "AbortError" || name === "TimeoutError";
+}
+
+async function fetchPublicDataText(label: string, url: URL): Promise<string> {
+  const timeoutMs = publicDataTimeoutMs();
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  } catch (error) {
+    if (isAbortLikeError(error)) {
+      throw new Error(`${label} request timed out after ${timeoutMs}ms.`);
+    }
+    throw error;
+  }
+
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`${label} request failed: ${response.status}`);
+  }
+  return body;
+}
+
 function publicDataErrorMessage(body: string): string | undefined {
   const xmlErrorCode = extractTag(body, "returnReasonCode") ?? extractTag(body, "resultCode");
   const xmlErrorMessage = extractTag(body, "returnAuthMsg") ?? extractTag(body, "returnReasonMsg") ?? extractTag(body, "resultMsg");
@@ -225,11 +263,7 @@ export async function resolveLegalDongCode(input: { region: string }): Promise<s
   url.searchParams.set("type", "json");
   url.searchParams.set("locatadd_nm", region);
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-  const body = await response.text();
-  if (!response.ok) {
-    throw new Error(`행정표준코드 법정동코드 API request failed: ${response.status}`);
-  }
+  const body = await fetchPublicDataText("행정표준코드 법정동코드 API", url);
   const publicDataError = publicDataErrorMessage(body);
   if (publicDataError) {
     throw new Error(`행정표준코드 법정동코드 API returned error: ${publicDataError}`);
@@ -321,11 +355,7 @@ async function fetchRentMarketSnapshot(input: {
   url.searchParams.set("pageNo", "1");
   url.searchParams.set("numOfRows", "30");
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-  const xml = await response.text();
-  if (!response.ok) {
-    throw new Error(`국토교통부 실거래 API request failed: ${response.status}`);
-  }
+  const xml = await fetchPublicDataText("국토교통부 전월세 실거래 API", url);
   const publicDataError = publicDataErrorMessage(xml);
   if (publicDataError) {
     throw new Error(`국토교통부 실거래 API returned error: ${publicDataError}`);
@@ -476,11 +506,7 @@ async function fetchSaleMarketSnapshot(input: {
   url.searchParams.set("pageNo", "1");
   url.searchParams.set("numOfRows", "30");
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-  const xml = await response.text();
-  if (!response.ok) {
-    throw new Error(`국토교통부 매매 실거래 API request failed: ${response.status}`);
-  }
+  const xml = await fetchPublicDataText("국토교통부 매매 실거래 API", url);
   const publicDataError = publicDataErrorMessage(xml);
   if (publicDataError) {
     throw new Error(`국토교통부 매매 실거래 API returned error: ${publicDataError}`);

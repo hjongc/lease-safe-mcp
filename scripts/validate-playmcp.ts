@@ -58,6 +58,7 @@ for (const required of [
   "DATA_GO_KR_SERVICE_KEY",
   "MCP_ALLOWED_HOSTS",
   "MCP_MAX_BODY_BYTES",
+  "PUBLIC_DATA_TIMEOUT_MS",
   "fails at startup",
   "npm run preflight"
 ]) {
@@ -65,9 +66,11 @@ for (const required of [
 }
 
 const server = readFileSync("src/server.ts", "utf8");
+const domain = readFileSync("src/domain.ts", "utf8");
 assert(/MCP_ALLOWED_HOSTS/.test(server), "server must support MCP_ALLOWED_HOSTS");
 assert(/DATA_GO_KR_SERVICE_KEY is required in production/.test(server), "server must fail fast without DATA_GO_KR_SERVICE_KEY in production");
 assert(/MCP_MAX_BODY_BYTES/.test(server), "server must support a bounded MCP request body size");
+assert(/PUBLIC_DATA_TIMEOUT_MS/.test(domain), "domain must support a bounded public-data timeout");
 assert(/SIGTERM/.test(server), "server must handle SIGTERM for container shutdown");
 assert(/x-powered-by/.test(server), "server must disable x-powered-by");
 assert(/name:\s*"lease-safe"/.test(server), "MCP server name must be lease-safe");

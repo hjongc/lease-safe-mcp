@@ -86,6 +86,14 @@ MCP_MAX_BODY_BYTES=262144
 
 The default MCP request body limit is 262144 bytes. Invalid values fail at startup instead of silently changing runtime behavior.
 
+Optional public-data timeout tuning is available when the deployment ingress has a tighter request budget:
+
+```bash
+PUBLIC_DATA_TIMEOUT_MS=8000
+```
+
+The default official public-data API timeout is 8000ms, with a maximum accepted value of 60000ms. Invalid values fail before requests are made.
+
 ## Run Locally
 
 ```bash
