@@ -65,7 +65,10 @@ assert(/package-ecosystem:\s*github-actions/.test(dependabot), "Dependabot must 
 
 const submission = readFileSync("docs/submission.md", "utf8");
 const operations = readFileSync("docs/operations.md", "utf8");
+const readme = readFileSync("README.md", "utf8");
 const security = readFileSync("SECURITY.md", "utf8");
+assert(!/submission branch/i.test(readme), "README must not tell operators to register a vague submission branch");
+assert(/Branch\/ref:\s*`main`/.test(readme), "README PlayMCP build instructions must point Branch/ref at main");
 for (const required of [
   "Lease Safe(전월세안전내비)",
   "lease-safe",

@@ -174,7 +174,7 @@ Do not use a narrowed `PUBLIC_DATA_SMOKE_HOUSING_TYPES` list as registration evi
 
 ## CI Gate
 
-The repository includes `.github/workflows/ci.yml` for the submission branch. It runs:
+The repository includes `.github/workflows/ci.yml` for `main`. It runs:
 
 - `npm test`
 - `npm run scan:secrets`
@@ -205,6 +205,6 @@ Before registering in PlayMCP:
 PlayMCP in KC Git-source build:
 
 - Git URL: this repository URL
-- Branch/ref: submission branch
+- Branch/ref: `main`
 - Dockerfile path: `Dockerfile`
 - PAT: empty if the repository is public
