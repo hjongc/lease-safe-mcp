@@ -2018,6 +2018,9 @@ test("MCP body limit is explicit and fails fast on invalid configuration", () =>
 
     process.env.MCP_MAX_BODY_BYTES = "not-a-number";
     assert.throws(() => mcpMaxBodyBytes(), /positive integer/);
+
+    process.env.MCP_MAX_BODY_BYTES = "1e6";
+    assert.throws(() => mcpMaxBodyBytes(), /positive integer/);
   } finally {
     if (previousLimit === undefined) {
       delete process.env.MCP_MAX_BODY_BYTES;
@@ -2043,6 +2046,9 @@ test("MCP rate limit is explicit and fails fast on invalid configuration", () =>
     assert.throws(() => mcpRateLimitPerMinute(), /non-negative integer/);
 
     process.env.MCP_RATE_LIMIT_PER_MINUTE = "fast";
+    assert.throws(() => mcpRateLimitPerMinute(), /non-negative integer/);
+
+    process.env.MCP_RATE_LIMIT_PER_MINUTE = "1e2";
     assert.throws(() => mcpRateLimitPerMinute(), /non-negative integer/);
   } finally {
     if (previousLimit === undefined) {
@@ -2111,6 +2117,9 @@ test("HTTP port is explicit and fails fast on invalid configuration", () => {
     assert.throws(() => httpPort(), /PORT must be an integer between 1 and 65535/);
 
     process.env.PORT = "not-a-port";
+    assert.throws(() => httpPort(), /PORT must be an integer between 1 and 65535/);
+
+    process.env.PORT = "3e3";
     assert.throws(() => httpPort(), /PORT must be an integer between 1 and 65535/);
   } finally {
     if (previousPort === undefined) {

@@ -142,7 +142,7 @@ export function mcpMaxBodyBytes(): number {
   const rawLimit = process.env.MCP_MAX_BODY_BYTES?.trim();
   if (!rawLimit) return DEFAULT_MCP_MAX_BODY_BYTES;
 
-  const parsed = Number(rawLimit);
+  const parsed = parsePlainInteger(rawLimit);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     throw new Error("MCP_MAX_BODY_BYTES must be a positive integer.");
   }
@@ -153,7 +153,7 @@ export function mcpRateLimitPerMinute(): number {
   const rawLimit = process.env.MCP_RATE_LIMIT_PER_MINUTE?.trim();
   if (!rawLimit) return DEFAULT_MCP_RATE_LIMIT_PER_MINUTE;
 
-  const parsed = Number(rawLimit);
+  const parsed = parsePlainInteger(rawLimit);
   if (!Number.isSafeInteger(parsed) || parsed < 0) {
     throw new Error("MCP_RATE_LIMIT_PER_MINUTE must be a non-negative integer.");
   }
@@ -164,11 +164,16 @@ export function httpPort(): number {
   const rawPort = process.env.PORT?.trim();
   if (!rawPort) return 3000;
 
-  const parsed = Number(rawPort);
+  const parsed = parsePlainInteger(rawPort);
   if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 65535) {
     throw new Error("PORT must be an integer between 1 and 65535.");
   }
   return parsed;
+}
+
+function parsePlainInteger(value: string): number {
+  if (!/^(0|[1-9]\d*)$/.test(value)) return Number.NaN;
+  return Number(value);
 }
 
 function jsonRpcError(res: Response, httpStatus: number, code: number, message: string): void {
