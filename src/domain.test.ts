@@ -403,6 +403,27 @@ test("rent market comparison surfaces public-data error payloads", async () => {
   }
 });
 
+test("rent market comparison rejects unrecognized public-data payloads", async () => {
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    globalThis.fetch = async () => new Response("temporarily unavailable");
+
+    await assert.rejects(
+      compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" }),
+      /국토교통부 전월세 실거래 API returned unrecognized XML payload/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
 test("public-data timeout is explicit and fails fast on invalid configuration", () => {
   const previousTimeout = process.env.PUBLIC_DATA_TIMEOUT_MS;
   try {
@@ -593,6 +614,32 @@ test("deposit-to-sale comparison renders zero percent as a calculated ratio", as
 
     assert.match(text, /매매가 대비 보증금 비율: 0%/);
     assert.doesNotMatch(text, /매매가 대비 보증금 비율: 계산 불가/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
+test("deposit-to-sale comparison rejects unrecognized public-data payloads", async () => {
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    globalThis.fetch = async () => new Response("temporarily unavailable");
+
+    await assert.rejects(
+      compareDepositToSaleMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: 30000
+      }),
+      /국토교통부 매매 실거래 API returned unrecognized XML payload/
+    );
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {

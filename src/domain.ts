@@ -235,6 +235,20 @@ function publicDataErrorMessage(body: string): string | undefined {
   return undefined;
 }
 
+function assertPublicDataXmlPayload(label: string, body: string): void {
+  const recognizedXmlMarkers = [
+    /<\s*response\b/i,
+    /<\s*OpenAPI_ServiceResponse\b/i,
+    /<\s*items\b/i,
+    /<\s*item\b/i,
+    /<\s*resultCode\b/i,
+    /<\s*returnReasonCode\b/i
+  ];
+  if (!recognizedXmlMarkers.some(marker => marker.test(body))) {
+    throw new Error(`${label} returned unrecognized XML payload.`);
+  }
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
@@ -424,6 +438,7 @@ async function fetchRentMarketSnapshot(input: {
   if (publicDataError) {
     throw new Error(`국토교통부 실거래 API returned error: ${publicDataError}`);
   }
+  assertPublicDataXmlPayload("국토교통부 전월세 실거래 API", xml);
 
   const records = extractItems(xml, spec.nameField);
   const deposits = records.map(record => record.depositManwon).filter(value => value > 0);
@@ -587,6 +602,7 @@ async function fetchSaleMarketSnapshot(input: {
   if (publicDataError) {
     throw new Error(`국토교통부 매매 실거래 API returned error: ${publicDataError}`);
   }
+  assertPublicDataXmlPayload("국토교통부 매매 실거래 API", xml);
 
   const records = extractSaleItems(xml, spec.nameField);
   const saleAmounts = records.map(record => record.dealAmountManwon).filter(value => value > 0);
