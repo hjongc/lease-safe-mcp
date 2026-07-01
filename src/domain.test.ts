@@ -12,7 +12,7 @@ import {
   resolveLegalDongCode,
   routeOfficialHelp
 } from "./domain.js";
-import { createApp, httpPort, mcpMaxBodyBytes, mcpRateLimitPerMinute } from "./server.js";
+import { createApp, httpPort, mcpMaxBodyBytes, mcpRateLimitPerMinute, pruneExpiredRateLimitWindows } from "./server.js";
 import { positiveSampleCount, publicDataSmokeDepositManwon } from "../scripts/public-data-smoke.js";
 import { scanLine } from "../scripts/secret-scan.js";
 
@@ -933,6 +933,18 @@ test("MCP rate limit is explicit and fails fast on invalid configuration", () =>
       process.env.MCP_RATE_LIMIT_PER_MINUTE = previousLimit;
     }
   }
+});
+
+test("MCP rate limiter prunes expired client windows", () => {
+  const windows = new Map([
+    ["expired", { count: 3, resetAt: 1000 }],
+    ["active", { count: 1, resetAt: 2000 }]
+  ]);
+
+  pruneExpiredRateLimitWindows(windows, 1500);
+
+  assert.equal(windows.has("expired"), false);
+  assert.equal(windows.has("active"), true);
 });
 
 test("HTTP port is explicit and fails fast on invalid configuration", () => {

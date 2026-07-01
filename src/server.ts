@@ -161,9 +161,18 @@ function clientKey(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
 }
 
+type RateLimitWindow = { count: number; resetAt: number };
+
+export function pruneExpiredRateLimitWindows(windows: Map<string, RateLimitWindow>, now: number): void {
+  for (const [entryKey, entryWindow] of windows) {
+    if (entryWindow.resetAt <= now) windows.delete(entryKey);
+  }
+}
+
 function rateLimitMcpRequests(limitPerMinute: number) {
-  const windows = new Map<string, { count: number; resetAt: number }>();
+  const windows = new Map<string, RateLimitWindow>();
   const windowMs = 60_000;
+  let nextPruneAt = 0;
 
   return (req: Request, res: Response, next: NextFunction) => {
     if (req.method !== "POST" || limitPerMinute === 0) {
@@ -172,6 +181,11 @@ function rateLimitMcpRequests(limitPerMinute: number) {
     }
 
     const now = Date.now();
+    if (now >= nextPruneAt) {
+      pruneExpiredRateLimitWindows(windows, now);
+      nextPruneAt = now + windowMs;
+    }
+
     const key = clientKey(req);
     const current = windows.get(key);
     const window = current && current.resetAt > now ? current : { count: 0, resetAt: now + windowMs };
@@ -183,12 +197,6 @@ function rateLimitMcpRequests(limitPerMinute: number) {
       res.setHeader("Retry-After", String(retryAfterSeconds));
       jsonRpcError(res, 429, -32002, "Too many MCP requests. Try again later.");
       return;
-    }
-
-    if (windows.size > 1000) {
-      for (const [entryKey, entryWindow] of windows) {
-        if (entryWindow.resetAt <= now) windows.delete(entryKey);
-      }
     }
 
     next();
