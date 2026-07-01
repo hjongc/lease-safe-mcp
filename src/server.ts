@@ -43,8 +43,8 @@ const housingTypeSchema = z
   .optional()
   .describe("주택 유형입니다. apartment=아파트, rowhouse=연립다세대, single_multi=단독/다가구, officetel=오피스텔, unknown=미확인.");
 const contractTypeSchema = z.enum(["jeonse", "monthly_rent", "unknown"]).optional().describe("계약 유형입니다. jeonse=전세, monthly_rent=월세, unknown=미확인.");
-const depositSchema = z.number().nonnegative().optional().describe("보증금을 만원 단위 숫자로 적어주세요. 예: 30000은 3억원입니다.");
-const monthlyRentSchema = z.number().nonnegative().optional().describe("월세를 만원 단위 숫자로 적어주세요. 예: 80은 월세 80만원입니다.");
+const depositSchema = z.number().int().nonnegative().optional().describe("보증금을 만원 단위 정수로 적어주세요. 예: 30000은 3억원입니다.");
+const monthlyRentSchema = z.number().int().nonnegative().optional().describe("월세를 만원 단위 정수로 적어주세요. 예: 80은 월세 80만원입니다.");
 const moveInDateSchema = z.string().optional().describe("이사 예정일 또는 입주일을 YYYY-MM-DD 형식이나 자연어로 적어주세요.");
 const contractDateSchema = z.string().optional().describe("계약일을 YYYY-MM-DD 형식이나 자연어로 적어주세요.");
 const concernsSchema = z.string().optional().describe("가장 걱정되는 점을 짧게 적어주세요. 예: 근저당, 대리계약, 보증보험, 전입신고, 확정일자.");
@@ -307,7 +307,7 @@ export function createServer(): McpServer {
         housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("진단할 주택 유형입니다."),
         lawdCd: lawdCdSchema,
         dealYmd: dealYmdSchema,
-        depositManwon: z.number().nonnegative().describe("보증금을 만원 단위 숫자로 적어주세요. 예: 30000은 3억원입니다."),
+        depositManwon: z.number().int().nonnegative().describe("보증금을 만원 단위 정수로 적어주세요. 예: 30000은 3억원입니다."),
         monthlyRentManwon: monthlyRentSchema,
         situation: situationSchema,
         region: regionSchema,
@@ -375,7 +375,7 @@ export function createServer(): McpServer {
         housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("매매 실거래가를 조회할 주택 유형입니다."),
         lawdCd: lawdCdSchema,
         dealYmd: dealYmdSchema,
-        depositManwon: z.number().nonnegative().describe("비교할 보증금을 만원 단위 숫자로 적어주세요. 예: 30000은 3억원입니다.")
+        depositManwon: z.number().int().nonnegative().describe("비교할 보증금을 만원 단위 정수로 적어주세요. 예: 30000은 3억원입니다.")
       },
       annotations: readOnlyAnnotations("매매가 대비 보증금 점검")
     },

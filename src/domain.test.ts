@@ -455,7 +455,7 @@ test("market API helpers fail fast on invalid money inputs", async () => {
         dealYmd: "202605",
         depositManwon: Number.NaN
       }),
-      /depositManwon must be a finite non-negative number/
+      /depositManwon must be a finite non-negative integer number/
     );
 
     await assert.rejects(
@@ -465,7 +465,17 @@ test("market API helpers fail fast on invalid money inputs", async () => {
         dealYmd: "202605",
         monthlyRentManwon: -1
       }),
-      /monthlyRentManwon must be a finite non-negative number/
+      /monthlyRentManwon must be a finite non-negative integer number/
+    );
+
+    await assert.rejects(
+      compareRentMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: 30000.5
+      }),
+      /depositManwon must be a finite non-negative integer number/
     );
 
     await assert.rejects(
@@ -475,7 +485,17 @@ test("market API helpers fail fast on invalid money inputs", async () => {
         dealYmd: "202605",
         depositManwon: Number.POSITIVE_INFINITY
       }),
-      /depositManwon must be a finite non-negative number/
+      /depositManwon must be a finite non-negative integer number/
+    );
+
+    await assert.rejects(
+      compareDepositToSaleMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: 30000.25
+      }),
+      /depositManwon must be a finite non-negative integer number/
     );
 
     await assert.rejects(
@@ -485,7 +505,18 @@ test("market API helpers fail fast on invalid money inputs", async () => {
         dealYmd: "202605",
         depositManwon: -1
       }),
-      /depositManwon must be a finite non-negative number/
+      /depositManwon must be a finite non-negative integer number/
+    );
+
+    await assert.rejects(
+      assessLeaseSafety({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: 30000,
+        monthlyRentManwon: 80.5
+      }),
+      /monthlyRentManwon must be a finite non-negative integer number/
     );
   } finally {
     globalThis.fetch = previousFetch;

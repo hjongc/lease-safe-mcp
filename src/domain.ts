@@ -217,14 +217,14 @@ function validateMarketQuery(lawdCd: string, dealYmd: string): void {
 
 function assertOptionalNonNegativeManwon(label: string, value: unknown): asserts value is number | undefined {
   if (value === undefined) return;
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    throw new Error(`${label} must be a finite non-negative number of manwon.`);
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} must be a finite non-negative integer number of manwon.`);
   }
 }
 
 function assertRequiredNonNegativeManwon(label: string, value: unknown): asserts value is number {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    throw new Error(`${label} must be a finite non-negative number of manwon.`);
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} must be a finite non-negative integer number of manwon.`);
   }
 }
 
