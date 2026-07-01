@@ -216,6 +216,7 @@ test("legal dong helper calls official API and exposes LAWD code", async () => {
     process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY_ENCODED;
     globalThis.fetch = async input => {
       const url = new URL(String(input));
+      assert.equal(url.protocol, "https:");
       assert.equal(url.searchParams.get("locatadd_nm"), "관악구");
       assert.equal(url.searchParams.get("type"), "json");
       assert.equal(url.searchParams.get("ServiceKey"), VALID_TEST_SERVICE_KEY);

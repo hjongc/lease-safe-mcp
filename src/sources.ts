@@ -181,7 +181,7 @@ export const SOURCES: SourceRecord[] = [
 
 export const LEGAL_DONG_API = {
   portalUrl: "https://www.data.go.kr/data/15077871/openapi.do",
-  endpoint: "http://apis.data.go.kr/1741000/StanReginCd/getStanReginCdList",
+  endpoint: "https://apis.data.go.kr/1741000/StanReginCd/getStanReginCdList",
   required: ["ServiceKey", "pageNo", "numOfRows", "type"],
   optional: ["locatadd_nm"],
   responseFields: ["region_cd", "sido_cd", "sgg_cd", "umd_cd", "ri_cd", "locatadd_nm", "locathigh_cd"]

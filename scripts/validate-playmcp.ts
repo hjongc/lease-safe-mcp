@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { RENT_API_SPECS, SALE_API_SPECS, SOURCES } from "../src/sources.js";
+import { LEGAL_DONG_API, RENT_API_SPECS, SALE_API_SPECS, SOURCES } from "../src/sources.js";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -133,6 +133,9 @@ for (const expected of [
 ]) {
   assert(SOURCES.some(source => source.id === expected), `source missing: ${expected}`);
 }
+
+assert(LEGAL_DONG_API.endpoint.startsWith("https://apis.data.go.kr/1741000/"), "legal-dong endpoint must use the official HTTPS data.go.kr gateway");
+assert(LEGAL_DONG_API.portalUrl.includes("data.go.kr"), "legal-dong portal must use data.go.kr");
 
 for (const spec of Object.values(RENT_API_SPECS)) {
   assert(spec.endpoint.includes("apis.data.go.kr/1613000/"), `rent endpoint must use official data.go.kr gateway: ${spec.housingType}`);
