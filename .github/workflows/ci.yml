@@ -75,3 +75,19 @@ jobs:
         run: npm run smoke:public-data
         env:
           REQUIRE_LIVE_PUBLIC_DATA: "1"
+
+      - name: Publish live public-data status
+        if: ${{ always() }}
+        run: |
+          {
+            echo "## Lease Safe CI Evidence"
+            echo ""
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            if [ -n "${DATA_GO_KR_SERVICE_KEY}" ]; then
+              echo "- Live public-data smoke: executed in registration coverage mode"
+            else
+              echo "- Live public-data smoke: skipped because DATA_GO_KR_SERVICE_KEY is not configured"
+              echo "- Registration evidence still requires the manual Registration Preflight workflow to pass"
+            fi
+            echo "- Docker runtime smoke: executed"
+          } >> "$GITHUB_STEP_SUMMARY"
