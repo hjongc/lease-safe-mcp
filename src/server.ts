@@ -60,6 +60,7 @@ const housingTypeSchema = z
   .describe("주택 유형입니다. apartment=아파트, rowhouse=연립다세대, single_multi=단독/다가구, officetel=오피스텔, unknown=미확인.");
 const contractTypeSchema = z.enum(["jeonse", "monthly_rent", "unknown"]).optional().describe("계약 유형입니다. jeonse=전세, monthly_rent=월세, unknown=미확인.");
 const depositSchema = z.number().int().nonnegative().max(MONEY_INPUT_LIMITS.depositManwon).optional().describe(`보증금을 만원 단위 정수로 적어주세요. 예: 30000은 3억원입니다. 최대 ${MONEY_INPUT_LIMITS.depositManwon.toLocaleString("ko-KR")}만원까지 입력할 수 있습니다.`);
+const assessmentDepositSchema = z.number().int().positive().max(MONEY_INPUT_LIMITS.depositManwon).describe(`대표 진단에 사용할 보증금을 만원 단위 양의 정수로 적어주세요. 예: 30000은 3억원입니다. 0원 보증금은 종합 안전 진단 대상이 아닙니다. 최대 ${MONEY_INPUT_LIMITS.depositManwon.toLocaleString("ko-KR")}만원까지 입력할 수 있습니다.`);
 const monthlyRentSchema = z.number().int().nonnegative().max(MONEY_INPUT_LIMITS.monthlyRentManwon).optional().describe(`월세를 만원 단위 정수로 적어주세요. 예: 80은 월세 80만원입니다. 최대 ${MONEY_INPUT_LIMITS.monthlyRentManwon.toLocaleString("ko-KR")}만원까지 입력할 수 있습니다.`);
 const moveInDateSchema = z.string().max(MCP_TEXT_LIMITS.dateText).optional().describe(`이사 예정일 또는 입주일을 YYYY-MM-DD 형식이나 ${MCP_TEXT_LIMITS.dateText}자 이내 자연어로 적어주세요.`);
 const contractDateSchema = z.string().max(MCP_TEXT_LIMITS.dateText).optional().describe(`계약일을 YYYY-MM-DD 형식이나 ${MCP_TEXT_LIMITS.dateText}자 이내 자연어로 적어주세요.`);
@@ -370,7 +371,7 @@ export function createServer(): McpServer {
         housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("진단할 주택 유형입니다."),
         lawdCd: lawdCdSchema,
         dealYmd: dealYmdSchema,
-        depositManwon: z.number().int().nonnegative().max(MONEY_INPUT_LIMITS.depositManwon).describe(`보증금을 만원 단위 정수로 적어주세요. 예: 30000은 3억원입니다. 최대 ${MONEY_INPUT_LIMITS.depositManwon.toLocaleString("ko-KR")}만원까지 입력할 수 있습니다.`),
+        depositManwon: assessmentDepositSchema,
         monthlyRentManwon: monthlyRentSchema,
         situation: situationSchema,
         region: regionSchema,

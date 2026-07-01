@@ -2875,6 +2875,7 @@ test("MCP tool input schemas bound free-text fields", () => {
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, contractDate: "가".repeat(MCP_TEXT_LIMITS.dateText + 1) }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, concerns: "가".repeat(MCP_TEXT_LIMITS.concerns + 1) }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, dealYmd: FUTURE_DEAL_YMD }).success, false);
+  assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, depositManwon: 0 }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, depositManwon: MONEY_INPUT_LIMITS.depositManwon + 1 }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, monthlyRentManwon: MONEY_INPUT_LIMITS.monthlyRentManwon + 1 }).success, false);
 

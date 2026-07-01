@@ -145,6 +145,7 @@ assert(/assertPublicDataItemsContainer/.test(domain), "domain must fail fast whe
 assert(/invalid all-zero rent money fields/.test(domain), "domain must reject all-zero official rent money fields");
 assert(/invalid zero sale amount field/.test(domain), "domain must reject zero official sale amount fields");
 assert(/depositSchema[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "server must bound optional MCP deposit inputs");
+assert(/assessmentDepositSchema[\s\S]*\.positive\(\)[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "flagship MCP schema must require a positive deposit");
 assert(/monthlyRentSchema[\s\S]*\.max\(MONEY_INPUT_LIMITS\.monthlyRentManwon\)/.test(server), "server must bound optional MCP monthly-rent inputs");
 assert(/depositManwon:[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "server must bound required MCP deposit inputs");
 assert(/isAllZeroLawdCd/.test(domain), "domain must reject all-zero public-data LAWD_CD values");
