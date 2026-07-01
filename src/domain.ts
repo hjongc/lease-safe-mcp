@@ -301,21 +301,34 @@ function extractTag(xml: string, tag: string): string | undefined {
   return match?.[1]?.replace(/<!\[CDATA\[(.*?)\]\]>/s, "$1").trim();
 }
 
+function extractFirstTag(xml: string, tags: string[]): string | undefined {
+  for (const tag of tags) {
+    const value = extractTag(xml, tag);
+    if (value !== undefined && value !== "") return value;
+  }
+  return undefined;
+}
+
+function numberFromTag(xml: string, tags: string[]): number {
+  const value = extractFirstTag(xml, tags) ?? "0";
+  return Number(value.replace(/,/g, "").trim());
+}
+
 function extractItems(xml: string, specNameField?: string): RentRecord[] {
   const items = [...xml.matchAll(/<item>(.*?)<\/item>/gs)].map(match => match[1]);
   return items
     .map(item => {
-      const deposit = Number((extractTag(item, "deposit") ?? "0").replace(/,/g, ""));
-      const monthlyRent = Number((extractTag(item, "monthlyRent") ?? "0").replace(/,/g, ""));
+      const deposit = numberFromTag(item, ["deposit", "보증금액", "보증금"]);
+      const monthlyRent = numberFromTag(item, ["monthlyRent", "월세금액", "월세"]);
       return {
-        name: specNameField ? extractTag(item, specNameField) : undefined,
-        legalDong: extractTag(item, "umdNm"),
-        area: Number(extractTag(item, "excluUseAr") ?? extractTag(item, "totalFloorAr") ?? "0") || undefined,
+        name: extractFirstTag(item, [specNameField, "aptNm", "아파트", "mhouseNm", "연립다세대", "offiNm", "단지"].filter((tag): tag is string => Boolean(tag))),
+        legalDong: extractFirstTag(item, ["umdNm", "법정동"]),
+        area: numberFromTag(item, ["excluUseAr", "totalFloorAr", "전용면적", "계약면적"]) || undefined,
         depositManwon: deposit,
         monthlyRentManwon: monthlyRent,
-        contractDate: `${extractTag(item, "dealYear") ?? ""}-${(extractTag(item, "dealMonth") ?? "").padStart(2, "0")}-${(extractTag(item, "dealDay") ?? "").padStart(2, "0")}`,
-        floor: extractTag(item, "floor"),
-        contractType: extractTag(item, "contractType")
+        contractDate: `${extractFirstTag(item, ["dealYear", "년"]) ?? ""}-${(extractFirstTag(item, ["dealMonth", "월"]) ?? "").padStart(2, "0")}-${(extractFirstTag(item, ["dealDay", "일"]) ?? "").padStart(2, "0")}`,
+        floor: extractFirstTag(item, ["floor", "층"]),
+        contractType: extractFirstTag(item, ["contractType", "전월세구분"])
       };
     })
     .filter(item => item.depositManwon > 0 || item.monthlyRentManwon > 0);
@@ -325,14 +338,14 @@ function extractSaleItems(xml: string, specNameField?: string): SaleRecord[] {
   const items = [...xml.matchAll(/<item>(.*?)<\/item>/gs)].map(match => match[1]);
   return items
     .map(item => {
-      const dealAmount = Number((extractTag(item, "dealAmount") ?? "0").replace(/,/g, ""));
+      const dealAmount = numberFromTag(item, ["dealAmount", "거래금액"]);
       return {
-        name: specNameField ? extractTag(item, specNameField) : undefined,
-        legalDong: extractTag(item, "umdNm"),
-        area: Number(extractTag(item, "excluUseAr") ?? extractTag(item, "totalArea") ?? "0") || undefined,
+        name: extractFirstTag(item, [specNameField, "aptNm", "아파트", "mhouseNm", "연립다세대", "offiNm", "단지"].filter((tag): tag is string => Boolean(tag))),
+        legalDong: extractFirstTag(item, ["umdNm", "법정동"]),
+        area: numberFromTag(item, ["excluUseAr", "totalArea", "전용면적", "대지면적"]) || undefined,
         dealAmountManwon: dealAmount,
-        contractDate: `${extractTag(item, "dealYear") ?? ""}-${(extractTag(item, "dealMonth") ?? "").padStart(2, "0")}-${(extractTag(item, "dealDay") ?? "").padStart(2, "0")}`,
-        floor: extractTag(item, "floor")
+        contractDate: `${extractFirstTag(item, ["dealYear", "년"]) ?? ""}-${(extractFirstTag(item, ["dealMonth", "월"]) ?? "").padStart(2, "0")}-${(extractFirstTag(item, ["dealDay", "일"]) ?? "").padStart(2, "0")}`,
+        floor: extractFirstTag(item, ["floor", "층"])
       };
     })
     .filter(item => item.dealAmountManwon > 0);

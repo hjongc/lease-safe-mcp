@@ -149,6 +149,51 @@ test("rent market comparison parses live XML records", async () => {
   }
 });
 
+test("rent market comparison parses Korean public-data XML fields", async () => {
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+        <body><items>
+          <item>
+            <아파트>관악한글전세</아파트>
+            <법정동>봉천동</법정동>
+            <보증금액>31,000</보증금액>
+            <월세금액>0</월세금액>
+            <년>2026</년>
+            <월>5</월>
+            <일>11</일>
+            <전용면적>59.9</전용면적>
+            <층>8</층>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    const text = await compareRentMarket({
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605",
+      depositManwon: 32000
+    });
+
+    assert.match(text, /표본 수: 1/);
+    assert.match(text, /관악한글전세/);
+    assert.match(text, /31,000만원/);
+    assert.match(text, /2026-05-11/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
 test("rent market comparison surfaces public-data error payloads", async () => {
   const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
   const previousFetch = globalThis.fetch;
@@ -283,6 +328,50 @@ test("deposit-to-sale comparison parses sale XML and flags high ratio", async ()
     assert.match(text, /매매가 대비 보증금 비율: 93.3%/);
     assert.match(text, /90% 이상/);
     assert.match(text, /특정 매물의 안전성/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
+test("deposit-to-sale comparison parses Korean public-data XML fields", async () => {
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
+        <body><items>
+          <item>
+            <아파트>관악한글매매</아파트>
+            <법정동>봉천동</법정동>
+            <거래금액>40,000</거래금액>
+            <년>2026</년>
+            <월>5</월>
+            <일>12</일>
+            <전용면적>59.9</전용면적>
+            <층>9</층>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    const text = await compareDepositToSaleMarket({
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605",
+      depositManwon: 32000
+    });
+
+    assert.match(text, /매매 표본 수: 1/);
+    assert.match(text, /관악한글매매/);
+    assert.match(text, /매매가 대비 보증금 비율: 80%/);
+    assert.match(text, /2026-05-12/);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
