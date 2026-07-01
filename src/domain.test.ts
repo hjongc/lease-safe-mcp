@@ -1299,6 +1299,32 @@ test("rent market comparison requires official result code", async () => {
   }
 });
 
+test("rent market comparison requires official items container", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+        <body><totalCount>0</totalCount></body>
+      </response>
+    `);
+
+    await assert.rejects(
+      compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" }),
+      /국토교통부 전월세 실거래 API returned XML without items container/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
 test("rent market comparison rejects malformed money fields", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
@@ -2009,6 +2035,37 @@ test("deposit-to-sale comparison requires official result code", async () => {
         depositManwon: 30000
       }),
       /국토교통부 매매 실거래 API returned XML without resultCode/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
+test("deposit-to-sale comparison requires official items container", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
+        <body><totalCount>0</totalCount></body>
+      </response>
+    `);
+
+    await assert.rejects(
+      compareDepositToSaleMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: 30000
+      }),
+      /국토교통부 매매 실거래 API returned XML without items container/
     );
   } finally {
     globalThis.fetch = previousFetch;

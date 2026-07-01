@@ -372,6 +372,12 @@ function assertPublicDataResultCode(label: string, body: string): void {
   }
 }
 
+function assertPublicDataItemsContainer(label: string, body: string): void {
+  if (!/<\s*items\b/i.test(body)) {
+    throw new Error(`${label} returned XML without items container.`);
+  }
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
@@ -655,6 +661,7 @@ async function fetchRentMarketSnapshot(input: {
   }
   assertPublicDataXmlPayload("국토교통부 전월세 실거래 API", xml);
   assertPublicDataResultCode("국토교통부 전월세 실거래 API", xml);
+  assertPublicDataItemsContainer("국토교통부 전월세 실거래 API", xml);
 
   const records = extractItems(xml, spec.nameField);
   const deposits = records.map(record => record.depositManwon).filter(value => value > 0);
@@ -821,6 +828,7 @@ async function fetchSaleMarketSnapshot(input: {
   }
   assertPublicDataXmlPayload("국토교통부 매매 실거래 API", xml);
   assertPublicDataResultCode("국토교통부 매매 실거래 API", xml);
+  assertPublicDataItemsContainer("국토교통부 매매 실거래 API", xml);
 
   const records = extractSaleItems(xml, spec.nameField);
   const saleAmounts = records.map(record => record.dealAmountManwon).filter(value => value > 0);

@@ -101,6 +101,7 @@ assert(/parsePublicDataInteger/.test(domain), "domain must reject non-integer of
 assert(/parsePublicDataDecimal/.test(domain), "domain must reject exponent-style official public-data decimal fields");
 assert(/parsedYear = parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data date fields");
 assert(/missing required date field/.test(domain), "domain must fail fast when official public-data date fields are missing");
+assert(/assertPublicDataItemsContainer/.test(domain), "domain must fail fast when official market XML omits the items container");
 assert(/invalid all-zero rent money fields/.test(domain), "domain must reject all-zero official rent money fields");
 assert(/invalid zero sale amount field/.test(domain), "domain must reject zero official sale amount fields");
 assert(/depositSchema[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "server must bound optional MCP deposit inputs");
