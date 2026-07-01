@@ -54,6 +54,11 @@ jobs:
       - name: Build Docker image
         run: docker build -t lease-safe-mcp-ci .
 
+      - name: Smoke Docker runtime
+        run: npm run smoke:docker
+        env:
+          DOCKER_SMOKE_IMAGE: lease-safe-mcp-ci
+
       - name: Live public-data smoke
         if: ${{ env.DATA_GO_KR_SERVICE_KEY != '' }}
         run: npm run smoke:public-data

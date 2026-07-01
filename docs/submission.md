@@ -13,6 +13,7 @@ Lease Safe(전월세안전내비) is a Korean lease-safety MCP server for people
 - Health path: `/healthz` and Docker `HEALTHCHECK`
 - Source build: Git repository + `Dockerfile`
 - Container runtime user: non-root `node`
+- Container smoke: image starts in production mode and passes `/healthz` plus MCP handshake/list-tools
 - Branch: `main`
 - Demo entry tool: `assess_lease_safety`
 
@@ -83,3 +84,5 @@ DATA_GO_KR_SERVICE_KEY=... npm run preflight
 ```
 
 Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_KEY` is configured as a GitHub repository secret, CI also runs the live public-data smoke.
+
+CI also runs `npm run smoke:docker` after building the image, so registration should use a commit whose Docker image has been proven to boot and answer MCP requests before the optional live API smoke.

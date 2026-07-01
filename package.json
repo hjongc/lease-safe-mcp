@@ -12,6 +12,7 @@
     "scan:secrets": "npm run build && node dist/scripts/secret-scan.js",
     "smoke": "npm run build && node dist/scripts/smoke.js",
     "smoke:http": "npm run build && node dist/scripts/http-smoke.js",
+    "smoke:docker": "npm run build && node dist/scripts/docker-smoke.js",
     "smoke:public-data": "npm run build && node dist/scripts/public-data-smoke.js",
     "preflight": "npm run build && node dist/scripts/release-preflight.js",
     "validate:playmcp": "npm run build && node dist/scripts/validate-playmcp.js"

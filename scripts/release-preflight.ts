@@ -44,6 +44,14 @@ const steps: Step[] = [
     args: ["build", "-t", dockerTag, "."]
   },
   {
+    name: "Docker runtime smoke",
+    command: "node",
+    args: ["dist/scripts/docker-smoke.js"],
+    env: {
+      DOCKER_SMOKE_IMAGE: dockerTag
+    }
+  },
+  {
     name: "Live public-data smoke",
     command: "npm",
     args: ["run", "smoke:public-data"],
