@@ -79,6 +79,7 @@ for (const required of [
   "overall risk level",
   "DATA_GO_KR_SERVICE_KEY",
   "MCP_ALLOWED_HOSTS",
+  "underscores",
   "MCP_MAX_BODY_BYTES",
   "MCP_RATE_LIMIT_PER_MINUTE",
   "PUBLIC_DATA_TIMEOUT_MS",
@@ -102,6 +103,7 @@ for (const required of [
   "unsupported-content-type rejection",
   "WWW-Authenticate",
   "Cache-Control",
+  "underscores",
   "every supported housing type",
   "Registration Preflight",
   "job summary",
@@ -116,6 +118,9 @@ const domain = readFileSync("src/domain.ts", "utf8");
 assert(/MCP_ALLOWED_HOSTS/.test(server), "server must support MCP_ALLOWED_HOSTS");
 assert(/plain hostnames, not URLs, ports/.test(server), "server must reject unsafe MCP_ALLOWED_HOSTS entries");
 assert(/userinfo, query strings, fragments/.test(server), "server must reject URL userinfo/query/fragment host allowlist entries");
+assert(/isValidAllowedHost/.test(server), "server must validate MCP_ALLOWED_HOSTS hostname label syntax");
+assert(/isValidIpv4Host/.test(server), "server must allow validated IPv4 host allowlist entries");
+assert(/isValidDnsHost/.test(server), "server must allow validated DNS host allowlist entries");
 assert(/DATA_GO_KR_SERVICE_KEY is required in production/.test(server), "server must fail fast without DATA_GO_KR_SERVICE_KEY in production");
 assert(/timingSafeEqual/.test(server), "server must compare bearer tokens with timingSafeEqual");
 assert(/MCP_AUTH_TOKEN must be at least/.test(server), "server must reject weak MCP_AUTH_TOKEN values");

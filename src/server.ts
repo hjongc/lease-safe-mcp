@@ -94,6 +94,25 @@ function textResult(text: string) {
   };
 }
 
+function isValidIpv4Host(hostname: string): boolean {
+  const parts = hostname.split(".");
+  return parts.length === 4 && parts.every(part => {
+    if (!/^(0|[1-9]\d{0,2})$/.test(part)) return false;
+    const value = Number(part);
+    return Number.isSafeInteger(value) && value >= 0 && value <= 255;
+  });
+}
+
+function isValidDnsHost(hostname: string): boolean {
+  if (hostname.length > 253 || hostname.startsWith(".") || hostname.endsWith(".")) return false;
+  const labels = hostname.split(".");
+  return labels.every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
+}
+
+function isValidAllowedHost(hostname: string): boolean {
+  return isValidIpv4Host(hostname) || isValidDnsHost(hostname);
+}
+
 function allowedHostsFromEnv(): string[] | undefined {
   const hosts = process.env.MCP_ALLOWED_HOSTS?.split(",").map(host => host.trim()).filter(Boolean).map(host => {
     if (
@@ -114,6 +133,7 @@ function allowedHostsFromEnv(): string[] | undefined {
     try {
       const hostname = new URL(`http://${host}`).hostname;
       if (!hostname) throw new Error("missing hostname");
+      if (!isValidAllowedHost(hostname)) throw new Error("invalid hostname");
       return hostname;
     } catch {
       throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames, not URLs, ports, paths, wildcards, userinfo, query strings, fragments, or whitespace.");
