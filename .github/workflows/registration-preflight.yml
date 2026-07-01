@@ -68,10 +68,14 @@ jobs:
         run: |
           sanitize_summary_value() {
             local value="$1"
+            local max_length=120
             value="${value//$'\r'/ }"
             value="${value//$'\n'/ }"
             value="${value//$'\t'/ }"
             value="${value//\`/ }"
+            if [ "${#value}" -gt "$max_length" ]; then
+              value="${value:0:$max_length}..."
+            fi
             printf '%s' "$value"
           }
 

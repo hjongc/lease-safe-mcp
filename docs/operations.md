@@ -47,7 +47,7 @@ Collect this evidence before registering or updating the PlayMCP build:
 
 - `npm run preflight:registration` passes with `DATA_GO_KR_SERVICE_KEY` set locally.
 - GitHub Actions `Registration Preflight` workflow passes on the submitted commit.
-- GitHub Actions `Registration Preflight` job summary shows the submitted commit, workflow run URL, required command, live public-data requirement, demo smoke input values, and Docker runtime smoke coverage.
+- GitHub Actions `Registration Preflight` job summary shows the submitted commit, workflow run URL, required command, live public-data requirement, sanitized and length-limited demo smoke input values, and Docker runtime smoke coverage.
 - Latest GitHub Actions `CI` run is green.
 - GitHub Actions `Live public-data smoke` is passed, not skipped, after the repository secret is configured.
 - Docker runtime smoke passes after image build.

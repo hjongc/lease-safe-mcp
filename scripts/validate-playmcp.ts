@@ -112,6 +112,9 @@ assert(/repository secret is required for registration evidence/.test(registrati
 assert(/npm run preflight:registration/.test(registrationWorkflow), "registration preflight workflow must run npm run preflight:registration");
 assert(/GITHUB_STEP_SUMMARY/.test(registrationWorkflow), "registration preflight workflow must publish a shareable evidence summary");
 assert(/sanitize_summary_value\(\)/.test(registrationWorkflow), "registration preflight summary must sanitize workflow-dispatch inputs");
+assert(/local max_length=120/.test(registrationWorkflow), "registration preflight summary must bound workflow-dispatch input length");
+assert(/\$\{#value\}/.test(registrationWorkflow), "registration preflight summary must measure sanitized input length before publishing");
+assert(/\$\{value:0:\$max_length\}\.\.\./.test(registrationWorkflow), "registration preflight summary must truncate long workflow-dispatch inputs");
 assert(/\$\{value\/\/\$'\\r'\/ \}/.test(registrationWorkflow), "registration preflight summary must neutralize carriage returns");
 assert(/\$\{value\/\/\$'\\n'\/ \}/.test(registrationWorkflow), "registration preflight summary must neutralize line breaks");
 assert(/\$\{value\/\/\$'\\t'\/ \}/.test(registrationWorkflow), "registration preflight summary must neutralize tabs");
@@ -197,6 +200,8 @@ for (const required of [
 ]) {
   assert(operations.includes(required), `operations runbook missing: ${required}`);
 }
+assert(/sanitized and length-limited/.test(operations), "operations runbook must document sanitized registration summary inputs");
+assert(/sanitized, length-limited demo smoke input values/.test(submission), "submission pack must document sanitized registration evidence inputs");
 
 const server = readFileSync("src/server.ts", "utf8");
 const domain = readFileSync("src/domain.ts", "utf8");
