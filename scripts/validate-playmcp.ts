@@ -105,11 +105,17 @@ for (const envName of [
   "PUBLIC_DATA_SMOKE_DEPOSIT_MANWON"
 ]) {
   assert(registrationWorkflow.includes(envName), `registration preflight workflow must pass demo env: ${envName}`);
+  assert(registrationWorkflow.includes(`SAFE_${envName}`), `registration preflight summary must use sanitized demo env: ${envName}`);
 }
 assert(/Verify live public-data secret/.test(registrationWorkflow), "registration preflight workflow must fail fast when the live public-data secret is missing");
 assert(/repository secret is required for registration evidence/.test(registrationWorkflow), "registration preflight workflow must explain the missing secret clearly");
 assert(/npm run preflight:registration/.test(registrationWorkflow), "registration preflight workflow must run npm run preflight:registration");
 assert(/GITHUB_STEP_SUMMARY/.test(registrationWorkflow), "registration preflight workflow must publish a shareable evidence summary");
+assert(/sanitize_summary_value\(\)/.test(registrationWorkflow), "registration preflight summary must sanitize workflow-dispatch inputs");
+assert(/\$\{value\/\/\$'\\r'\/ \}/.test(registrationWorkflow), "registration preflight summary must neutralize carriage returns");
+assert(/\$\{value\/\/\$'\\n'\/ \}/.test(registrationWorkflow), "registration preflight summary must neutralize line breaks");
+assert(/\$\{value\/\/\$'\\t'\/ \}/.test(registrationWorkflow), "registration preflight summary must neutralize tabs");
+assert(/\$\{value\/\/\\`\/ \}/.test(registrationWorkflow), "registration preflight summary must neutralize Markdown backticks");
 assert(/Lease Safe Registration Evidence/.test(registrationWorkflow), "registration preflight summary must be clearly titled");
 assert(/GITHUB_SHA/.test(registrationWorkflow), "registration preflight summary must include the submitted commit");
 assert(/GITHUB_RUN_ID/.test(registrationWorkflow), "registration preflight summary must include the workflow run URL");

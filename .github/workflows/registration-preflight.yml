@@ -66,6 +66,20 @@ jobs:
       - name: Publish registration evidence summary
         if: ${{ always() }}
         run: |
+          sanitize_summary_value() {
+            local value="$1"
+            value="${value//$'\r'/ }"
+            value="${value//$'\n'/ }"
+            value="${value//$'\t'/ }"
+            value="${value//\`/ }"
+            printf '%s' "$value"
+          }
+
+          SAFE_PUBLIC_DATA_SMOKE_REGION="$(sanitize_summary_value "${PUBLIC_DATA_SMOKE_REGION}")"
+          SAFE_PUBLIC_DATA_SMOKE_LAWD_CD="$(sanitize_summary_value "${PUBLIC_DATA_SMOKE_LAWD_CD}")"
+          SAFE_PUBLIC_DATA_SMOKE_DEAL_YMD="$(sanitize_summary_value "${PUBLIC_DATA_SMOKE_DEAL_YMD}")"
+          SAFE_PUBLIC_DATA_SMOKE_DEPOSIT_MANWON="$(sanitize_summary_value "${PUBLIC_DATA_SMOKE_DEPOSIT_MANWON}")"
+
           {
             echo "## Lease Safe Registration Evidence"
             echo ""
@@ -75,9 +89,9 @@ jobs:
             echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "- Required command: \`npm run preflight:registration\`"
             echo "- Live public-data smoke: required by registration preflight"
-            echo "- Demo smoke region: \`${PUBLIC_DATA_SMOKE_REGION}\`"
-            echo "- Demo smoke LAWD_CD: \`${PUBLIC_DATA_SMOKE_LAWD_CD}\`"
-            echo "- Demo smoke deal month: \`${PUBLIC_DATA_SMOKE_DEAL_YMD}\`"
-            echo "- Demo smoke deposit: \`${PUBLIC_DATA_SMOKE_DEPOSIT_MANWON}\` manwon"
+            echo "- Demo smoke region: \`${SAFE_PUBLIC_DATA_SMOKE_REGION}\`"
+            echo "- Demo smoke LAWD_CD: \`${SAFE_PUBLIC_DATA_SMOKE_LAWD_CD}\`"
+            echo "- Demo smoke deal month: \`${SAFE_PUBLIC_DATA_SMOKE_DEAL_YMD}\`"
+            echo "- Demo smoke deposit: \`${SAFE_PUBLIC_DATA_SMOKE_DEPOSIT_MANWON}\` manwon"
             echo "- Docker runtime smoke: included in registration preflight"
           } >> "$GITHUB_STEP_SUMMARY"
