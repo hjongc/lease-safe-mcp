@@ -126,6 +126,9 @@ assert(/MONEY_INPUT_LIMITS/.test(domain), "domain must define explicit money inp
 assert(/계약금·가계약금 송금을 보류/.test(domain), "flagship assessment must prioritize rushed deposit-payment pressure");
 assert(/위임장 원본 범위/.test(domain), "flagship assessment must prioritize proxy-contract verification");
 assert(/말소 조건, 잔금 전 등기부 재발급/.test(domain), "flagship assessment must prioritize senior-rights verification");
+assert(/inferOfficialHelpIssueType/.test(domain), "official help router must infer routes from natural-language situations");
+assert(domain.includes("보증\\s*보험"), "official help router must infer HUG routes from natural-language guarantee questions");
+assert(/등기부\|등기/.test(domain), "official help router must infer registry routes from natural-language registry questions");
 assert(/publicDataTextFromOptionalTag/.test(domain), "domain must normalize official public-data text fields before rendering");
 assert(/compactPublicDataFieldValue/.test(domain), "domain must bound and redact invalid official public-data field excerpts");
 assert(/parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data money fields");

@@ -2940,3 +2940,18 @@ test("official help router maps lease report to RTMS", () => {
   assert.match(text, /RTMS/);
   assert.match(text, /주택 임대차 계약 신고/);
 });
+
+test("official help router infers routes from natural language", () => {
+  const cases: Array<{ input: Parameters<typeof routeOfficialHelp>[0]; expected: RegExp }> = [
+    { input: { situation: "전입신고 처리 결과를 어디서 확인하나요?" }, expected: /정부24/ },
+    { input: { situation: "확정일자 신청을 하고 싶습니다" }, expected: /확정일자 신청/ },
+    { input: { situation: "주택 임대차 계약 신고 RTMS가 궁금합니다" }, expected: /RTMS/ },
+    { input: { situation: "전세보증금반환보증 가입 가능 여부를 확인하고 싶습니다" }, expected: /HUG/ },
+    { input: { situation: "등기부에 근저당과 신탁이 보입니다" }, expected: /등기부등본 발급/ },
+    { input: { situation: "보증금 반환 분쟁과 수선 문제를 상담하고 싶습니다" }, expected: /분쟁 상담/ }
+  ];
+
+  for (const { input, expected } of cases) {
+    assert.match(routeOfficialHelp(input), expected);
+  }
+});

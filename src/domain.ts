@@ -91,6 +91,8 @@ interface LegalDongRecord {
   lawdCd: string;
 }
 
+type OfficialHelpIssueType = "move_in" | "fixed_date" | "lease_report" | "deposit_guarantee" | "dispute" | "registry" | "unknown";
+
 function lineItems(items: string[]): string {
   return items.map(item => `- ${item}`).join("\n");
 }
@@ -1110,9 +1112,22 @@ export function prepareContractQuestions(input: LeaseProfileInput): string {
   ].join("\n");
 }
 
-export function routeOfficialHelp(input: LeaseProfileInput & { issueType?: "move_in" | "fixed_date" | "lease_report" | "deposit_guarantee" | "dispute" | "registry" | "unknown" }): string {
-  const issueType = input.issueType ?? "unknown";
-  const routes: Record<string, string[]> = {
+function inferOfficialHelpIssueType(input: LeaseProfileInput & { issueType?: OfficialHelpIssueType }): OfficialHelpIssueType {
+  if (input.issueType && input.issueType !== "unknown") return input.issueType;
+
+  const text = `${input.situation ?? ""} ${input.concerns ?? ""}`.toLowerCase();
+  if (/임대차\s*신고|계약\s*신고|rtms|실거래/.test(text)) return "lease_report";
+  if (/확정\s*일자|확정일자/.test(text)) return "fixed_date";
+  if (/전입\s*신고|전입신고/.test(text)) return "move_in";
+  if (/보증\s*보험|보증보험|반환\s*보증|반환보증|hug/.test(text)) return "deposit_guarantee";
+  if (/등기부|등기\s*확인|소유자|근저당|압류|가압류|신탁|경매/.test(text)) return "registry";
+  if (/분쟁|보증금\s*반환|수선|원상복구|계약갱신|증액|조정/.test(text)) return "dispute";
+  return "unknown";
+}
+
+export function routeOfficialHelp(input: LeaseProfileInput & { issueType?: OfficialHelpIssueType }): string {
+  const issueType = inferOfficialHelpIssueType(input);
+  const routes: Record<OfficialHelpIssueType, string[]> = {
     move_in: ["정부24", "전입신고 신청과 처리 결과 확인"],
     fixed_date: ["인터넷등기소", "확정일자 신청과 접수 확인"],
     lease_report: ["부동산거래관리시스템 RTMS", "주택 임대차 계약 신고"],
