@@ -297,6 +297,33 @@ async function verifyUnsupportedContentTypeRequest(endpoint: string, authToken: 
   }
 }
 
+async function verifyCompressedRequestRejected(endpoint: string, authToken: string): Promise<void> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${authToken}`,
+      "content-encoding": "gzip",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "compressed-request-smoke",
+      method: "tools/list"
+    })
+  });
+
+  assertSecurityHeaders(response, "compressed request rejection");
+  if (response.status !== 415) {
+    const text = await response.text();
+    throw new Error(`Expected compressed MCP request to return 415, got ${response.status}: ${text}`);
+  }
+
+  const body = await response.json() as { error?: { code?: unknown; message?: unknown } };
+  if (body.error?.code !== -32600 || body.error?.message !== "MCP POST requests must not use compressed request bodies.") {
+    throw new Error("Compressed MCP request did not return the expected JSON-RPC invalid request error.");
+  }
+}
+
 async function verifyUnauthorizedRequest(endpoint: string): Promise<void> {
   const response = await fetch(endpoint, {
     method: "POST",
@@ -427,6 +454,8 @@ async function main() {
     console.log("auth_before_parse=ok");
     await verifyUnsupportedContentTypeRequest(endpoint, authToken);
     console.log("content_type_rejection=ok");
+    await verifyCompressedRequestRejected(endpoint, authToken);
+    console.log("compressed_request_rejection=ok");
     await verifyUnauthorizedRequest(endpoint);
     console.log("auth_rejection=ok");
     await verifyOversizedBearerTokenRejected(endpoint);

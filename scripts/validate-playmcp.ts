@@ -102,6 +102,7 @@ for (const required of [
   "unsupported-method rejection",
   "invalid-JSON rejection",
   "unsupported-content-type rejection",
+  "compressed-request rejection",
   "unknown-route rejection",
   "WWW-Authenticate",
   "X-Request-Id",
@@ -144,6 +145,8 @@ assert(/express\.json\(\{ limit: `\$\{maxBodyBytes\}b` \}\)/.test(server), "serv
 assert(/MCP_RATE_LIMIT_PER_MINUTE/.test(server), "server must support MCP request rate limiting");
 assert(/requireMcpJsonContentType/.test(server), "server must reject non-JSON MCP POST requests before transport handling");
 assert(/MCP POST requests must use application\/json/.test(server), "server must return a clear non-JSON MCP POST error");
+assert(/rejectCompressedMcpRequest/.test(server), "server must reject compressed MCP request bodies before JSON parsing");
+assert(/MCP POST requests must not use compressed request bodies/.test(server), "server must return a clear compressed MCP request error");
 assert(/MCP_TEXT_LIMITS/.test(server), "server must define explicit MCP text input limits");
 assert(/regionSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.region\)/.test(server), "server must bound MCP region text inputs");
 assert(/situationSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.situation\)/.test(server), "server must bound MCP situation text inputs");
@@ -318,6 +321,8 @@ assert(/-32700/.test(httpSmoke), "HTTP smoke must verify invalid JSON returns th
 assert(/auth_before_parse/.test(httpSmoke), "HTTP smoke must verify unauthorized malformed JSON fails authentication before parsing");
 assert(/content_type_rejection/.test(httpSmoke), "HTTP smoke must verify unsupported content-type rejection");
 assert(/415/.test(httpSmoke), "HTTP smoke must verify unsupported content-type returns 415");
+assert(/compressed_request_rejection=ok/.test(httpSmoke), "HTTP smoke must verify compressed request rejection");
+assert(/content-encoding/.test(httpSmoke), "HTTP smoke must send Content-Encoding for compressed request rejection");
 assert(/publicDataTimeoutMs\?: unknown/.test(httpSmoke), "HTTP smoke must verify healthz omits internal tuning metadata");
 assert(/mcpMaxBodyBytesFromEnv/.test(httpSmoke), "HTTP smoke must verify oversized requests without reading limits from healthz");
 assert(/oversized_request/.test(httpSmoke), "HTTP smoke must verify oversized MCP request rejection");
@@ -347,6 +352,8 @@ assert(/-32700/.test(dockerSmoke), "Docker smoke must verify invalid JSON return
 assert(/docker_auth_before_parse/.test(dockerSmoke), "Docker smoke must verify unauthorized malformed JSON fails authentication before parsing");
 assert(/docker_content_type_rejection/.test(dockerSmoke), "Docker smoke must verify unsupported content-type rejection");
 assert(/415/.test(dockerSmoke), "Docker smoke must verify unsupported content-type returns 415");
+assert(/docker_compressed_request_rejection=ok/.test(dockerSmoke), "Docker smoke must verify compressed request rejection");
+assert(/content-encoding/.test(dockerSmoke), "Docker smoke must send Content-Encoding for compressed request rejection");
 assert(/publicDataTimeoutMs\?: unknown/.test(dockerSmoke), "Docker smoke must verify healthz omits internal tuning metadata");
 assert(/docker_oversized_request/.test(dockerSmoke), "Docker smoke must verify oversized MCP request rejection");
 assert(/dist\/scripts\/smoke\.js/.test(dockerSmoke), "Docker smoke must run the MCP client smoke");

@@ -327,6 +327,21 @@ function requireMcpJsonContentType(req: Request, res: Response, next: NextFuncti
   jsonRpcError(res, 415, -32600, "MCP POST requests must use application/json.");
 }
 
+function rejectCompressedMcpRequest(req: Request, res: Response, next: NextFunction): void {
+  if (req.method !== "POST") {
+    next();
+    return;
+  }
+
+  const contentEncoding = req.header("content-encoding")?.trim().toLowerCase();
+  if (!contentEncoding || contentEncoding === "identity") {
+    next();
+    return;
+  }
+
+  jsonRpcError(res, 415, -32600, "MCP POST requests must not use compressed request bodies.");
+}
+
 function handleMcpExpressError(error: unknown, _req: Request, res: Response, next: NextFunction): void {
   const expressError = error as { status?: number; type?: string; message?: string };
   if (res.headersSent) {
@@ -673,6 +688,7 @@ export function createApp() {
     rateLimitMcpRequests(rateLimitPerMinute),
     rejectOversizedMcpRequest(maxBodyBytes),
     requireMcpBearerToken(authToken),
+    rejectCompressedMcpRequest,
     requireMcpJsonContentType,
     express.json({ limit: `${maxBodyBytes}b` }),
     async (req: Request, res: Response) => {
