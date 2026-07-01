@@ -2,6 +2,21 @@ import { LEGAL_DONG_API, RENT_API_SPECS, SALE_API_SPECS, renderSources, SOURCES,
 
 const DEFAULT_PUBLIC_DATA_TIMEOUT_MS = 8000;
 const MAX_PUBLIC_DATA_TIMEOUT_MS = 60000;
+const MAX_PUBLIC_DATA_RESPONSE_BYTES = 1_000_000;
+const DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS = new Set([
+  "...",
+  "your-data-go-kr-service-key",
+  "replace-with-data-go-kr-service-key",
+  "data-go-kr-service-key"
+]);
+const MIN_DATA_GO_KR_SERVICE_KEY_LENGTH = 40;
+const MAX_LEGAL_DONG_REGION_LENGTH = 80;
+const MAX_PUBLIC_DATA_TEXT_FIELD_LENGTH = 80;
+
+export const MONEY_INPUT_LIMITS = {
+  depositManwon: 10_000_000,
+  monthlyRentManwon: 100_000
+} as const;
 
 export interface LeaseProfileInput {
   situation?: string;
@@ -40,6 +55,7 @@ interface RentMarketSnapshot {
   lawdCd: string;
   dealYmd: string;
   sampleCount: number;
+  depositSampleCount: number;
   median?: number;
   max?: number;
   userDeposit?: number;
@@ -83,9 +99,11 @@ function cleanText(value: string | undefined, fallback = "미확인"): string {
   const trimmed = value?.trim();
   if (!trimmed || ["unknown", "undefined", "null", "미상", "미정", "모름"].includes(trimmed.toLowerCase())) return fallback;
   return trimmed
-    .replace(/\b\d{6}-?[1-4]\d{6}\b/g, "[민감번호 생략]")
-    .replace(/\b01[016789]-?\d{3,4}-?\d{4}\b/g, "[연락처 생략]")
-    .replace(/\b0(?:2|[3-6][1-5]|70|80)-?\d{3,4}-?\d{4}\b/g, "[연락처 생략]");
+    .replace(/\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b/g, "[이메일 생략]")
+    .replace(/\b\d{6}[\s.-]?[1-4]\d{6}\b/g, "[민감번호 생략]")
+    .replace(/\b01[016789][\s.-]?\d{3,4}[\s.-]?\d{4}\b/g, "[연락처 생략]")
+    .replace(/\b0(?:2|[3-6][1-5]|70|80)[\s.-]?\d{3,4}[\s.-]?\d{4}\b/g, "[연락처 생략]")
+    .replace(/\s+/g, " ");
 }
 
 function money(value: number | undefined): string {
@@ -160,32 +178,184 @@ export function explainDataAvailability(): string {
   ].join("\n");
 }
 
-function dataGoKrServiceKey(): string {
+export function dataGoKrServiceKey(): string {
   const rawServiceKey = process.env.DATA_GO_KR_SERVICE_KEY?.trim();
   if (!rawServiceKey) {
     throw new Error("DATA_GO_KR_SERVICE_KEY is required for live public-data lookup. 샘플 데이터로 대체하지 않습니다.");
   }
-  try {
-    return rawServiceKey.includes("%") ? decodeURIComponent(rawServiceKey) : rawServiceKey;
-  } catch {
-    return rawServiceKey;
+
+  if (DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS.has(rawServiceKey.toLowerCase())) {
+    throw new Error("DATA_GO_KR_SERVICE_KEY must be a real data.go.kr service key, not a placeholder.");
   }
+
+  let serviceKey: string;
+  try {
+    serviceKey = rawServiceKey.includes("%") ? decodeURIComponent(rawServiceKey) : rawServiceKey;
+  } catch {
+    throw new Error("DATA_GO_KR_SERVICE_KEY must be a valid percent-encoded or decoded data.go.kr service key.");
+  }
+
+  if (DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS.has(serviceKey.toLowerCase())) {
+    throw new Error("DATA_GO_KR_SERVICE_KEY must be a real data.go.kr service key, not a placeholder.");
+  }
+  if (serviceKey.length < MIN_DATA_GO_KR_SERVICE_KEY_LENGTH || !/^[A-Za-z0-9+/]+={0,2}$/.test(serviceKey)) {
+    throw new Error("DATA_GO_KR_SERVICE_KEY must look like a real data.go.kr service key.");
+  }
+  return serviceKey;
 }
 
 export function publicDataTimeoutMs(): number {
   const rawTimeout = process.env.PUBLIC_DATA_TIMEOUT_MS?.trim();
   if (!rawTimeout) return DEFAULT_PUBLIC_DATA_TIMEOUT_MS;
 
-  const parsed = Number(rawTimeout);
+  const parsed = parsePlainInteger(rawTimeout);
   if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > MAX_PUBLIC_DATA_TIMEOUT_MS) {
     throw new Error(`PUBLIC_DATA_TIMEOUT_MS must be a positive integer no greater than ${MAX_PUBLIC_DATA_TIMEOUT_MS}.`);
   }
   return parsed;
 }
 
+function parsePlainInteger(value: string): number {
+  if (!/^(0|[1-9]\d*)$/.test(value)) return Number.NaN;
+  return Number(value);
+}
+
+export function isFutureDealYmd(dealYmd: string, now = new Date()): boolean {
+  if (!/^\d{4}(0[1-9]|1[0-2])$/.test(dealYmd)) return false;
+  const dealYear = Number(dealYmd.slice(0, 4));
+  const dealMonth = Number(dealYmd.slice(4, 6));
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  return dealYear > currentYear || (dealYear === currentYear && dealMonth > currentMonth);
+}
+
+export function isAllZeroLawdCd(lawdCd: string): boolean {
+  return lawdCd === "00000";
+}
+
+function validateMarketQuery(lawdCd: string, dealYmd: string): void {
+  if (!/^\d{5}$/.test(lawdCd)) {
+    throw new Error("LAWD_CD must be exactly 5 digits.");
+  }
+  if (isAllZeroLawdCd(lawdCd)) {
+    throw new Error("LAWD_CD must not be 00000.");
+  }
+  if (!/^\d{4}(0[1-9]|1[0-2])$/.test(dealYmd)) {
+    throw new Error("DEAL_YMD must use YYYYMM format with a month from 01 to 12.");
+  }
+  if (isFutureDealYmd(dealYmd)) {
+    throw new Error("DEAL_YMD must not be in the future.");
+  }
+}
+
+function moneyInputLimit(label: keyof typeof MONEY_INPUT_LIMITS): number {
+  return MONEY_INPUT_LIMITS[label];
+}
+
+function assertOptionalNonNegativeManwon(label: keyof typeof MONEY_INPUT_LIMITS, value: unknown): asserts value is number | undefined {
+  if (value === undefined) return;
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} must be a finite non-negative integer number of manwon.`);
+  }
+  const limit = moneyInputLimit(label);
+  if (value > limit) {
+    throw new Error(`${label} must be no greater than ${limit} manwon.`);
+  }
+}
+
+function assertRequiredNonNegativeManwon(label: keyof typeof MONEY_INPUT_LIMITS, value: unknown): asserts value is number {
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} must be a finite non-negative integer number of manwon.`);
+  }
+  const limit = moneyInputLimit(label);
+  if (value > limit) {
+    throw new Error(`${label} must be no greater than ${limit} manwon.`);
+  }
+}
+
+function assertSupportedHousingType(housingType: string): asserts housingType is HousingType {
+  if (!["apartment", "rowhouse", "single_multi", "officetel"].includes(housingType)) {
+    throw new Error("housingType must be one of apartment, rowhouse, single_multi, or officetel.");
+  }
+}
+
 function isAbortLikeError(error: unknown): boolean {
   const name = (error as { name?: unknown })?.name;
   return name === "AbortError" || name === "TimeoutError";
+}
+
+function dataGoKrServiceKeyRedactionValues(): string[] {
+  const rawServiceKey = process.env.DATA_GO_KR_SERVICE_KEY?.trim();
+  if (!rawServiceKey) return [];
+
+  const values = [rawServiceKey];
+  try {
+    const decoded = decodeURIComponent(rawServiceKey);
+    if (decoded !== rawServiceKey) values.push(decoded);
+  } catch {
+    // Redaction must never hide the original public-data failure.
+  }
+  return values.sort((a, b) => b.length - a.length);
+}
+
+function redactDataGoKrServiceKeys(value: string): string {
+  let redacted = value;
+  for (const serviceKey of dataGoKrServiceKeyRedactionValues()) {
+    redacted = redacted.split(serviceKey).join("[DATA_GO_KR_SERVICE_KEY 생략]");
+  }
+  return redacted;
+}
+
+function compactPublicDataResponseExcerpt(body: string): string {
+  return redactDataGoKrServiceKeys(body.replace(/\s+/g, " ").trim().slice(0, 200));
+}
+
+function compactPublicDataFieldValue(value: string): string {
+  return redactDataGoKrServiceKeys(value.replace(/\s+/g, " ").trim().slice(0, 80));
+}
+
+function assertPublicDataResponseSize(label: string, bytes: number): void {
+  if (!Number.isSafeInteger(bytes) || bytes < 0 || bytes > MAX_PUBLIC_DATA_RESPONSE_BYTES) {
+    throw new Error(`${label} response must be ${MAX_PUBLIC_DATA_RESPONSE_BYTES} bytes or fewer.`);
+  }
+}
+
+async function readPublicDataResponseText(label: string, response: Response): Promise<string> {
+  const contentLength = response.headers.get("content-length")?.trim();
+  if (contentLength) {
+    const parsedContentLength = parsePlainInteger(contentLength);
+    assertPublicDataResponseSize(label, parsedContentLength);
+  }
+
+  if (!response.body) {
+    const body = await response.text();
+    assertPublicDataResponseSize(label, Buffer.byteLength(body, "utf8"));
+    return body;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_PUBLIC_DATA_RESPONSE_BYTES) {
+        await reader.cancel();
+        assertPublicDataResponseSize(label, totalBytes);
+      }
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+    chunks.push(decoder.decode());
+    return chunks.join("");
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 async function fetchPublicDataText(label: string, url: URL): Promise<string> {
@@ -197,12 +367,16 @@ async function fetchPublicDataText(label: string, url: URL): Promise<string> {
     if (isAbortLikeError(error)) {
       throw new Error(`${label} request timed out after ${timeoutMs}ms.`);
     }
-    throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${label} request failed before receiving a response: ${message}`, { cause: error });
   }
 
-  const body = await response.text();
+  const body = await readPublicDataResponseText(label, response);
+  assertPublicDataResponseSize(label, Buffer.byteLength(body, "utf8"));
   if (!response.ok) {
-    throw new Error(`${label} request failed: ${response.status}`);
+    const status = response.statusText ? `${response.status} ${response.statusText}` : String(response.status);
+    const excerpt = compactPublicDataResponseExcerpt(body);
+    throw new Error(`${label} request failed: ${status}${excerpt ? ` - ${excerpt}` : ""}`);
   }
   return body;
 }
@@ -211,50 +385,116 @@ function publicDataErrorMessage(body: string): string | undefined {
   const xmlErrorCode = extractTag(body, "returnReasonCode") ?? extractTag(body, "resultCode");
   const xmlErrorMessage = extractTag(body, "returnAuthMsg") ?? extractTag(body, "returnReasonMsg") ?? extractTag(body, "resultMsg");
   if (xmlErrorCode && !["00", "000", "INFO-000", "INFO-0"].includes(xmlErrorCode.trim())) {
-    return `${xmlErrorCode.trim()} ${xmlErrorMessage ?? "public-data API error"}`.trim();
+    return redactDataGoKrServiceKeys(`${xmlErrorCode.trim()} ${xmlErrorMessage ?? "public-data API error"}`.trim());
   }
   if (/SERVICE_KEY|LIMITED_NUMBER_OF_SERVICE_REQUESTS|INVALID_REQUEST_PARAMETER|APPLICATION_ERROR/i.test(body)) {
-    return xmlErrorMessage ?? "public-data API returned an error payload";
+    return redactDataGoKrServiceKeys(xmlErrorMessage ?? "public-data API returned an error payload");
   }
   return undefined;
+}
+
+function assertPublicDataXmlPayload(label: string, body: string): void {
+  const recognizedXmlMarkers = [
+    /<\s*response\b/i,
+    /<\s*OpenAPI_ServiceResponse\b/i,
+    /<\s*items\b/i,
+    /<\s*item\b/i,
+    /<\s*resultCode\b/i,
+    /<\s*returnReasonCode\b/i
+  ];
+  if (!recognizedXmlMarkers.some(marker => marker.test(body))) {
+    throw new Error(`${label} returned unrecognized XML payload.`);
+  }
+}
+
+function assertPublicDataResultCode(label: string, body: string): void {
+  const resultCode = extractTag(body, "resultCode")?.trim();
+  if (!resultCode) {
+    throw new Error(`${label} returned XML without resultCode.`);
+  }
+  if (!["00", "000", "INFO-000", "INFO-0"].includes(resultCode)) {
+    const resultMsg = extractTag(body, "resultMsg") ?? "public-data API error";
+    throw new Error(`${label} returned error: ${resultCode} ${redactDataGoKrServiceKeys(resultMsg)}`);
+  }
+}
+
+function assertPublicDataItemsContainer(label: string, body: string): void {
+  if (!/<\s*items\b/i.test(body)) {
+    throw new Error(`${label} returned XML without items container.`);
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
+function publicDataText(value: string | undefined, label: string): string | undefined {
+  if (value === undefined) return undefined;
+  const cleaned = cleanText(value, "");
+  if (!cleaned) return undefined;
+  if (cleaned.length > MAX_PUBLIC_DATA_TEXT_FIELD_LENGTH) {
+    throw new Error(`${label} returned malformed text field.`);
+  }
+  return cleaned;
+}
+
 function parseLegalDongRows(payload: unknown): LegalDongRecord[] {
   const root = asRecord(payload);
-  const stanReginCd = Array.isArray(root?.StanReginCd) ? root.StanReginCd : [];
+  if (!Array.isArray(root?.StanReginCd)) {
+    throw new Error("행정표준코드 법정동코드 API returned unrecognized JSON payload.");
+  }
+  const stanReginCd = root.StanReginCd;
   const resultHead = stanReginCd
     .map(item => asRecord(item)?.head)
     .find(head => Array.isArray(head)) as unknown[] | undefined;
   const result = resultHead?.map(item => asRecord(item)?.RESULT).find(Boolean);
   const resultRecord = asRecord(result);
   const resultCode = typeof resultRecord?.resultCode === "string" ? resultRecord.resultCode : undefined;
+  if (!resultCode) {
+    throw new Error("행정표준코드 법정동코드 API returned JSON without RESULT.resultCode.");
+  }
   if (resultCode && !["INFO-000", "INFO-0", "00", "000"].includes(resultCode)) {
     const resultMsg = typeof resultRecord?.resultMsg === "string" ? resultRecord.resultMsg : "legal-dong API error";
-    throw new Error(`행정표준코드 법정동코드 API returned error: ${resultCode} ${resultMsg}`);
+    throw new Error(`행정표준코드 법정동코드 API returned error: ${resultCode} ${redactDataGoKrServiceKeys(resultMsg)}`);
   }
 
   const rowContainer = stanReginCd.map(item => asRecord(item)?.row).find(row => Array.isArray(row)) as unknown[] | undefined;
-  return (rowContainer ?? [])
-    .map(row => {
-      const record = asRecord(row);
-      const regionCode = typeof record?.region_cd === "string" ? record.region_cd.trim() : "";
-      const regionName = typeof record?.locatadd_nm === "string" ? record.locatadd_nm.trim() : "";
-      if (!/^\d{10}$/.test(regionCode) || !regionName) return undefined;
-      return {
-        regionName,
-        regionCode,
-        lawdCd: regionCode.slice(0, 5)
-      };
-    })
-    .filter((record): record is LegalDongRecord => Boolean(record));
+  const rows = rowContainer ?? [];
+  const records: LegalDongRecord[] = [];
+
+  for (const row of rows) {
+    const record = asRecord(row);
+    const regionCode = typeof record?.region_cd === "string" ? record.region_cd.trim() : "";
+    const regionName = publicDataText(typeof record?.locatadd_nm === "string" ? record.locatadd_nm : undefined, "행정표준코드 법정동코드 API") ?? "";
+    const lawdCd = regionCode.slice(0, 5);
+    if (!/^\d{10}$/.test(regionCode) || isAllZeroLawdCd(lawdCd) || !regionName) {
+      throw new Error("행정표준코드 법정동코드 API returned malformed row fields.");
+    }
+    records.push({
+      regionName,
+      regionCode,
+      lawdCd
+    });
+  }
+  return records;
+}
+
+function legalDongRegionQuery(region: string | undefined): string {
+  const cleaned = cleanText(region);
+  if (cleaned === "미확인" || cleaned.length < 2) {
+    throw new Error("region must include at least 2 meaningful characters for legal-dong lookup.");
+  }
+  if (cleaned.includes("[민감번호 생략]") || cleaned.includes("[연락처 생략]") || cleaned.includes("[이메일 생략]")) {
+    throw new Error("region must not include personal identifiers, email addresses, or phone numbers for legal-dong lookup.");
+  }
+  if (cleaned.length > MAX_LEGAL_DONG_REGION_LENGTH) {
+    throw new Error(`region must be ${MAX_LEGAL_DONG_REGION_LENGTH} characters or fewer for legal-dong lookup.`);
+  }
+  return cleaned;
 }
 
 export async function resolveLegalDongCode(input: { region: string }): Promise<string> {
-  const region = cleanText(input.region);
+  const region = legalDongRegionQuery(input.region);
   const serviceKey = dataGoKrServiceKey();
   const url = new URL(LEGAL_DONG_API.endpoint);
   url.searchParams.set("ServiceKey", serviceKey);
@@ -296,46 +536,147 @@ export async function resolveLegalDongCode(input: { region: string }): Promise<s
   ].join("\n");
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function extractTag(xml: string, tag: string): string | undefined {
-  const match = xml.match(new RegExp(`<${tag}>(.*?)</${tag}>`, "s"));
+  const escapedTag = escapeRegExp(tag);
+  const match = xml.match(new RegExp(`<\\s*${escapedTag}(?:\\s[^>]*)?>(.*?)<\\/\\s*${escapedTag}\\s*>`, "s"));
   return match?.[1]?.replace(/<!\[CDATA\[(.*?)\]\]>/s, "$1").trim();
 }
 
+function extractBlocks(xml: string, tag: string): string[] {
+  const escapedTag = escapeRegExp(tag);
+  return [...xml.matchAll(new RegExp(`<\\s*${escapedTag}(?:\\s[^>]*)?>(.*?)<\\/\\s*${escapedTag}\\s*>`, "gs"))].map(match => match[1]);
+}
+
+function extractFirstTag(xml: string, tags: string[]): string | undefined {
+  for (const tag of tags) {
+    const value = extractTag(xml, tag);
+    if (value !== undefined && value !== "") return value;
+  }
+  return undefined;
+}
+
+function extractFirstPresentTag(xml: string, tags: string[]): string | undefined {
+  for (const tag of tags) {
+    const value = extractTag(xml, tag);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function publicDataTextFromOptionalTag(xml: string, tags: string[], label: string): string | undefined {
+  return publicDataText(extractFirstTag(xml, tags), label);
+}
+
+function publicDataNumberFromRequiredTag(xml: string, tags: string[], label: string): number {
+  const rawValue = extractFirstPresentTag(xml, tags);
+  if (rawValue === undefined) {
+    throw new Error(`${label} missing required numeric field: ${tags.join(" or ")}`);
+  }
+
+  const normalized = rawValue.replace(/,/g, "").trim();
+  const value = parsePublicDataInteger(normalized);
+  if (normalized === "" || !Number.isFinite(value) || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} returned invalid numeric field ${tags.join(" or ")}: ${compactPublicDataFieldValue(rawValue)}`);
+  }
+  return value;
+}
+
+function parsePublicDataInteger(value: string): number {
+  if (!/^\d+$/.test(value)) return Number.NaN;
+  return Number(value);
+}
+
+function parsePublicDataDecimal(value: string): number {
+  if (!/^\d+(?:\.\d+)?$/.test(value)) return Number.NaN;
+  return Number(value);
+}
+
+function publicDataNumberFromOptionalTag(xml: string, tags: string[], label: string): number | undefined {
+  const rawValue = extractFirstTag(xml, tags);
+  if (rawValue === undefined) return undefined;
+
+  const normalized = rawValue.replace(/,/g, "").trim();
+  const value = parsePublicDataDecimal(normalized);
+  if (normalized === "" || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} returned invalid numeric field ${tags.join(" or ")}: ${compactPublicDataFieldValue(rawValue)}`);
+  }
+  return value;
+}
+
+function isRealCalendarDate(year: number, month: number, day: number): boolean {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function contractDateFromTags(xml: string, label: string): string {
+  const year = extractFirstPresentTag(xml, ["dealYear", "년"]);
+  const month = extractFirstPresentTag(xml, ["dealMonth", "월"]);
+  const day = extractFirstPresentTag(xml, ["dealDay", "일"]);
+  if (year === undefined || month === undefined || day === undefined) {
+    throw new Error(`${label} missing required date field: dealYear/년, dealMonth/월, or dealDay/일`);
+  }
+
+  const parsedYear = parsePublicDataInteger(year.trim());
+  const parsedMonth = parsePublicDataInteger(month.trim());
+  const parsedDay = parsePublicDataInteger(day.trim());
+  if (
+    !Number.isSafeInteger(parsedYear) ||
+    !Number.isSafeInteger(parsedMonth) ||
+    !Number.isSafeInteger(parsedDay) ||
+    parsedYear < 1900 ||
+    parsedMonth < 1 ||
+    parsedMonth > 12 ||
+    parsedDay < 1 ||
+    parsedDay > 31 ||
+    !isRealCalendarDate(parsedYear, parsedMonth, parsedDay)
+  ) {
+    throw new Error(`${label} returned invalid date field: ${compactPublicDataFieldValue(year)}-${compactPublicDataFieldValue(month)}-${compactPublicDataFieldValue(day)}`);
+  }
+
+  return `${parsedYear}-${String(parsedMonth).padStart(2, "0")}-${String(parsedDay).padStart(2, "0")}`;
+}
+
 function extractItems(xml: string, specNameField?: string): RentRecord[] {
-  const items = [...xml.matchAll(/<item>(.*?)<\/item>/gs)].map(match => match[1]);
-  return items
-    .map(item => {
-      const deposit = Number((extractTag(item, "deposit") ?? "0").replace(/,/g, ""));
-      const monthlyRent = Number((extractTag(item, "monthlyRent") ?? "0").replace(/,/g, ""));
-      return {
-        name: specNameField ? extractTag(item, specNameField) : undefined,
-        legalDong: extractTag(item, "umdNm"),
-        area: Number(extractTag(item, "excluUseAr") ?? extractTag(item, "totalFloorAr") ?? "0") || undefined,
-        depositManwon: deposit,
-        monthlyRentManwon: monthlyRent,
-        contractDate: `${extractTag(item, "dealYear") ?? ""}-${(extractTag(item, "dealMonth") ?? "").padStart(2, "0")}-${(extractTag(item, "dealDay") ?? "").padStart(2, "0")}`,
-        floor: extractTag(item, "floor"),
-        contractType: extractTag(item, "contractType")
-      };
-    })
-    .filter(item => item.depositManwon > 0 || item.monthlyRentManwon > 0);
+  const items = extractBlocks(xml, "item");
+  return items.map(item => {
+    const deposit = publicDataNumberFromRequiredTag(item, ["deposit", "보증금액", "보증금"], "국토교통부 전월세 실거래 API");
+    const monthlyRent = publicDataNumberFromRequiredTag(item, ["monthlyRent", "월세금액", "월세"], "국토교통부 전월세 실거래 API");
+    if (deposit === 0 && monthlyRent === 0) {
+      throw new Error("국토교통부 전월세 실거래 API returned invalid all-zero rent money fields.");
+    }
+    return {
+      name: publicDataTextFromOptionalTag(item, [specNameField, "aptNm", "아파트", "mhouseNm", "연립다세대", "offiNm", "단지"].filter((tag): tag is string => Boolean(tag)), "국토교통부 전월세 실거래 API"),
+      legalDong: publicDataTextFromOptionalTag(item, ["umdNm", "법정동"], "국토교통부 전월세 실거래 API"),
+      area: publicDataNumberFromOptionalTag(item, ["excluUseAr", "totalFloorAr", "전용면적", "계약면적"], "국토교통부 전월세 실거래 API"),
+      depositManwon: deposit,
+      monthlyRentManwon: monthlyRent,
+      contractDate: contractDateFromTags(item, "국토교통부 전월세 실거래 API"),
+      floor: publicDataTextFromOptionalTag(item, ["floor", "층"], "국토교통부 전월세 실거래 API"),
+      contractType: publicDataTextFromOptionalTag(item, ["contractType", "전월세구분"], "국토교통부 전월세 실거래 API")
+    };
+  });
 }
 
 function extractSaleItems(xml: string, specNameField?: string): SaleRecord[] {
-  const items = [...xml.matchAll(/<item>(.*?)<\/item>/gs)].map(match => match[1]);
-  return items
-    .map(item => {
-      const dealAmount = Number((extractTag(item, "dealAmount") ?? "0").replace(/,/g, ""));
-      return {
-        name: specNameField ? extractTag(item, specNameField) : undefined,
-        legalDong: extractTag(item, "umdNm"),
-        area: Number(extractTag(item, "excluUseAr") ?? extractTag(item, "totalArea") ?? "0") || undefined,
-        dealAmountManwon: dealAmount,
-        contractDate: `${extractTag(item, "dealYear") ?? ""}-${(extractTag(item, "dealMonth") ?? "").padStart(2, "0")}-${(extractTag(item, "dealDay") ?? "").padStart(2, "0")}`,
-        floor: extractTag(item, "floor")
-      };
-    })
-    .filter(item => item.dealAmountManwon > 0);
+  const items = extractBlocks(xml, "item");
+  return items.map(item => {
+    const dealAmount = publicDataNumberFromRequiredTag(item, ["dealAmount", "거래금액"], "국토교통부 매매 실거래 API");
+    if (dealAmount === 0) {
+      throw new Error("국토교통부 매매 실거래 API returned invalid zero sale amount field.");
+    }
+    return {
+      name: publicDataTextFromOptionalTag(item, [specNameField, "aptNm", "아파트", "mhouseNm", "연립다세대", "offiNm", "단지"].filter((tag): tag is string => Boolean(tag)), "국토교통부 매매 실거래 API"),
+      legalDong: publicDataTextFromOptionalTag(item, ["umdNm", "법정동"], "국토교통부 매매 실거래 API"),
+      area: publicDataNumberFromOptionalTag(item, ["excluUseAr", "totalArea", "전용면적", "대지면적"], "국토교통부 매매 실거래 API"),
+      dealAmountManwon: dealAmount,
+      contractDate: contractDateFromTags(item, "국토교통부 매매 실거래 API"),
+      floor: publicDataTextFromOptionalTag(item, ["floor", "층"], "국토교통부 매매 실거래 API")
+    };
+  });
 }
 
 async function fetchRentMarketSnapshot(input: {
@@ -345,6 +686,10 @@ async function fetchRentMarketSnapshot(input: {
   depositManwon?: number;
   monthlyRentManwon?: number;
 }): Promise<RentMarketSnapshot> {
+  assertSupportedHousingType(input.housingType);
+  validateMarketQuery(input.lawdCd, input.dealYmd);
+  assertOptionalNonNegativeManwon("depositManwon", input.depositManwon);
+  assertOptionalNonNegativeManwon("monthlyRentManwon", input.monthlyRentManwon);
   const serviceKey = dataGoKrServiceKey();
 
   const spec = RENT_API_SPECS[input.housingType];
@@ -360,12 +705,16 @@ async function fetchRentMarketSnapshot(input: {
   if (publicDataError) {
     throw new Error(`국토교통부 실거래 API returned error: ${publicDataError}`);
   }
+  assertPublicDataXmlPayload("국토교통부 전월세 실거래 API", xml);
+  assertPublicDataResultCode("국토교통부 전월세 실거래 API", xml);
+  assertPublicDataItemsContainer("국토교통부 전월세 실거래 API", xml);
 
   const records = extractItems(xml, spec.nameField);
   const deposits = records.map(record => record.depositManwon).filter(value => value > 0);
-  const sampleCount = deposits.length;
+  const sampleCount = records.length;
+  const depositSampleCount = deposits.length;
   const medianDeposit = median(deposits);
-  const max = sampleCount > 0 ? Math.max(...deposits) : undefined;
+  const max = depositSampleCount > 0 ? Math.max(...deposits) : undefined;
   const userDeposit = input.depositManwon;
   const position =
     userDeposit && medianDeposit
@@ -381,6 +730,7 @@ async function fetchRentMarketSnapshot(input: {
     lawdCd: input.lawdCd,
     dealYmd: input.dealYmd,
     sampleCount,
+    depositSampleCount,
     median: medianDeposit,
     max,
     userDeposit,
@@ -396,8 +746,12 @@ function renderRentMarketSnapshot(snapshot: RentMarketSnapshot): string {
     "## 전월세 실거래 비교",
     `주택유형: ${snapshot.label}`,
     `조회 기준: LAWD_CD ${snapshot.lawdCd}, 계약월 ${snapshot.dealYmd}`,
-    `표본 수: ${snapshot.sampleCount}`,
-    snapshot.sampleCount > 0 ? `보증금 중앙값: ${money(snapshot.median)} / 최대값: ${money(snapshot.max)}` : "조회된 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
+    `신고 표본 수: ${snapshot.sampleCount}`,
+    snapshot.depositSampleCount > 0
+      ? `보증금 표본 수: ${snapshot.depositSampleCount} / 보증금 중앙값: ${money(snapshot.median)} / 최대값: ${money(snapshot.max)}`
+      : snapshot.sampleCount > 0
+        ? "조회된 신고 표본은 있지만 보증금 중앙값을 계산할 수 있는 보증금 표본이 없습니다."
+        : "조회된 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
     `입력 보증금: ${money(snapshot.userDeposit)} / 입력 월세: ${money(snapshot.userMonthlyRent)}`,
     "",
     "## 해석",
@@ -438,6 +792,10 @@ function saleRatioSignal(ratio: number | undefined): string {
   return "입력 보증금은 주변 매매가 중앙값 대비 70% 미만입니다. 그래도 개별 등기부, 선순위 보증금, 특약 확인은 별도입니다.";
 }
 
+function formatRatio(ratio: number | undefined): string {
+  return Number.isFinite(ratio) ? `${(ratio as number).toLocaleString("ko-KR")}%` : "계산 불가";
+}
+
 function assessmentRiskSummary(
   input: LeaseProfileInput & { depositManwon: number },
   rentMarket: RentMarketSnapshot,
@@ -461,7 +819,7 @@ function assessmentRiskSummary(
     reasons.push("보증금이 주변 매매가 중앙값의 70% 이상입니다.");
   }
 
-  if (!rentMarket.median || rentMarket.sampleCount === 0) {
+  if (!rentMarket.median || rentMarket.depositSampleCount === 0) {
     score += 15;
     reasons.push("전월세 표본이 부족해 주변 임대 시세 위치가 약합니다.");
   } else if (input.depositManwon > rentMarket.median * 1.25) {
@@ -497,6 +855,9 @@ async function fetchSaleMarketSnapshot(input: {
   dealYmd: string;
   depositManwon: number;
 }): Promise<SaleMarketSnapshot> {
+  assertSupportedHousingType(input.housingType);
+  validateMarketQuery(input.lawdCd, input.dealYmd);
+  assertRequiredNonNegativeManwon("depositManwon", input.depositManwon);
   const serviceKey = dataGoKrServiceKey();
   const spec = SALE_API_SPECS[input.housingType];
   const url = new URL(spec.endpoint);
@@ -511,6 +872,9 @@ async function fetchSaleMarketSnapshot(input: {
   if (publicDataError) {
     throw new Error(`국토교통부 매매 실거래 API returned error: ${publicDataError}`);
   }
+  assertPublicDataXmlPayload("국토교통부 매매 실거래 API", xml);
+  assertPublicDataResultCode("국토교통부 매매 실거래 API", xml);
+  assertPublicDataItemsContainer("국토교통부 매매 실거래 API", xml);
 
   const records = extractSaleItems(xml, spec.nameField);
   const saleAmounts = records.map(record => record.dealAmountManwon).filter(value => value > 0);
@@ -543,7 +907,7 @@ function renderSaleMarketSnapshot(snapshot: SaleMarketSnapshot): string {
     `매매 표본 수: ${snapshot.sampleCount}`,
     snapshot.sampleCount > 0 ? `매매가 중앙값: ${money(snapshot.median)} / 최대값: ${money(snapshot.max)}` : "조회된 매매 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
     `입력 보증금: ${money(snapshot.userDeposit)}`,
-    snapshot.ratio ? `매매가 대비 보증금 비율: ${snapshot.ratio.toLocaleString("ko-KR")}%` : "매매가 대비 보증금 비율: 계산 불가",
+    `매매가 대비 보증금 비율: ${formatRatio(snapshot.ratio)}`,
     "",
     "## 해석",
     snapshot.signal,
@@ -575,15 +939,15 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
   dealYmd: string;
   depositManwon: number;
 }): Promise<string> {
+  assertRequiredNonNegativeManwon("depositManwon", input.depositManwon);
+  assertOptionalNonNegativeManwon("monthlyRentManwon", input.monthlyRentManwon);
   const [rentMarket, saleMarket] = await Promise.all([
     fetchRentMarketSnapshot(input),
     fetchSaleMarketSnapshot(input)
   ]);
   const redFlags = inferRiskSignals(input);
   const riskSummary = assessmentRiskSummary(input, rentMarket, saleMarket, redFlags);
-  const ratioLine = saleMarket.ratio
-    ? `${saleMarket.ratio.toLocaleString("ko-KR")}%`
-    : "계산 불가";
+  const ratioLine = formatRatio(saleMarket.ratio);
   const immediateActions = [
     "잔금 전 등기부등본을 다시 발급해 소유자, 근저당, 압류, 가압류, 신탁, 경매 표시를 확인",
     "계약 상대방이 등기부 소유자와 다르면 위임장, 인감증명, 본인 통화로 대리권 확인",
@@ -591,7 +955,7 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
     "특약에 잔금 전 추가 근저당 금지, 등기 변동 시 해제·반환 조건, 하자·수리 책임을 문서화"
   ];
 
-  if (saleMarket.ratio && saleMarket.ratio >= 80) {
+  if (Number.isFinite(saleMarket.ratio) && (saleMarket.ratio as number) >= 80) {
     immediateActions.unshift("매매가 대비 보증금 비율이 높으므로 보증보험 가능 여부와 선순위 권리 확인 전 계약금 송금을 보류");
   }
 
@@ -606,7 +970,7 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
     "## 핵심 판단",
     lineItems([
       `위험도 근거: ${riskSummary.reasons.join(" / ")}`,
-      `전월세 신고 표본 ${rentMarket.sampleCount}건, 보증금 중앙값 ${money(rentMarket.median)}`,
+      `전월세 신고 표본 ${rentMarket.sampleCount}건, 보증금 산출 표본 ${rentMarket.depositSampleCount}건, 보증금 중앙값 ${money(rentMarket.median)}`,
       `매매 신고 표본 ${saleMarket.sampleCount}건, 매매가 중앙값 ${money(saleMarket.median)}`,
       `매매가 대비 보증금 비율 ${ratioLine}: ${saleMarket.signal}`,
       rentMarket.position

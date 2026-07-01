@@ -22,6 +22,20 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function smokePortFromEnv(name: string): number | undefined {
+  const rawPort = process.env[name]?.trim();
+  if (!rawPort) return undefined;
+  if (!/^(0|[1-9]\d*)$/.test(rawPort)) {
+    throw new Error(`${name} must be an integer between 1 and 65535.`);
+  }
+
+  const port = Number(rawPort);
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`${name} must be an integer between 1 and 65535.`);
+  }
+  return port;
+}
+
 async function waitForHealth(port: number, server: ChildProcess): Promise<void> {
   const healthUrl = `http://127.0.0.1:${port}/healthz`;
   const startedAt = Date.now();
@@ -77,7 +91,7 @@ function stopServer(server: ChildProcess): Promise<void> {
 }
 
 async function main() {
-  const port = Number(process.env.MCP_RATE_LIMIT_SMOKE_PORT || await getFreePort());
+  const port = smokePortFromEnv("MCP_RATE_LIMIT_SMOKE_PORT") ?? await getFreePort();
   const endpoint = `http://127.0.0.1:${port}/mcp`;
   const env = {
     ...process.env,

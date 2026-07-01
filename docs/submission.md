@@ -22,7 +22,7 @@ Lease Safe(전월세안전내비) is a Korean lease-safety MCP server for people
 Required:
 
 - `DATA_GO_KR_SERVICE_KEY`: data.go.kr service key for legal-dong, rent, and sale transaction APIs
-- `MCP_ALLOWED_HOSTS`: PlayMCP host or deployment domain for DNS rebinding protection, using plain hostnames or `host:port` values only
+- `MCP_ALLOWED_HOSTS`: PlayMCP host or deployment domain for DNS rebinding protection, using plain hostnames or `host:port` values only; URL schemes, paths, userinfo, query strings, fragments, wildcards, backslashes, and whitespace are rejected
 
 Optional:
 
@@ -30,7 +30,7 @@ Optional:
 - `MCP_MAX_BODY_BYTES`: MCP POST request body limit, default `262144`
 - `MCP_RATE_LIMIT_PER_MINUTE`: MCP POST rate limit per client, default `120`, set `0` to disable
 - `PUBLIC_DATA_TIMEOUT_MS`: official public-data API timeout, default `8000`, maximum `60000`
-- `PORT`: HTTP port, default `3000`
+- `PORT`: HTTP port, default `3000`, integer `1..65535`
 
 Do not commit runtime secrets. Configure them in PlayMCP or deployment environment settings.
 
@@ -57,8 +57,8 @@ Use `assess_lease_safety` first.
 Expected value shown in one response:
 
 - overall risk level and explicit reasons
-- nearby rent-market sample count and deposit median
-- nearby sale-market sample count and deposit-to-sale ratio
+- nearby positive rent-market sample count and deposit median
+- nearby positive sale-market sample count and deposit-to-sale ratio
 - red flags such as proxy contract, mortgage, or rushed deposit pressure
 - immediate next actions for registry, move-in report, fixed date, lease report, and HUG checks
 - official source links
@@ -91,5 +91,7 @@ DATA_GO_KR_SERVICE_KEY=... npm run preflight:registration
 Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_KEY` is configured as a GitHub repository secret, CI also runs the live public-data smoke.
 
 CI also runs `npm run smoke:docker` after building the image, so registration should use a commit whose Docker image has been proven to boot and answer MCP requests before the optional live API smoke.
+
+The live public-data smoke is intentionally stricter than a connectivity check: `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` must be positive, and rent and sale APIs must return positive sample counts for the configured demo region/month. A zero-sample official response means the demo input is not registration-ready yet.
 
 Use `docs/operations.md` as the final registration runbook. Registration is not evidence-complete until `npm run preflight:registration` and the GitHub Actions live public-data smoke are passed, not skipped.

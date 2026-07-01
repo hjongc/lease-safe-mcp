@@ -12,8 +12,12 @@ import {
   compareDepositToSaleMarket,
   checkLeaseRedFlags,
   compareRentMarket,
+  dataGoKrServiceKey,
   explainDataAvailability,
   explainDisputePrevention,
+  isAllZeroLawdCd,
+  isFutureDealYmd,
+  MONEY_INPUT_LIMITS,
   prepareContractQuestions,
   publicDataTimeoutMs,
   resolveLegalDongCode,
@@ -27,6 +31,13 @@ const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
 const DEFAULT_MCP_RATE_LIMIT_PER_MINUTE = 120;
 const MIN_MCP_AUTH_TOKEN_LENGTH = 16;
 
+export const MCP_TEXT_LIMITS = {
+  region: 80,
+  situation: 1000,
+  dateText: 40,
+  concerns: 300
+} as const;
+
 type ToolAnnotations = {
   title: string;
   readOnlyHint: boolean;
@@ -35,18 +46,28 @@ type ToolAnnotations = {
   idempotentHint: boolean;
 };
 
-const regionSchema = z.string().optional().describe("시·군·구 또는 법정동처럼 계약 주택이 있는 지역을 적어주세요. 정확한 주소나 호수는 넣지 않습니다.");
-const situationSchema = z.string().optional().describe("전월세 계약, 이사, 보증금, 임대인, 중개사, 등기부 관련 걱정을 자연어로 적어주세요. 민감정보는 넣지 않습니다.");
+const regionSchema = z.string().max(MCP_TEXT_LIMITS.region).optional().describe(`시·군·구 또는 법정동처럼 계약 주택이 있는 지역을 ${MCP_TEXT_LIMITS.region}자 이내로 적어주세요. 정확한 주소나 호수는 넣지 않습니다.`);
+const situationSchema = z.string().max(MCP_TEXT_LIMITS.situation).optional().describe(`전월세 계약, 이사, 보증금, 임대인, 중개사, 등기부 관련 걱정을 ${MCP_TEXT_LIMITS.situation}자 이내 자연어로 적어주세요. 민감정보는 넣지 않습니다.`);
 const housingTypeSchema = z
   .enum(["apartment", "rowhouse", "single_multi", "officetel", "unknown"])
   .optional()
   .describe("주택 유형입니다. apartment=아파트, rowhouse=연립다세대, single_multi=단독/다가구, officetel=오피스텔, unknown=미확인.");
 const contractTypeSchema = z.enum(["jeonse", "monthly_rent", "unknown"]).optional().describe("계약 유형입니다. jeonse=전세, monthly_rent=월세, unknown=미확인.");
-const depositSchema = z.number().nonnegative().optional().describe("보증금을 만원 단위 숫자로 적어주세요. 예: 30000은 3억원입니다.");
-const monthlyRentSchema = z.number().nonnegative().optional().describe("월세를 만원 단위 숫자로 적어주세요. 예: 80은 월세 80만원입니다.");
-const moveInDateSchema = z.string().optional().describe("이사 예정일 또는 입주일을 YYYY-MM-DD 형식이나 자연어로 적어주세요.");
-const contractDateSchema = z.string().optional().describe("계약일을 YYYY-MM-DD 형식이나 자연어로 적어주세요.");
-const concernsSchema = z.string().optional().describe("가장 걱정되는 점을 짧게 적어주세요. 예: 근저당, 대리계약, 보증보험, 전입신고, 확정일자.");
+const depositSchema = z.number().int().nonnegative().max(MONEY_INPUT_LIMITS.depositManwon).optional().describe(`보증금을 만원 단위 정수로 적어주세요. 예: 30000은 3억원입니다. 최대 ${MONEY_INPUT_LIMITS.depositManwon.toLocaleString("ko-KR")}만원까지 입력할 수 있습니다.`);
+const monthlyRentSchema = z.number().int().nonnegative().max(MONEY_INPUT_LIMITS.monthlyRentManwon).optional().describe(`월세를 만원 단위 정수로 적어주세요. 예: 80은 월세 80만원입니다. 최대 ${MONEY_INPUT_LIMITS.monthlyRentManwon.toLocaleString("ko-KR")}만원까지 입력할 수 있습니다.`);
+const moveInDateSchema = z.string().max(MCP_TEXT_LIMITS.dateText).optional().describe(`이사 예정일 또는 입주일을 YYYY-MM-DD 형식이나 ${MCP_TEXT_LIMITS.dateText}자 이내 자연어로 적어주세요.`);
+const contractDateSchema = z.string().max(MCP_TEXT_LIMITS.dateText).optional().describe(`계약일을 YYYY-MM-DD 형식이나 ${MCP_TEXT_LIMITS.dateText}자 이내 자연어로 적어주세요.`);
+const concernsSchema = z.string().max(MCP_TEXT_LIMITS.concerns).optional().describe(`가장 걱정되는 점을 ${MCP_TEXT_LIMITS.concerns}자 이내로 짧게 적어주세요. 예: 근저당, 대리계약, 보증보험, 전입신고, 확정일자.`);
+const lawdCdSchema = z
+  .string()
+  .regex(/^\d{5}$/)
+  .refine(value => !isAllZeroLawdCd(value), { message: "LAWD_CD must not be 00000." })
+  .describe("법정동 코드 10자리 중 앞 5자리인 시군구 코드입니다. 00000은 넣지 않습니다. 예: 서울 관악구 11620.");
+const dealYmdSchema = z
+  .string()
+  .regex(/^\d{4}(0[1-9]|1[0-2])$/)
+  .refine(value => !isFutureDealYmd(value), { message: "DEAL_YMD must not be in the future." })
+  .describe("조회할 계약년월 6자리입니다. YYYYMM 형식이며 월은 01부터 12까지이고 미래 월은 넣지 않습니다. 예: 202605.");
 
 function readOnlyAnnotations(title: string): ToolAnnotations {
   return {
@@ -70,10 +91,14 @@ function allowedHostsFromEnv(): string[] | undefined {
       host === "*" ||
       host.includes("://") ||
       host.includes("/") ||
+      host.includes("\\") ||
+      host.includes("@") ||
+      host.includes("?") ||
+      host.includes("#") ||
       /\s/.test(host) ||
       host.length > 253
     ) {
-      throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames or host:port values, not URLs, paths, wildcards, or whitespace.");
+      throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames or host:port values, not URLs, paths, wildcards, userinfo, query strings, fragments, or whitespace.");
     }
 
     try {
@@ -81,7 +106,7 @@ function allowedHostsFromEnv(): string[] | undefined {
       if (!hostname) throw new Error("missing hostname");
       return hostname;
     } catch {
-      throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames or host:port values, not URLs, paths, wildcards, or whitespace.");
+      throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames or host:port values, not URLs, paths, wildcards, userinfo, query strings, fragments, or whitespace.");
     }
   });
   return hosts && hosts.length > 0 ? hosts : undefined;
@@ -98,8 +123,14 @@ function requiredAllowedHosts(): string[] {
 
 function requireProductionDataKey(): void {
   if (process.env.NODE_ENV !== "production") return;
-  if (process.env.DATA_GO_KR_SERVICE_KEY?.trim()) return;
-  throw new Error("DATA_GO_KR_SERVICE_KEY is required in production for official public-data tools.");
+  try {
+    dataGoKrServiceKey();
+  } catch (error) {
+    if (/DATA_GO_KR_SERVICE_KEY is required/.test((error as Error).message)) {
+      throw new Error("DATA_GO_KR_SERVICE_KEY is required in production for official public-data tools.");
+    }
+    throw error;
+  }
 }
 
 function mcpAuthToken(): string | undefined {
@@ -115,7 +146,7 @@ export function mcpMaxBodyBytes(): number {
   const rawLimit = process.env.MCP_MAX_BODY_BYTES?.trim();
   if (!rawLimit) return DEFAULT_MCP_MAX_BODY_BYTES;
 
-  const parsed = Number(rawLimit);
+  const parsed = parsePlainInteger(rawLimit);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     throw new Error("MCP_MAX_BODY_BYTES must be a positive integer.");
   }
@@ -126,11 +157,27 @@ export function mcpRateLimitPerMinute(): number {
   const rawLimit = process.env.MCP_RATE_LIMIT_PER_MINUTE?.trim();
   if (!rawLimit) return DEFAULT_MCP_RATE_LIMIT_PER_MINUTE;
 
-  const parsed = Number(rawLimit);
+  const parsed = parsePlainInteger(rawLimit);
   if (!Number.isSafeInteger(parsed) || parsed < 0) {
     throw new Error("MCP_RATE_LIMIT_PER_MINUTE must be a non-negative integer.");
   }
   return parsed;
+}
+
+export function httpPort(): number {
+  const rawPort = process.env.PORT?.trim();
+  if (!rawPort) return 3000;
+
+  const parsed = parsePlainInteger(rawPort);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 65535) {
+    throw new Error("PORT must be an integer between 1 and 65535.");
+  }
+  return parsed;
+}
+
+function parsePlainInteger(value: string): number {
+  if (!/^(0|[1-9]\d*)$/.test(value)) return Number.NaN;
+  return Number(value);
 }
 
 function jsonRpcError(res: Response, httpStatus: number, code: number, message: string): void {
@@ -148,9 +195,18 @@ function clientKey(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
 }
 
+type RateLimitWindow = { count: number; resetAt: number };
+
+export function pruneExpiredRateLimitWindows(windows: Map<string, RateLimitWindow>, now: number): void {
+  for (const [entryKey, entryWindow] of windows) {
+    if (entryWindow.resetAt <= now) windows.delete(entryKey);
+  }
+}
+
 function rateLimitMcpRequests(limitPerMinute: number) {
-  const windows = new Map<string, { count: number; resetAt: number }>();
+  const windows = new Map<string, RateLimitWindow>();
   const windowMs = 60_000;
+  let nextPruneAt = 0;
 
   return (req: Request, res: Response, next: NextFunction) => {
     if (req.method !== "POST" || limitPerMinute === 0) {
@@ -159,6 +215,11 @@ function rateLimitMcpRequests(limitPerMinute: number) {
     }
 
     const now = Date.now();
+    if (now >= nextPruneAt) {
+      pruneExpiredRateLimitWindows(windows, now);
+      nextPruneAt = now + windowMs;
+    }
+
     const key = clientKey(req);
     const current = windows.get(key);
     const window = current && current.resetAt > now ? current : { count: 0, resetAt: now + windowMs };
@@ -170,12 +231,6 @@ function rateLimitMcpRequests(limitPerMinute: number) {
       res.setHeader("Retry-After", String(retryAfterSeconds));
       jsonRpcError(res, 429, -32002, "Too many MCP requests. Try again later.");
       return;
-    }
-
-    if (windows.size > 1000) {
-      for (const [entryKey, entryWindow] of windows) {
-        if (entryWindow.resetAt <= now) windows.delete(entryKey);
-      }
     }
 
     next();
@@ -277,9 +332,9 @@ export function createServer(): McpServer {
         "전월세안전내비의 대표 진단 도구입니다. 국토교통부 전월세·매매 실거래가를 함께 조회해 보증금의 주변 시세 위치, 매매가 대비 비율, 계약 위험 신호, 입주 보호 행동을 한 번에 정리합니다. DATA_GO_KR_SERVICE_KEY가 필요합니다.",
       inputSchema: {
         housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("진단할 주택 유형입니다."),
-        lawdCd: z.string().regex(/^\d{5}$/).describe("법정동 코드 10자리 중 앞 5자리인 시군구 코드입니다. 예: 서울 관악구 11620."),
-        dealYmd: z.string().regex(/^\d{6}$/).describe("조회할 계약년월 6자리입니다. 예: 202605."),
-        depositManwon: z.number().nonnegative().describe("보증금을 만원 단위 숫자로 적어주세요. 예: 30000은 3억원입니다."),
+        lawdCd: lawdCdSchema,
+        dealYmd: dealYmdSchema,
+        depositManwon: z.number().int().nonnegative().max(MONEY_INPUT_LIMITS.depositManwon).describe(`보증금을 만원 단위 정수로 적어주세요. 예: 30000은 3억원입니다. 최대 ${MONEY_INPUT_LIMITS.depositManwon.toLocaleString("ko-KR")}만원까지 입력할 수 있습니다.`),
         monthlyRentManwon: monthlyRentSchema,
         situation: situationSchema,
         region: regionSchema,
@@ -312,7 +367,7 @@ export function createServer(): McpServer {
       description:
         "전월세안전내비가 지역명을 실거래가 조회용 법정동 코드 확인 절차로 연결하고, 내장 검토 목록에 있는 주요 지역은 LAWD_CD 후보를 보여줍니다.",
       inputSchema: {
-        region: z.string().min(2).describe("확인할 지역명입니다. 예: 서울 관악구, 성남시 분당구, 부산 해운대구.")
+        region: z.string().min(2).max(MCP_TEXT_LIMITS.region).describe(`확인할 지역명입니다. ${MCP_TEXT_LIMITS.region}자 이내로 적어주세요. 예: 서울 관악구, 성남시 분당구, 부산 해운대구.`)
       },
       annotations: readOnlyAnnotations("법정동 코드 확인")
     },
@@ -327,8 +382,8 @@ export function createServer(): McpServer {
         "전월세안전내비가 국토교통부 전월세 실거래가 OpenAPI를 호출해 지역·계약월·주택유형 기준 보증금 표본과 사용자의 계약조건을 비교합니다. DATA_GO_KR_SERVICE_KEY가 필요합니다.",
       inputSchema: {
         housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("실거래가를 조회할 주택 유형입니다."),
-        lawdCd: z.string().regex(/^\d{5}$/).describe("법정동 코드 10자리 중 앞 5자리인 시군구 코드입니다. 예: 서울 관악구 11620."),
-        dealYmd: z.string().regex(/^\d{6}$/).describe("계약년월 6자리입니다. 예: 202605."),
+        lawdCd: lawdCdSchema,
+        dealYmd: dealYmdSchema,
         depositManwon: depositSchema,
         monthlyRentManwon: monthlyRentSchema
       },
@@ -345,9 +400,9 @@ export function createServer(): McpServer {
         "전월세안전내비가 국토교통부 매매 실거래가 OpenAPI를 호출해 입력 보증금이 주변 매매가 중앙값 대비 어느 정도인지 전세가율 관점으로 점검합니다. DATA_GO_KR_SERVICE_KEY가 필요합니다.",
       inputSchema: {
         housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("매매 실거래가를 조회할 주택 유형입니다."),
-        lawdCd: z.string().regex(/^\d{5}$/).describe("법정동 코드 10자리 중 앞 5자리인 시군구 코드입니다. 예: 서울 관악구 11620."),
-        dealYmd: z.string().regex(/^\d{6}$/).describe("계약년월 6자리입니다. 예: 202605."),
-        depositManwon: z.number().nonnegative().describe("비교할 보증금을 만원 단위 숫자로 적어주세요. 예: 30000은 3억원입니다.")
+        lawdCd: lawdCdSchema,
+        dealYmd: dealYmdSchema,
+        depositManwon: z.number().int().nonnegative().max(MONEY_INPUT_LIMITS.depositManwon).describe(`비교할 보증금을 만원 단위 정수로 적어주세요. 예: 30000은 3억원입니다. 최대 ${MONEY_INPUT_LIMITS.depositManwon.toLocaleString("ko-KR")}만원까지 입력할 수 있습니다.`)
       },
       annotations: readOnlyAnnotations("매매가 대비 보증금 점검")
     },
@@ -568,7 +623,7 @@ export function createApp() {
   return app;
 }
 
-export function startHttpServer(port = Number(process.env.PORT || 3000)): Server {
+export function startHttpServer(port = httpPort()): Server {
   const app = createApp();
   const httpServer = app.listen(port, "0.0.0.0", error => {
     if (error) {

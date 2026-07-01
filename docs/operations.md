@@ -25,7 +25,7 @@ gh workflow run CI --repo hjongc/lease-safe-mcp --ref main
 PlayMCP runtime:
 
 - Set `DATA_GO_KR_SERVICE_KEY` in the PlayMCP runtime environment.
-- Set `MCP_ALLOWED_HOSTS` to the PlayMCP host or custom deployment domain. Use plain hostnames or `host:port` values only; do not include `https://`, paths, whitespace, or wildcards.
+- Set `MCP_ALLOWED_HOSTS` to the PlayMCP host or custom deployment domain. Use plain hostnames or `host:port` values only; do not include `https://`, paths, wildcards, userinfo, query strings, fragments, backslashes, or whitespace.
 - Leave `MCP_AUTH_TOKEN` unset unless the deployment is private and the client can send bearer auth. If set, use at least 16 characters.
 
 Never paste secrets into issues, commits, README examples, screenshots, or CI logs.
@@ -39,7 +39,7 @@ Collect this evidence before registering or updating the PlayMCP build:
 - GitHub Actions `Live public-data smoke` is passed, not skipped, after the repository secret is configured.
 - Docker runtime smoke passes after image build.
 - Demo tool is `assess_lease_safety`.
-- Demo input uses a verified `lawdCd`, `dealYmd`, and `housingType` with live rent and sale samples.
+- Demo input uses a positive `depositManwon` plus a verified `lawdCd`, `dealYmd`, and `housingType` with positive live rent and sale sample counts.
 
 Recommended demo input:
 
@@ -61,7 +61,7 @@ Recommended demo input:
 - `npm run smoke:http` verifies local HTTP MCP handshake, tool metadata, bearer-auth rejection, a lightweight tool call, and oversized request rejection.
 - `npm run smoke:rate-limit` verifies the MCP POST rate limiter returns `429` with `Retry-After`.
 - `npm run smoke:docker` verifies the built image starts in production mode, answers `/healthz`, rejects unauthenticated and oversized MCP requests, and completes MCP handshake/list-tools.
-- `npm run smoke:public-data` verifies legal-dong lookup, all rent APIs, all sale APIs, and the flagship assessment against live official APIs.
+- `npm run smoke:public-data` verifies legal-dong lookup, all rent APIs, all sale APIs, and the flagship assessment against live official APIs. It fails when `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` is not positive or when a rent or sale API returns zero samples, because registration evidence must prove a real demo data path.
 - `npm run preflight:registration` runs the full release preflight and fails if live public-data smoke cannot run.
 
 ## Incident Response
@@ -71,7 +71,7 @@ If API-backed tools fail:
 1. Check whether `DATA_GO_KR_SERVICE_KEY` is configured in the runtime and has active data.go.kr approvals.
 2. Run `npm run smoke:public-data` with the same key outside the deployment.
 3. If data.go.kr returns an auth or quota payload, keep the original error visible and rotate or re-approve the key.
-4. If requests time out, lower demo scope only by changing `PUBLIC_DATA_SMOKE_HOUSING_TYPES`; do not add fake sample data.
+4. If requests time out or a region/month returns zero samples, lower demo scope only by changing `PUBLIC_DATA_SMOKE_HOUSING_TYPES` or choose a verified `PUBLIC_DATA_SMOKE_LAWD_CD` and `PUBLIC_DATA_SMOKE_DEAL_YMD`; do not add fake sample data.
 5. If all live public-data checks pass locally but fail in deployment, inspect host allowlist, egress/network policy, and runtime env injection.
 
 If a security issue or leaked secret is reported:

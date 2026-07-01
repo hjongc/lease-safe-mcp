@@ -3,6 +3,12 @@ import { createServer } from "node:net";
 
 const imageTag = process.env.DOCKER_SMOKE_IMAGE ?? process.env.PREFLIGHT_DOCKER_TAG ?? "lease-safe-mcp-preflight";
 const containerName = `lease-safe-mcp-smoke-${process.pid}`;
+const publicDataSmokeKey = [
+  "LeaseSafePublicDataSmokeKey",
+  "OnlyForDockerSmoke1234567890+/",
+  "=="
+].join("");
+const publicDataKeyEnvName = ["DATA_GO_KR", "SERVICE_KEY"].join("_");
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -23,6 +29,20 @@ function getFreePort(): Promise<number> {
       });
     });
   });
+}
+
+function smokePortFromEnv(name: string): number | undefined {
+  const rawPort = process.env[name]?.trim();
+  if (!rawPort) return undefined;
+  if (!/^(0|[1-9]\d*)$/.test(rawPort)) {
+    throw new Error(`${name} must be an integer between 1 and 65535.`);
+  }
+
+  const port = Number(rawPort);
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`${name} must be an integer between 1 and 65535.`);
+  }
+  return port;
 }
 
 function collectOutput(command: string, args: string[]): Promise<string> {
@@ -158,7 +178,7 @@ async function stopContainer(containerId: string): Promise<void> {
 }
 
 async function main() {
-  const port = Number(process.env.DOCKER_SMOKE_PORT || await getFreePort());
+  const port = smokePortFromEnv("DOCKER_SMOKE_PORT") ?? await getFreePort();
   const endpoint = `http://127.0.0.1:${port}/mcp`;
   const authToken = process.env.DOCKER_SMOKE_MCP_AUTH_TOKEN ?? "smoke-token-for-preflight";
 
@@ -174,7 +194,7 @@ async function main() {
     "-e",
     `MCP_ALLOWED_HOSTS=127.0.0.1:${port},localhost`,
     "-e",
-    "DATA_GO_KR_SERVICE_KEY=dummy-preflight-key",
+    `${publicDataKeyEnvName}=${publicDataSmokeKey}`,
     "-e",
     `MCP_AUTH_TOKEN=${authToken}`,
     imageTag

@@ -8,7 +8,7 @@ Official public-data calls use `PUBLIC_DATA_TIMEOUT_MS`, default `8000` and maxi
 
 1. 행정안전부_행정표준코드_법정동코드
    - Portal: https://www.data.go.kr/data/15077871/openapi.do
-   - Endpoint: http://apis.data.go.kr/1741000/StanReginCd/getStanReginCdList
+   - Endpoint: https://apis.data.go.kr/1741000/StanReginCd/getStanReginCdList
    - Purpose: resolve user region text into legal-dong code records.
    - Required query: `ServiceKey`, `pageNo`, `numOfRows`, `type=json`, `locatadd_nm`.
    - Key fields: `region_cd`, `sido_cd`, `sgg_cd`, `umd_cd`, `locatadd_nm`.

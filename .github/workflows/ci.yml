@@ -55,7 +55,15 @@ jobs:
         run: npm audit --omit=dev
 
       - name: Build Docker image
-        run: docker build -t lease-safe-mcp-ci .
+        run: |
+          for attempt in 1 2 3; do
+            if docker build -t lease-safe-mcp-ci .; then
+              exit 0
+            fi
+            echo "Docker build attempt ${attempt} failed; retrying after transient registry/network error..."
+            sleep $((attempt * 10))
+          done
+          exit 1
 
       - name: Smoke Docker runtime
         run: npm run smoke:docker

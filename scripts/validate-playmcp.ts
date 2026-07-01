@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { RENT_API_SPECS, SALE_API_SPECS, SOURCES } from "../src/sources.js";
+import { LEGAL_DONG_API, RENT_API_SPECS, SALE_API_SPECS, SOURCES } from "../src/sources.js";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -79,13 +79,42 @@ const server = readFileSync("src/server.ts", "utf8");
 const domain = readFileSync("src/domain.ts", "utf8");
 assert(/MCP_ALLOWED_HOSTS/.test(server), "server must support MCP_ALLOWED_HOSTS");
 assert(/plain hostnames or host:port values/.test(server), "server must reject unsafe MCP_ALLOWED_HOSTS entries");
+assert(/userinfo, query strings, fragments/.test(server), "server must reject URL userinfo/query/fragment host allowlist entries");
 assert(/DATA_GO_KR_SERVICE_KEY is required in production/.test(server), "server must fail fast without DATA_GO_KR_SERVICE_KEY in production");
 assert(/timingSafeEqual/.test(server), "server must compare bearer tokens with timingSafeEqual");
 assert(/MCP_AUTH_TOKEN must be at least/.test(server), "server must reject weak MCP_AUTH_TOKEN values");
+assert(/parsePlainInteger/.test(server), "server must parse runtime numeric settings as plain integers");
 assert(/MCP_MAX_BODY_BYTES/.test(server), "server must support a bounded MCP request body size");
 assert(/express\.json\(\{ limit: `\$\{maxBodyBytes\}b` \}\)/.test(server), "server JSON parser limit must match MCP_MAX_BODY_BYTES");
 assert(/MCP_RATE_LIMIT_PER_MINUTE/.test(server), "server must support MCP request rate limiting");
+assert(/MCP_TEXT_LIMITS/.test(server), "server must define explicit MCP text input limits");
+assert(/regionSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.region\)/.test(server), "server must bound MCP region text inputs");
+assert(/situationSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.situation\)/.test(server), "server must bound MCP situation text inputs");
+assert(/moveInDateSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.dateText\)/.test(server), "server must bound MCP move-in date text inputs");
+assert(/contractDateSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.dateText\)/.test(server), "server must bound MCP contract date text inputs");
+assert(/concernsSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.concerns\)/.test(server), "server must bound MCP concerns text inputs");
+assert(/region:\s*z\.string\(\)\.min\(2\)\.max\(MCP_TEXT_LIMITS\.region\)/.test(server), "resolve_legal_dong_code must bound region text input");
+assert(/MONEY_INPUT_LIMITS/.test(domain), "domain must define explicit money input limits");
+assert(/publicDataTextFromOptionalTag/.test(domain), "domain must normalize official public-data text fields before rendering");
+assert(/compactPublicDataFieldValue/.test(domain), "domain must bound and redact invalid official public-data field excerpts");
+assert(/parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data money fields");
+assert(/parsePublicDataDecimal/.test(domain), "domain must reject exponent-style official public-data decimal fields");
+assert(/parsedYear = parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data date fields");
+assert(/missing required date field/.test(domain), "domain must fail fast when official public-data date fields are missing");
+assert(/assertPublicDataItemsContainer/.test(domain), "domain must fail fast when official market XML omits the items container");
+assert(/invalid all-zero rent money fields/.test(domain), "domain must reject all-zero official rent money fields");
+assert(/invalid zero sale amount field/.test(domain), "domain must reject zero official sale amount fields");
+assert(/depositSchema[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "server must bound optional MCP deposit inputs");
+assert(/monthlyRentSchema[\s\S]*\.max\(MONEY_INPUT_LIMITS\.monthlyRentManwon\)/.test(server), "server must bound optional MCP monthly-rent inputs");
+assert(/depositManwon:[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "server must bound required MCP deposit inputs");
+assert(/isAllZeroLawdCd/.test(domain), "domain must reject all-zero public-data LAWD_CD values");
+assert(/isAllZeroLawdCd\(lawdCd\)/.test(domain), "legal-dong parser must reject all-zero official row LAWD_CD values");
+assert(/lawdCdSchema[\s\S]*\.refine\(value => !isAllZeroLawdCd\(value\)/.test(server), "server must reject all-zero MCP LAWD_CD values");
+assert(/isFutureDealYmd/.test(domain), "domain must reject future public-data deal months");
+assert(/dealYmdSchema[\s\S]*\.refine\(value => !isFutureDealYmd\(value\)/.test(server), "server must reject future MCP deal months");
 assert(/PUBLIC_DATA_TIMEOUT_MS/.test(domain), "domain must support a bounded public-data timeout");
+assert(/parsePlainInteger/.test(domain), "domain must parse public-data timeout as a plain integer");
+assert(/MAX_PUBLIC_DATA_RESPONSE_BYTES/.test(domain), "domain must bound official public-data response sizes");
 assert(/publicDataTimeoutMs/.test(server), "server must validate the public-data timeout at startup");
 assert(/SIGTERM/.test(server), "server must handle SIGTERM for container shutdown");
 assert(/x-powered-by/.test(server), "server must disable x-powered-by");
@@ -123,6 +152,9 @@ for (const expected of [
   assert(SOURCES.some(source => source.id === expected), `source missing: ${expected}`);
 }
 
+assert(LEGAL_DONG_API.endpoint.startsWith("https://apis.data.go.kr/1741000/"), "legal-dong endpoint must use the official HTTPS data.go.kr gateway");
+assert(LEGAL_DONG_API.portalUrl.includes("data.go.kr"), "legal-dong portal must use data.go.kr");
+
 for (const spec of Object.values(RENT_API_SPECS)) {
   assert(spec.endpoint.includes("apis.data.go.kr/1613000/"), `rent endpoint must use official data.go.kr gateway: ${spec.housingType}`);
   assert(spec.portalUrl.includes("data.go.kr"), `rent portal must use data.go.kr: ${spec.housingType}`);
@@ -138,9 +170,14 @@ assert(/supportedPlayMcpProtocolVersions/.test(smoke), "smoke must verify protoc
 assert(/getServerVersion/.test(smoke), "smoke must verify server identity");
 assert(/3-10 tools/.test(smoke), "smoke must verify tool count");
 assert(/MCP_AUTH_TOKEN/.test(smoke), "smoke must support bearer-token MCP endpoints");
+assert(/assertToolOutputQuality/.test(smoke), "smoke must verify MCP tool output quality");
+assert(/tool_output_chars/.test(smoke), "smoke must report validated tool output size");
+assert(/readResource/.test(smoke), "smoke must read the official source registry resource");
+assert(/official_sources/.test(smoke), "smoke must report validated official source count");
 
 const httpSmoke = readFileSync("scripts/http-smoke.ts", "utf8");
 assert(/healthz/.test(httpSmoke), "HTTP smoke must verify healthz");
+assert(/smokePortFromEnv/.test(httpSmoke), "HTTP smoke must fail fast on invalid port env values");
 assert(/auth_rejection/.test(httpSmoke), "HTTP smoke must verify bearer auth rejection");
 assert(/rateLimitPerMinute/.test(httpSmoke), "HTTP smoke must verify rate limit health metadata");
 assert(/oversized_request/.test(httpSmoke), "HTTP smoke must verify oversized MCP request rejection");
@@ -149,6 +186,7 @@ assert(/dist\/scripts\/smoke\.js/.test(httpSmoke), "HTTP smoke must run the MCP 
 const dockerSmoke = readFileSync("scripts/docker-smoke.ts", "utf8");
 assert(/docker/.test(dockerSmoke), "Docker smoke must run a container");
 assert(/healthz/.test(dockerSmoke), "Docker smoke must verify healthz");
+assert(/smokePortFromEnv/.test(dockerSmoke), "Docker smoke must fail fast on invalid port env values");
 assert(/docker_auth_rejection/.test(dockerSmoke), "Docker smoke must verify bearer auth rejection");
 assert(/rateLimitPerMinute/.test(dockerSmoke), "Docker smoke must verify rate limit health metadata");
 assert(/docker_oversized_request/.test(dockerSmoke), "Docker smoke must verify oversized MCP request rejection");
@@ -156,6 +194,7 @@ assert(/dist\/scripts\/smoke\.js/.test(dockerSmoke), "Docker smoke must run the 
 
 const rateLimitSmoke = readFileSync("scripts/rate-limit-smoke.ts", "utf8");
 assert(/MCP_RATE_LIMIT_PER_MINUTE/.test(rateLimitSmoke), "rate-limit smoke must force a low rate limit");
+assert(/smokePortFromEnv/.test(rateLimitSmoke), "rate-limit smoke must fail fast on invalid port env values");
 assert(/Retry-After/.test(rateLimitSmoke), "rate-limit smoke must verify Retry-After");
 assert(/429/.test(rateLimitSmoke), "rate-limit smoke must verify 429 rejection");
 
@@ -169,6 +208,10 @@ for (const housingType of ["apartment", "rowhouse", "single_multi", "officetel"]
   assert(publicDataSmoke.includes(`"${housingType}"`), `public-data smoke must cover ${housingType}`);
 }
 assert(/assessLeaseSafety/.test(publicDataSmoke), "public-data smoke must verify the flagship assessment tool");
+assert(/MONEY_INPUT_LIMITS\.depositManwon/.test(publicDataSmoke), "public-data smoke must reuse the bounded deposit input limit");
+assert(/plain positive integer/.test(publicDataSmoke), "public-data smoke must require a plain integer deposit value");
+assert(/isAllZeroLawdCd/.test(publicDataSmoke), "public-data smoke must reject all-zero LAWD_CD values before API calls");
+assert(/isFutureDealYmd/.test(publicDataSmoke), "public-data smoke must reject future deal months before API calls");
 
 const releasePreflight = readFileSync("scripts/release-preflight.ts", "utf8");
 const registrationPreflight = readFileSync("scripts/registration-preflight.ts", "utf8");
