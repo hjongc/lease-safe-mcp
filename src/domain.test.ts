@@ -695,6 +695,42 @@ test("rent market comparison rejects unrecognized public-data payloads", async (
   }
 });
 
+test("rent market comparison rejects malformed money fields", async () => {
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악오류전세</aptNm>
+            <umdNm>봉천동</umdNm>
+            <deposit>금액오류</deposit>
+            <monthlyRent>0</monthlyRent>
+            <dealYear>2026</dealYear>
+            <dealMonth>5</dealMonth>
+            <dealDay>10</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    await assert.rejects(
+      compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" }),
+      /국토교통부 전월세 실거래 API returned invalid numeric field/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
 test("public-data timeout is explicit and fails fast on invalid configuration", () => {
   const previousTimeout = process.env.PUBLIC_DATA_TIMEOUT_MS;
   try {
@@ -910,6 +946,46 @@ test("deposit-to-sale comparison rejects unrecognized public-data payloads", asy
         depositManwon: 30000
       }),
       /국토교통부 매매 실거래 API returned unrecognized XML payload/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
+test("deposit-to-sale comparison rejects malformed sale amount fields", async () => {
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악오류매매</aptNm>
+            <umdNm>봉천동</umdNm>
+            <dealAmount>금액오류</dealAmount>
+            <dealYear>2026</dealYear>
+            <dealMonth>5</dealMonth>
+            <dealDay>10</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    await assert.rejects(
+      compareDepositToSaleMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: 30000
+      }),
+      /국토교통부 매매 실거래 API returned invalid numeric field/
     );
   } finally {
     globalThis.fetch = previousFetch;

@@ -386,9 +386,28 @@ function extractFirstTag(xml: string, tags: string[]): string | undefined {
   return undefined;
 }
 
-function numberFromTag(xml: string, tags: string[]): number {
-  const value = extractFirstTag(xml, tags) ?? "0";
-  return Number(value.replace(/,/g, "").trim());
+function publicDataNumberFromRequiredTag(xml: string, tags: string[], label: string): number {
+  const rawValue = extractFirstTag(xml, tags);
+  if (rawValue === undefined) {
+    throw new Error(`${label} missing required numeric field: ${tags.join(" or ")}`);
+  }
+
+  const value = Number(rawValue.replace(/,/g, "").trim());
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} returned invalid numeric field ${tags.join(" or ")}: ${rawValue}`);
+  }
+  return value;
+}
+
+function publicDataNumberFromOptionalTag(xml: string, tags: string[], label: string): number | undefined {
+  const rawValue = extractFirstTag(xml, tags);
+  if (rawValue === undefined) return undefined;
+
+  const value = Number(rawValue.replace(/,/g, "").trim());
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} returned invalid numeric field ${tags.join(" or ")}: ${rawValue}`);
+  }
+  return value;
 }
 
 function contractDateFromTags(xml: string): string {
@@ -420,12 +439,12 @@ function extractItems(xml: string, specNameField?: string): RentRecord[] {
   const items = [...xml.matchAll(/<item>(.*?)<\/item>/gs)].map(match => match[1]);
   return items
     .map(item => {
-      const deposit = numberFromTag(item, ["deposit", "보증금액", "보증금"]);
-      const monthlyRent = numberFromTag(item, ["monthlyRent", "월세금액", "월세"]);
+      const deposit = publicDataNumberFromRequiredTag(item, ["deposit", "보증금액", "보증금"], "국토교통부 전월세 실거래 API");
+      const monthlyRent = publicDataNumberFromRequiredTag(item, ["monthlyRent", "월세금액", "월세"], "국토교통부 전월세 실거래 API");
       return {
         name: extractFirstTag(item, [specNameField, "aptNm", "아파트", "mhouseNm", "연립다세대", "offiNm", "단지"].filter((tag): tag is string => Boolean(tag))),
         legalDong: extractFirstTag(item, ["umdNm", "법정동"]),
-        area: numberFromTag(item, ["excluUseAr", "totalFloorAr", "전용면적", "계약면적"]) || undefined,
+        area: publicDataNumberFromOptionalTag(item, ["excluUseAr", "totalFloorAr", "전용면적", "계약면적"], "국토교통부 전월세 실거래 API"),
         depositManwon: deposit,
         monthlyRentManwon: monthlyRent,
         contractDate: contractDateFromTags(item),
@@ -440,11 +459,11 @@ function extractSaleItems(xml: string, specNameField?: string): SaleRecord[] {
   const items = [...xml.matchAll(/<item>(.*?)<\/item>/gs)].map(match => match[1]);
   return items
     .map(item => {
-      const dealAmount = numberFromTag(item, ["dealAmount", "거래금액"]);
+      const dealAmount = publicDataNumberFromRequiredTag(item, ["dealAmount", "거래금액"], "국토교통부 매매 실거래 API");
       return {
         name: extractFirstTag(item, [specNameField, "aptNm", "아파트", "mhouseNm", "연립다세대", "offiNm", "단지"].filter((tag): tag is string => Boolean(tag))),
         legalDong: extractFirstTag(item, ["umdNm", "법정동"]),
-        area: numberFromTag(item, ["excluUseAr", "totalArea", "전용면적", "대지면적"]) || undefined,
+        area: publicDataNumberFromOptionalTag(item, ["excluUseAr", "totalArea", "전용면적", "대지면적"], "국토교통부 매매 실거래 API"),
         dealAmountManwon: dealAmount,
         contractDate: contractDateFromTags(item),
         floor: extractFirstTag(item, ["floor", "층"])
