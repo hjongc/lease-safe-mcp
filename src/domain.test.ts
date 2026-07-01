@@ -14,7 +14,7 @@ import {
   routeOfficialHelp
 } from "./domain.js";
 import { createApp, httpPort, mcpMaxBodyBytes, mcpRateLimitPerMinute, pruneExpiredRateLimitWindows } from "./server.js";
-import { positiveSampleCount, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes } from "../scripts/public-data-smoke.js";
+import { assertLegalDongSmokeMatchesLawdCd, positiveSampleCount, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes } from "../scripts/public-data-smoke.js";
 import { scanLine } from "../scripts/secret-scan.js";
 
 test("data availability names automatic APIs and no fake fallback", () => {
@@ -105,6 +105,23 @@ test("public-data smoke validates requested housing types", () => {
       process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES = previousHousingTypes;
     }
   }
+});
+
+test("public-data smoke requires legal-dong proof for configured LAWD code", () => {
+  const legalDongText = [
+    "## 법정동 코드 확인",
+    "- 서울특별시 관악구 봉천동: 법정동코드 1162010100 / LAWD_CD 11620"
+  ].join("\n");
+
+  assert.doesNotThrow(() => assertLegalDongSmokeMatchesLawdCd(legalDongText, "11620"));
+  assert.throws(
+    () => assertLegalDongSmokeMatchesLawdCd(legalDongText, "11110"),
+    /did not return the configured LAWD_CD 11110/
+  );
+  assert.throws(
+    () => assertLegalDongSmokeMatchesLawdCd(legalDongText, "1162"),
+    /PUBLIC_DATA_SMOKE_LAWD_CD must be exactly 5 digits/
+  );
 });
 
 test("legal dong helper calls official API and exposes LAWD code", async () => {

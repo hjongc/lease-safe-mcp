@@ -47,6 +47,15 @@ export function publicDataSmokeDepositManwon(): number {
   return value;
 }
 
+export function assertLegalDongSmokeMatchesLawdCd(text: string, lawdCd: string): void {
+  if (!/^\d{5}$/.test(lawdCd)) {
+    throw new Error("PUBLIC_DATA_SMOKE_LAWD_CD must be exactly 5 digits.");
+  }
+  if (!text.includes(`LAWD_CD ${lawdCd}`)) {
+    throw new Error(`Legal-dong smoke did not return the configured LAWD_CD ${lawdCd}.`);
+  }
+}
+
 async function main() {
   if (!process.env.DATA_GO_KR_SERVICE_KEY?.trim()) {
     throw new Error("DATA_GO_KR_SERVICE_KEY is required for live public-data smoke.");
@@ -59,9 +68,7 @@ async function main() {
   const deposit = publicDataSmokeDepositManwon();
 
   const legalDong = await resolveLegalDongCode({ region });
-  if (!legalDong.includes("LAWD_CD")) {
-    throw new Error("Legal-dong smoke did not return a LAWD_CD candidate.");
-  }
+  assertLegalDongSmokeMatchesLawdCd(legalDong, lawdCd);
   console.log("legal_dong=ok");
 
   for (const housingType of housingTypes) {
