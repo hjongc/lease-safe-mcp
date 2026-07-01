@@ -298,6 +298,44 @@ test("legal dong helper rejects JSON without official result code", async () => 
   }
 });
 
+test("legal dong helper rejects malformed official row fields", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      StanReginCd: [
+        {
+          head: [
+            { totalCount: 1 },
+            { RESULT: { resultCode: "INFO-000", resultMsg: "NORMAL SERVICE" } }
+          ]
+        },
+        {
+          row: [
+            {
+              region_cd: "11620",
+              locatadd_nm: "서울특별시 관악구 봉천동"
+            }
+          ]
+        }
+      ]
+    }));
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "관악구" }),
+      /행정표준코드 법정동코드 API returned malformed row fields/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
 test("legal dong helper preserves recognized empty-result payloads", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;

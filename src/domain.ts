@@ -309,19 +309,23 @@ function parseLegalDongRows(payload: unknown): LegalDongRecord[] {
   }
 
   const rowContainer = stanReginCd.map(item => asRecord(item)?.row).find(row => Array.isArray(row)) as unknown[] | undefined;
-  return (rowContainer ?? [])
-    .map(row => {
-      const record = asRecord(row);
-      const regionCode = typeof record?.region_cd === "string" ? record.region_cd.trim() : "";
-      const regionName = typeof record?.locatadd_nm === "string" ? record.locatadd_nm.trim() : "";
-      if (!/^\d{10}$/.test(regionCode) || !regionName) return undefined;
-      return {
-        regionName,
-        regionCode,
-        lawdCd: regionCode.slice(0, 5)
-      };
-    })
-    .filter((record): record is LegalDongRecord => Boolean(record));
+  const rows = rowContainer ?? [];
+  const records: LegalDongRecord[] = [];
+
+  for (const row of rows) {
+    const record = asRecord(row);
+    const regionCode = typeof record?.region_cd === "string" ? record.region_cd.trim() : "";
+    const regionName = typeof record?.locatadd_nm === "string" ? record.locatadd_nm.trim() : "";
+    if (!/^\d{10}$/.test(regionCode) || !regionName) {
+      throw new Error("행정표준코드 법정동코드 API returned malformed row fields.");
+    }
+    records.push({
+      regionName,
+      regionCode,
+      lawdCd: regionCode.slice(0, 5)
+    });
+  }
+  return records;
 }
 
 function legalDongRegionQuery(region: string | undefined): string {
