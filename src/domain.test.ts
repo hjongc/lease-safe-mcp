@@ -14,7 +14,7 @@ import {
   routeOfficialHelp
 } from "./domain.js";
 import { createApp, httpPort, mcpMaxBodyBytes, mcpRateLimitPerMinute, pruneExpiredRateLimitWindows } from "./server.js";
-import { assertLegalDongSmokeMatchesLawdCd, positiveSampleCount, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes } from "../scripts/public-data-smoke.js";
+import { assertLegalDongSmokeMatchesLawdCd, positiveSampleCount, publicDataSmokeDealYmd, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes, publicDataSmokeLawdCd } from "../scripts/public-data-smoke.js";
 import { scanLine } from "../scripts/secret-scan.js";
 
 test("data availability names automatic APIs and no fake fallback", () => {
@@ -77,6 +77,40 @@ test("public-data smoke requires a positive demo deposit", () => {
       delete process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON;
     } else {
       process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON = previousDeposit;
+    }
+  }
+});
+
+test("public-data smoke validates configured region query parameters before API calls", () => {
+  const previousLawdCd = process.env.PUBLIC_DATA_SMOKE_LAWD_CD;
+  const previousDealYmd = process.env.PUBLIC_DATA_SMOKE_DEAL_YMD;
+  try {
+    delete process.env.PUBLIC_DATA_SMOKE_LAWD_CD;
+    delete process.env.PUBLIC_DATA_SMOKE_DEAL_YMD;
+    assert.equal(publicDataSmokeLawdCd(), "11620");
+    assert.equal(publicDataSmokeDealYmd(), "202605");
+
+    process.env.PUBLIC_DATA_SMOKE_LAWD_CD = "11110";
+    process.env.PUBLIC_DATA_SMOKE_DEAL_YMD = "202601";
+    assert.equal(publicDataSmokeLawdCd(), "11110");
+    assert.equal(publicDataSmokeDealYmd(), "202601");
+
+    process.env.PUBLIC_DATA_SMOKE_LAWD_CD = "1111";
+    assert.throws(() => publicDataSmokeLawdCd(), /PUBLIC_DATA_SMOKE_LAWD_CD must be exactly 5 digits/);
+
+    process.env.PUBLIC_DATA_SMOKE_LAWD_CD = "11110";
+    process.env.PUBLIC_DATA_SMOKE_DEAL_YMD = "202613";
+    assert.throws(() => publicDataSmokeDealYmd(), /PUBLIC_DATA_SMOKE_DEAL_YMD must use YYYYMM format/);
+  } finally {
+    if (previousLawdCd === undefined) {
+      delete process.env.PUBLIC_DATA_SMOKE_LAWD_CD;
+    } else {
+      process.env.PUBLIC_DATA_SMOKE_LAWD_CD = previousLawdCd;
+    }
+    if (previousDealYmd === undefined) {
+      delete process.env.PUBLIC_DATA_SMOKE_DEAL_YMD;
+    } else {
+      process.env.PUBLIC_DATA_SMOKE_DEAL_YMD = previousDealYmd;
     }
   }
 });

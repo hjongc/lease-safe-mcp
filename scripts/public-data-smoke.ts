@@ -47,6 +47,22 @@ export function publicDataSmokeDepositManwon(): number {
   return value;
 }
 
+export function publicDataSmokeLawdCd(): string {
+  const lawdCd = process.env.PUBLIC_DATA_SMOKE_LAWD_CD?.trim() || "11620";
+  if (!/^\d{5}$/.test(lawdCd)) {
+    throw new Error("PUBLIC_DATA_SMOKE_LAWD_CD must be exactly 5 digits.");
+  }
+  return lawdCd;
+}
+
+export function publicDataSmokeDealYmd(): string {
+  const dealYmd = process.env.PUBLIC_DATA_SMOKE_DEAL_YMD?.trim() || "202605";
+  if (!/^\d{4}(0[1-9]|1[0-2])$/.test(dealYmd)) {
+    throw new Error("PUBLIC_DATA_SMOKE_DEAL_YMD must use YYYYMM format with a month from 01 to 12.");
+  }
+  return dealYmd;
+}
+
 export function assertLegalDongSmokeMatchesLawdCd(text: string, lawdCd: string): void {
   if (!/^\d{5}$/.test(lawdCd)) {
     throw new Error("PUBLIC_DATA_SMOKE_LAWD_CD must be exactly 5 digits.");
@@ -62,8 +78,8 @@ async function main() {
   }
 
   const region = process.env.PUBLIC_DATA_SMOKE_REGION ?? "서울 관악구";
-  const lawdCd = process.env.PUBLIC_DATA_SMOKE_LAWD_CD ?? "11620";
-  const dealYmd = process.env.PUBLIC_DATA_SMOKE_DEAL_YMD ?? "202605";
+  const lawdCd = publicDataSmokeLawdCd();
+  const dealYmd = publicDataSmokeDealYmd();
   const housingTypes = publicDataSmokeHousingTypes();
   const deposit = publicDataSmokeDepositManwon();
 
