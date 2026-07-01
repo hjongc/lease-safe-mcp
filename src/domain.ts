@@ -320,6 +320,44 @@ function assertPublicDataResponseSize(label: string, bytes: number): void {
   }
 }
 
+async function readPublicDataResponseText(label: string, response: Response): Promise<string> {
+  const contentLength = response.headers.get("content-length")?.trim();
+  if (contentLength) {
+    const parsedContentLength = parsePlainInteger(contentLength);
+    assertPublicDataResponseSize(label, parsedContentLength);
+  }
+
+  if (!response.body) {
+    const body = await response.text();
+    assertPublicDataResponseSize(label, Buffer.byteLength(body, "utf8"));
+    return body;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_PUBLIC_DATA_RESPONSE_BYTES) {
+        await reader.cancel();
+        assertPublicDataResponseSize(label, totalBytes);
+      }
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+    chunks.push(decoder.decode());
+    return chunks.join("");
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 async function fetchPublicDataText(label: string, url: URL): Promise<string> {
   const timeoutMs = publicDataTimeoutMs();
   let response: Response;
@@ -333,13 +371,7 @@ async function fetchPublicDataText(label: string, url: URL): Promise<string> {
     throw new Error(`${label} request failed before receiving a response: ${message}`, { cause: error });
   }
 
-  const contentLength = response.headers.get("content-length")?.trim();
-  if (contentLength) {
-    const parsedContentLength = parsePlainInteger(contentLength);
-    assertPublicDataResponseSize(label, parsedContentLength);
-  }
-
-  const body = await response.text();
+  const body = await readPublicDataResponseText(label, response);
   assertPublicDataResponseSize(label, Buffer.byteLength(body, "utf8"));
   if (!response.ok) {
     const status = response.statusText ? `${response.status} ${response.statusText}` : String(response.status);
