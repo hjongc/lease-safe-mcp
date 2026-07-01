@@ -20,6 +20,7 @@ assert(packageJson.dependencies?.["@modelcontextprotocol/sdk"] === "1.29.0", "MC
 assert(packageJson.scripts?.build, "build script is required");
 assert(packageJson.scripts?.test, "test script is required");
 assert(packageJson.scripts?.smoke, "smoke script is required");
+assert(packageJson.scripts?.preflight, "preflight script is required");
 
 const dockerfile = readFileSync("Dockerfile", "utf8");
 assert(/COPY package\*\.json \.\//.test(dockerfile), "Dockerfile must copy package-lock.json for reproducible builds");
@@ -91,5 +92,13 @@ for (const housingType of ["apartment", "rowhouse", "single_multi", "officetel"]
   assert(publicDataSmoke.includes(`"${housingType}"`), `public-data smoke must cover ${housingType}`);
 }
 assert(/assessLeaseSafety/.test(publicDataSmoke), "public-data smoke must verify the flagship assessment tool");
+
+const releasePreflight = readFileSync("scripts/release-preflight.ts", "utf8");
+assert(/command:\s*"npm"[\s\S]*args:\s*\["test"\]/.test(releasePreflight), "release preflight must include npm test");
+assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"validate:playmcp"\]/.test(releasePreflight), "release preflight must include npm run validate:playmcp");
+assert(/command:\s*"npm"[\s\S]*args:\s*\["audit",\s*"--omit=dev"\]/.test(releasePreflight), "release preflight must include npm audit --omit=dev");
+assert(/command:\s*"docker"[\s\S]*args:\s*\["build"/.test(releasePreflight), "release preflight must include docker build");
+assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"smoke:public-data"\]/.test(releasePreflight), "release preflight must include npm run smoke:public-data");
+assert(/DATA_GO_KR_SERVICE_KEY/.test(releasePreflight), "release preflight must gate live public-data smoke on DATA_GO_KR_SERVICE_KEY");
 
 console.log("Lease Safe PlayMCP validation passed");

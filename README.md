@@ -91,6 +91,14 @@ Smoke:
 MCP_ENDPOINT=http://127.0.0.1:3000/mcp npm run smoke
 ```
 
+Release preflight:
+
+```bash
+npm run preflight
+```
+
+`npm run preflight` runs unit tests, PlayMCP validation, production dependency audit, Docker build, and live public-data smoke when `DATA_GO_KR_SERVICE_KEY` is set.
+
 Live public-data smoke before production rollout:
 
 ```bash
@@ -121,6 +129,16 @@ The repository includes `.github/workflows/ci.yml` for the submission branch. It
 - `docker build -t lease-safe-mcp-ci .`
 
 If the GitHub repository has a `DATA_GO_KR_SERVICE_KEY` secret, CI also runs the live public-data smoke against all supported housing types. Without that secret, the live API smoke is skipped and local pre-submission smoke should be run with the key.
+
+## Submission Checklist
+
+Before registering in PlayMCP:
+
+- Run `npm run preflight` locally with `DATA_GO_KR_SERVICE_KEY` set
+- Confirm the latest GitHub Actions CI run is green
+- Configure the same `DATA_GO_KR_SERVICE_KEY` as a PlayMCP runtime environment variable
+- Set `MCP_ALLOWED_HOSTS` to the PlayMCP host or deployment domain
+- Use `assess_lease_safety` as the demo entry tool
 
 PlayMCP in KC Git-source build:
 
