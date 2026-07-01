@@ -2918,15 +2918,31 @@ test("contract questions include HUG and lease report", () => {
 
 test("contract questions redact contact details from user text", () => {
   const text = prepareContractQuestions({
-    concerns: "연락은 user@example.com 또는 010 1234 5678로 주세요. 주민번호는 900101 1234567입니다."
+    concerns: "서울 관악구 봉천동 101동 202호, 3층 301호, 1203호입니다. 연락은 user@example.com 또는 010 1234 5678로 주세요. 주민번호는 900101 1234567입니다."
   });
 
   assert.match(text, /\[이메일 생략\]/);
   assert.match(text, /\[연락처 생략\]/);
   assert.match(text, /\[민감번호 생략\]/);
+  assert.match(text, /\[동호수 생략\]/);
+  assert.match(text, /서울 관악구 봉천동/);
   assert.doesNotMatch(text, /user@example\.com/);
   assert.doesNotMatch(text, /010 1234 5678/);
   assert.doesNotMatch(text, /900101 1234567/);
+  assert.doesNotMatch(text, /101동 202호/);
+  assert.doesNotMatch(text, /3층 301호/);
+  assert.doesNotMatch(text, /1203호/);
+});
+
+test("red flag checker redacts household unit details from rendered region", () => {
+  const text = checkLeaseRedFlags({
+    region: "서울 관악구 봉천동 1203호",
+    contractType: "jeonse",
+    depositManwon: 30000
+  });
+
+  assert.match(text, /\[동호수 생략\]/);
+  assert.doesNotMatch(text, /1203호/);
 });
 
 test("contract questions normalize user text before rendering markdown", () => {

@@ -105,6 +105,9 @@ function cleanText(value: string | undefined, fallback = "미확인"): string {
     .replace(/\b\d{6}[\s.-]?[1-4]\d{6}\b/g, "[민감번호 생략]")
     .replace(/\b01[016789][\s.-]?\d{3,4}[\s.-]?\d{4}\b/g, "[연락처 생략]")
     .replace(/\b0(?:2|[3-6][1-5]|70|80)[\s.-]?\d{3,4}[\s.-]?\d{4}\b/g, "[연락처 생략]")
+    .replace(/\b\d{1,4}\s*동\s*\d{1,4}\s*호/g, "[동호수 생략]")
+    .replace(/\b\d{1,3}\s*층\s*\d{1,4}\s*호/g, "[동호수 생략]")
+    .replace(/\b\d{2,4}\s*호/g, "[동호수 생략]")
     .replace(/\s+/g, " ");
 }
 

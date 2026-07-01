@@ -133,6 +133,7 @@ assert(domain.includes("보증\\s*보험"), "official help router must infer HUG
 assert(/등기부\|등기/.test(domain), "official help router must infer registry routes from natural-language registry questions");
 assert(/publicDataTextFromOptionalTag/.test(domain), "domain must normalize official public-data text fields before rendering");
 assert(/compactPublicDataFieldValue/.test(domain), "domain must bound and redact invalid official public-data field excerpts");
+assert(/동호수 생략/.test(domain), "domain must redact household unit details from user-rendered text");
 assert(/parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data money fields");
 assert(/parsePublicDataDecimal/.test(domain), "domain must reject exponent-style official public-data decimal fields");
 assert(/parsedYear = parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data date fields");
