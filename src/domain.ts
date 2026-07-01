@@ -193,6 +193,12 @@ function validateMarketQuery(lawdCd: string, dealYmd: string): void {
   }
 }
 
+function assertSupportedHousingType(housingType: string): asserts housingType is HousingType {
+  if (!["apartment", "rowhouse", "single_multi", "officetel"].includes(housingType)) {
+    throw new Error("housingType must be one of apartment, rowhouse, single_multi, or officetel.");
+  }
+}
+
 function isAbortLikeError(error: unknown): boolean {
   const name = (error as { name?: unknown })?.name;
   return name === "AbortError" || name === "TimeoutError";
@@ -393,6 +399,7 @@ async function fetchRentMarketSnapshot(input: {
   depositManwon?: number;
   monthlyRentManwon?: number;
 }): Promise<RentMarketSnapshot> {
+  assertSupportedHousingType(input.housingType);
   validateMarketQuery(input.lawdCd, input.dealYmd);
   const serviceKey = dataGoKrServiceKey();
 
@@ -556,6 +563,7 @@ async function fetchSaleMarketSnapshot(input: {
   dealYmd: string;
   depositManwon: number;
 }): Promise<SaleMarketSnapshot> {
+  assertSupportedHousingType(input.housingType);
   validateMarketQuery(input.lawdCd, input.dealYmd);
   const serviceKey = dataGoKrServiceKey();
   const spec = SALE_API_SPECS[input.housingType];

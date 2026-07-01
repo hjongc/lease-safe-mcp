@@ -156,6 +156,27 @@ test("market API helpers fail fast on invalid public-data query parameters", asy
   }
 });
 
+test("market API helpers fail fast on unsupported housing types", async () => {
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => {
+      throw new Error("fetch should not be called for unsupported housing types");
+    };
+
+    await assert.rejects(
+      compareRentMarket({ housingType: "unknown" as never, lawdCd: "11620", dealYmd: "202605" }),
+      /housingType must be one of/
+    );
+
+    await assert.rejects(
+      compareDepositToSaleMarket({ housingType: "condo" as never, lawdCd: "11620", dealYmd: "202605", depositManwon: 30000 }),
+      /housingType must be one of/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("rent market comparison parses live XML records", async () => {
   const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
   const previousFetch = globalThis.fetch;
