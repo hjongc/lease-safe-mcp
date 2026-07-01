@@ -5,6 +5,15 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
+function assertIncludesInOrder(text: string, values: string[], message: string): void {
+  let cursor = -1;
+  for (const value of values) {
+    const next = text.indexOf(value, cursor + 1);
+    assert(next > cursor, `${message}: ${value}`);
+    cursor = next;
+  }
+}
+
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   name: string;
   scripts?: Record<string, string>;
@@ -62,6 +71,18 @@ for (const workflow of [ci, registrationWorkflow]) {
 for (const command of ["npm ci", "npm run scan:secrets", "npm test", "npm run validate:playmcp", "npm run smoke:http", "npm run smoke:rate-limit", "npm audit --omit=dev", "docker build", "npm run smoke:docker"]) {
   assert(ci.includes(command), `CI must run ${command}`);
 }
+assertIncludesInOrder(ci, [
+  "Scan for committed secrets",
+  "Test",
+  "Validate PlayMCP readiness",
+  "Smoke local MCP HTTP server",
+  "Smoke MCP rate limit",
+  "Audit production dependencies",
+  "Build Docker image",
+  "Smoke Docker runtime",
+  "Live public-data smoke",
+  "Publish live public-data status"
+], "CI evidence gates must run in release-risk order");
 assert(/DATA_GO_KR_SERVICE_KEY/.test(ci), "CI must support optional live public-data smoke through DATA_GO_KR_SERVICE_KEY");
 assert(/REQUIRE_LIVE_PUBLIC_DATA:\s*"1"/.test(ci), "CI live public-data smoke must use registration-mode coverage rules when a key is configured");
 assert(/Publish live public-data status/.test(ci), "CI must publish whether live public-data smoke executed or skipped");
@@ -78,6 +99,14 @@ assert(/GITHUB_SHA/.test(registrationWorkflow), "registration preflight summary 
 assert(/GITHUB_RUN_ID/.test(registrationWorkflow), "registration preflight summary must include the workflow run URL");
 assert(/Live public-data smoke: required by registration preflight/.test(registrationWorkflow), "registration preflight summary must state live public-data evidence is required");
 assert(/Docker runtime smoke: included in registration preflight/.test(registrationWorkflow), "registration preflight summary must state Docker runtime evidence is included");
+assertIncludesInOrder(registrationWorkflow, [
+  "Verify live public-data secret",
+  "Checkout",
+  "Setup Node.js",
+  "Install dependencies",
+  "Run registration preflight",
+  "Publish registration evidence summary"
+], "registration workflow must fail fast before expensive setup and publish evidence last");
 assert(/package-ecosystem:\s*npm/.test(dependabot), "Dependabot must monitor npm dependencies");
 assert(/package-ecosystem:\s*github-actions/.test(dependabot), "Dependabot must monitor GitHub Actions");
 assert(/package-ecosystem:\s*docker/.test(dependabot), "Dependabot must monitor Docker base images");
