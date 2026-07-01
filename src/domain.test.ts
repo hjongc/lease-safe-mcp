@@ -101,8 +101,11 @@ test("public-data smoke validates demo region before API calls", () => {
     process.env.PUBLIC_DATA_SMOKE_REGION = " ";
     assert.throws(() => publicDataSmokeRegion(), /PUBLIC_DATA_SMOKE_REGION must include at least 2 meaningful characters/);
 
-    process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 010-1234-5678";
-    assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers or phone numbers/);
+    process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 010 1234 5678";
+    assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, or phone numbers/);
+
+    process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 user@example.com";
+    assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, or phone numbers/);
   } finally {
     if (previousRegion === undefined) {
       delete process.env.PUBLIC_DATA_SMOKE_REGION;
@@ -384,7 +387,12 @@ test("legal dong helper fails fast on empty or placeholder regions", async () =>
 
     await assert.rejects(
       resolveLegalDongCode({ region: "서울 관악구 010-1234-5678" }),
-      /region must not include personal identifiers or phone numbers/
+      /region must not include personal identifiers, email addresses, or phone numbers/
+    );
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "서울 관악구 user@example.com" }),
+      /region must not include personal identifiers, email addresses, or phone numbers/
     );
   } finally {
     globalThis.fetch = previousFetch;
@@ -1504,6 +1512,19 @@ test("contract questions include HUG and lease report", () => {
   const text = prepareContractQuestions({ concerns: "전세 보증금이 큽니다" });
   assert.match(text, /전세보증금반환보증/);
   assert.match(text, /임대차신고/);
+});
+
+test("contract questions redact contact details from user text", () => {
+  const text = prepareContractQuestions({
+    concerns: "연락은 user@example.com 또는 010 1234 5678로 주세요. 주민번호는 900101 1234567입니다."
+  });
+
+  assert.match(text, /\[이메일 생략\]/);
+  assert.match(text, /\[연락처 생략\]/);
+  assert.match(text, /\[민감번호 생략\]/);
+  assert.doesNotMatch(text, /user@example\.com/);
+  assert.doesNotMatch(text, /010 1234 5678/);
+  assert.doesNotMatch(text, /900101 1234567/);
 });
 
 test("official help router maps lease report to RTMS", () => {

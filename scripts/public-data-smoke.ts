@@ -55,8 +55,8 @@ export function publicDataSmokeRegion(): string {
   if (region.length < 2) {
     throw new Error("PUBLIC_DATA_SMOKE_REGION must include at least 2 meaningful characters.");
   }
-  if (/\b\d{6}-?[1-4]\d{6}\b/.test(region) || /\b01[016789]-?\d{3,4}-?\d{4}\b/.test(region) || /\b0(?:2|[3-6][1-5]|70|80)-?\d{3,4}-?\d{4}\b/.test(region)) {
-    throw new Error("PUBLIC_DATA_SMOKE_REGION must not include personal identifiers or phone numbers.");
+  if (/\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b/.test(region) || /\b\d{6}[\s.-]?[1-4]\d{6}\b/.test(region) || /\b01[016789][\s.-]?\d{3,4}[\s.-]?\d{4}\b/.test(region) || /\b0(?:2|[3-6][1-5]|70|80)[\s.-]?\d{3,4}[\s.-]?\d{4}\b/.test(region)) {
+    throw new Error("PUBLIC_DATA_SMOKE_REGION must not include personal identifiers, email addresses, or phone numbers.");
   }
   return region;
 }
