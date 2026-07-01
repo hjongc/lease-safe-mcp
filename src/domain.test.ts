@@ -386,7 +386,7 @@ test("production app rejects unsafe host allowlist entries", () => {
     process.env.NODE_ENV = "production";
     process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
 
-    for (const value of ["*", "https://example.com", "example.com/path", "bad host.example"]) {
+    for (const value of ["*", "https://example.com", "example.com/path", "bad host.example", "example.com:not-a-port"]) {
       process.env.MCP_ALLOWED_HOSTS = value;
       assert.throws(() => createApp(), /plain hostnames or host:port values/);
     }

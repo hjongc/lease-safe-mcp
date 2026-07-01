@@ -130,7 +130,7 @@ async function main() {
   const endpoint = `http://127.0.0.1:${port}/mcp`;
   const env = {
     ...process.env,
-    MCP_ALLOWED_HOSTS: process.env.MCP_ALLOWED_HOSTS ?? "127.0.0.1,localhost",
+    MCP_ALLOWED_HOSTS: process.env.MCP_ALLOWED_HOSTS ?? `127.0.0.1:${port},localhost`,
     MCP_AUTH_TOKEN: process.env.MCP_AUTH_TOKEN ?? "smoke-token",
     MCP_ENDPOINT: endpoint,
     PORT: String(port)

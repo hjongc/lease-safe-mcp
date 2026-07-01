@@ -1,8 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
+import { hostHeaderValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
 import type { Server } from "node:http";
 import type { NextFunction, Request, Response } from "express";
+import express from "express";
 import * as z from "zod/v4";
 import {
   assessLeaseSafety,
@@ -72,7 +73,14 @@ function allowedHostsFromEnv(): string[] | undefined {
     ) {
       throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames or host:port values, not URLs, paths, wildcards, or whitespace.");
     }
-    return host;
+
+    try {
+      const hostname = new URL(`http://${host}`).hostname;
+      if (!hostname) throw new Error("missing hostname");
+      return hostname;
+    } catch {
+      throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames or host:port values, not URLs, paths, wildcards, or whitespace.");
+    }
   });
   return hosts && hosts.length > 0 ? hosts : undefined;
 }
@@ -457,9 +465,11 @@ export function createApp() {
   const maxBodyBytes = mcpMaxBodyBytes();
   const rateLimitPerMinute = mcpRateLimitPerMinute();
   const publicDataTimeout = publicDataTimeoutMs();
-  const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts });
+  const app = express();
 
   app.disable("x-powered-by");
+  app.use(hostHeaderValidation(allowedHosts));
+  app.use(express.json({ limit: `${maxBodyBytes}b` }));
 
   app.get("/", (_req: Request, res: Response) => {
     res.type("text/plain").send(`${SERVICE_NAME} MCP server is running. Use POST /mcp for Streamable HTTP.`);

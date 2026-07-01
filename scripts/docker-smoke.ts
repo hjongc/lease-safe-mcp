@@ -172,7 +172,7 @@ async function main() {
     "-p",
     `127.0.0.1:${port}:3000`,
     "-e",
-    "MCP_ALLOWED_HOSTS=127.0.0.1,localhost",
+    `MCP_ALLOWED_HOSTS=127.0.0.1:${port},localhost`,
     "-e",
     "DATA_GO_KR_SERVICE_KEY=dummy-preflight-key",
     "-e",
