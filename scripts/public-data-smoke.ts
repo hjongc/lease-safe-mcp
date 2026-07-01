@@ -111,6 +111,10 @@ export function assertLegalDongSmokeMatchesLawdCd(text: string, lawdCd: string):
   }
 }
 
+export function publicDataSmokeConfigLine(region: string, lawdCd: string, dealYmd: string, housingTypes: HousingType[], depositManwon: number): string {
+  return `public_data_smoke_config region=${JSON.stringify(region)} lawd_cd=${lawdCd} deal_ymd=${dealYmd} housing_types=${housingTypes.join(",")} deposit_manwon=${depositManwon}`;
+}
+
 async function main() {
   if (!process.env.DATA_GO_KR_SERVICE_KEY?.trim()) {
     throw new Error("DATA_GO_KR_SERVICE_KEY is required for live public-data smoke.");
@@ -121,6 +125,8 @@ async function main() {
   const dealYmd = publicDataSmokeDealYmd();
   const housingTypes = publicDataSmokeHousingTypes();
   const deposit = publicDataSmokeDepositManwon();
+
+  console.log(publicDataSmokeConfigLine(region, lawdCd, dealYmd, housingTypes, deposit));
 
   const legalDong = await resolveLegalDongCode({ region });
   assertLegalDongSmokeMatchesLawdCd(legalDong, lawdCd);

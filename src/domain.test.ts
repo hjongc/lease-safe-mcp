@@ -18,7 +18,7 @@ import {
   routeOfficialHelp
 } from "./domain.js";
 import { MCP_TEXT_LIMITS, compactLogError, createApp, createServer, httpPort, mcpMaxBodyBytes, mcpRateLimitPerMinute, pruneExpiredRateLimitWindows } from "./server.js";
-import { assertLegalDongSmokeMatchesLawdCd, positiveSampleCount, publicDataSmokeDealYmd, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes, publicDataSmokeLawdCd, publicDataSmokeRegion } from "../scripts/public-data-smoke.js";
+import { assertLegalDongSmokeMatchesLawdCd, positiveSampleCount, publicDataSmokeConfigLine, publicDataSmokeDealYmd, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes, publicDataSmokeLawdCd, publicDataSmokeRegion } from "../scripts/public-data-smoke.js";
 import { scanLine } from "../scripts/secret-scan.js";
 
 const PUBLIC_DATA_KEY_ENV_NAME = ["DATA_GO_KR", "SERVICE_KEY"].join("_");
@@ -306,6 +306,13 @@ test("public-data smoke requires legal-dong proof for configured LAWD code", () 
     () => assertLegalDongSmokeMatchesLawdCd(legalDongText, "00000"),
     /PUBLIC_DATA_SMOKE_LAWD_CD must not be 00000/
   );
+});
+
+test("public-data smoke config line exposes non-secret evidence inputs", () => {
+  const line = publicDataSmokeConfigLine("서울 관악구", "11620", "202605", ["apartment", "rowhouse"], 30000);
+  assert.equal(line, 'public_data_smoke_config region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse deposit_manwon=30000');
+  assert.doesNotMatch(line, /DATA_GO_KR_SERVICE_KEY|serviceKey|secret/i);
+  assert.match(publicDataSmokeConfigLine('서울 "관악구"', "11620", "202605", ["apartment"], 30000), /region="서울 \\"관악구\\""/);
 });
 
 test("legal dong helper calls official API and exposes LAWD code", async () => {

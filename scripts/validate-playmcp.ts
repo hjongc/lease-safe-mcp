@@ -480,6 +480,8 @@ assert(/isAllZeroLawdCd/.test(publicDataSmoke), "public-data smoke must reject a
 assert(/isFutureDealYmd/.test(publicDataSmoke), "public-data smoke must reject future deal months before API calls");
 assert(/REQUIRE_LIVE_PUBLIC_DATA/.test(publicDataSmoke), "public-data smoke must know when registration preflight requires live evidence");
 assert(/must include all supported housing types in registration preflight/.test(publicDataSmoke), "registration preflight must reject narrowed public-data housing smoke");
+assert(/publicDataSmokeConfigLine/.test(publicDataSmoke), "public-data smoke must log non-secret demo configuration");
+assert(/public_data_smoke_config/.test(publicDataSmoke), "public-data smoke config log must be easy to grep in CI logs");
 
 const releasePreflight = readFileSync("scripts/release-preflight.ts", "utf8");
 const registrationPreflight = readFileSync("scripts/registration-preflight.ts", "utf8");

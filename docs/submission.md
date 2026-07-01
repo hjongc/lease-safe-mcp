@@ -90,7 +90,7 @@ DATA_GO_KR_SERVICE_KEY=... npm run preflight:registration
 
 Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_KEY` is configured as a GitHub repository secret, CI also runs the live public-data smoke in registration mode.
 
-For shareable registration evidence, trigger the manual GitHub Actions **Registration Preflight** workflow on the submitted commit. This workflow runs `npm run preflight:registration`, fails when `DATA_GO_KR_SERVICE_KEY` is missing instead of treating live public-data smoke as optional, and publishes a GitHub Actions job summary with the commit, workflow run URL, required command, live public-data requirement, and Docker runtime smoke coverage.
+For shareable registration evidence, trigger the manual GitHub Actions **Registration Preflight** workflow on the submitted commit. This workflow runs `npm run preflight:registration`, fails when `DATA_GO_KR_SERVICE_KEY` is missing instead of treating live public-data smoke as optional, and publishes a GitHub Actions job summary with the commit, workflow run URL, required command, live public-data requirement, demo smoke input values, and Docker runtime smoke coverage.
 
 CI also runs `npm run smoke:docker` after building the image, so registration should use a commit whose Docker image has been proven to boot and answer MCP requests before the optional live API smoke.
 
