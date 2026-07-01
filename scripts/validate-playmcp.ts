@@ -89,7 +89,23 @@ assert(/Publish live public-data status/.test(ci), "CI must publish whether live
 assert(/skipped because DATA_GO_KR_SERVICE_KEY is not configured/.test(ci), "CI summary must make skipped live public-data evidence explicit");
 assert(/Registration Preflight workflow to pass/.test(ci), "CI summary must point operators to required registration evidence");
 assert(/workflow_dispatch/.test(registrationWorkflow), "registration preflight workflow must be manually dispatchable");
+for (const input of [
+  "public_data_smoke_region",
+  "public_data_smoke_lawd_cd",
+  "public_data_smoke_deal_ymd",
+  "public_data_smoke_deposit_manwon"
+]) {
+  assert(registrationWorkflow.includes(input), `registration preflight workflow must expose input: ${input}`);
+}
 assert(/DATA_GO_KR_SERVICE_KEY/.test(registrationWorkflow), "registration preflight workflow must inject DATA_GO_KR_SERVICE_KEY from secrets");
+for (const envName of [
+  "PUBLIC_DATA_SMOKE_REGION",
+  "PUBLIC_DATA_SMOKE_LAWD_CD",
+  "PUBLIC_DATA_SMOKE_DEAL_YMD",
+  "PUBLIC_DATA_SMOKE_DEPOSIT_MANWON"
+]) {
+  assert(registrationWorkflow.includes(envName), `registration preflight workflow must pass demo env: ${envName}`);
+}
 assert(/Verify live public-data secret/.test(registrationWorkflow), "registration preflight workflow must fail fast when the live public-data secret is missing");
 assert(/repository secret is required for registration evidence/.test(registrationWorkflow), "registration preflight workflow must explain the missing secret clearly");
 assert(/npm run preflight:registration/.test(registrationWorkflow), "registration preflight workflow must run npm run preflight:registration");
@@ -98,6 +114,10 @@ assert(/Lease Safe Registration Evidence/.test(registrationWorkflow), "registrat
 assert(/GITHUB_SHA/.test(registrationWorkflow), "registration preflight summary must include the submitted commit");
 assert(/GITHUB_RUN_ID/.test(registrationWorkflow), "registration preflight summary must include the workflow run URL");
 assert(/Live public-data smoke: required by registration preflight/.test(registrationWorkflow), "registration preflight summary must state live public-data evidence is required");
+assert(/Demo smoke region/.test(registrationWorkflow), "registration preflight summary must include the demo smoke region");
+assert(/Demo smoke LAWD_CD/.test(registrationWorkflow), "registration preflight summary must include the demo smoke LAWD_CD");
+assert(/Demo smoke deal month/.test(registrationWorkflow), "registration preflight summary must include the demo smoke deal month");
+assert(/Demo smoke deposit/.test(registrationWorkflow), "registration preflight summary must include the demo smoke deposit");
 assert(/Docker runtime smoke: included in registration preflight/.test(registrationWorkflow), "registration preflight summary must state Docker runtime evidence is included");
 assertIncludesInOrder(registrationWorkflow, [
   "Verify live public-data secret",

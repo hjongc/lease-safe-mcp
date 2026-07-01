@@ -2,6 +2,23 @@ name: Registration Preflight
 
 on:
   workflow_dispatch:
+    inputs:
+      public_data_smoke_region:
+        description: Demo region for live public-data smoke
+        required: true
+        default: 서울 관악구
+      public_data_smoke_lawd_cd:
+        description: Five-digit LAWD_CD for the demo region
+        required: true
+        default: "11620"
+      public_data_smoke_deal_ymd:
+        description: Demo deal month in YYYYMM format
+        required: true
+        default: "202605"
+      public_data_smoke_deposit_manwon:
+        description: Demo deposit in manwon
+        required: true
+        default: "30000"
 
 permissions:
   contents: read
@@ -18,6 +35,10 @@ jobs:
 
     env:
       DATA_GO_KR_SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
+      PUBLIC_DATA_SMOKE_REGION: ${{ inputs.public_data_smoke_region }}
+      PUBLIC_DATA_SMOKE_LAWD_CD: ${{ inputs.public_data_smoke_lawd_cd }}
+      PUBLIC_DATA_SMOKE_DEAL_YMD: ${{ inputs.public_data_smoke_deal_ymd }}
+      PUBLIC_DATA_SMOKE_DEPOSIT_MANWON: ${{ inputs.public_data_smoke_deposit_manwon }}
 
     steps:
       - name: Verify live public-data secret
@@ -54,5 +75,9 @@ jobs:
             echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "- Required command: \`npm run preflight:registration\`"
             echo "- Live public-data smoke: required by registration preflight"
+            echo "- Demo smoke region: \`${PUBLIC_DATA_SMOKE_REGION}\`"
+            echo "- Demo smoke LAWD_CD: \`${PUBLIC_DATA_SMOKE_LAWD_CD}\`"
+            echo "- Demo smoke deal month: \`${PUBLIC_DATA_SMOKE_DEAL_YMD}\`"
+            echo "- Demo smoke deposit: \`${PUBLIC_DATA_SMOKE_DEPOSIT_MANWON}\` manwon"
             echo "- Docker runtime smoke: included in registration preflight"
           } >> "$GITHUB_STEP_SUMMARY"

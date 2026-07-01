@@ -23,6 +23,16 @@ gh workflow run CI --repo hjongc/lease-safe-mcp --ref main
 gh workflow run "Registration Preflight" --repo hjongc/lease-safe-mcp --ref main
 ```
 
+If the default live demo region or month returns zero official samples, rerun the manual `Registration Preflight` workflow with verified public demo inputs:
+
+```bash
+gh workflow run "Registration Preflight" --repo hjongc/lease-safe-mcp --ref main \
+  -f public_data_smoke_region="서울 관악구" \
+  -f public_data_smoke_lawd_cd=11620 \
+  -f public_data_smoke_deal_ymd=202605 \
+  -f public_data_smoke_deposit_manwon=30000
+```
+
 PlayMCP runtime:
 
 - Set `DATA_GO_KR_SERVICE_KEY` in the PlayMCP runtime environment.
@@ -37,7 +47,7 @@ Collect this evidence before registering or updating the PlayMCP build:
 
 - `npm run preflight:registration` passes with `DATA_GO_KR_SERVICE_KEY` set locally.
 - GitHub Actions `Registration Preflight` workflow passes on the submitted commit.
-- GitHub Actions `Registration Preflight` job summary shows the submitted commit, workflow run URL, required command, live public-data requirement, and Docker runtime smoke coverage.
+- GitHub Actions `Registration Preflight` job summary shows the submitted commit, workflow run URL, required command, live public-data requirement, demo smoke input values, and Docker runtime smoke coverage.
 - Latest GitHub Actions `CI` run is green.
 - GitHub Actions `Live public-data smoke` is passed, not skipped, after the repository secret is configured.
 - Docker runtime smoke passes after image build.
