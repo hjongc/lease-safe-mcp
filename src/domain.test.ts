@@ -298,6 +298,51 @@ test("legal dong helper rejects JSON without official result code", async () => 
   }
 });
 
+test("legal dong helper redacts service keys from official error messages", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY_ENCODED;
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      StanReginCd: [
+        {
+          head: [
+            { totalCount: 0 },
+            {
+              RESULT: {
+                resultCode: "ERROR-500",
+                resultMsg: `approval failed for ${VALID_TEST_SERVICE_KEY_ENCODED} and ${VALID_TEST_SERVICE_KEY}`
+              }
+            }
+          ]
+        },
+        {
+          row: []
+        }
+      ]
+    }));
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "관악구" }),
+      error => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /ERROR-500/);
+        assert.match(error.message, /\[DATA_GO_KR_SERVICE_KEY 생략\]/);
+        assert.doesNotMatch(error.message, new RegExp(VALID_TEST_SERVICE_KEY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+        assert.doesNotMatch(error.message, new RegExp(VALID_TEST_SERVICE_KEY_ENCODED.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+        return true;
+      }
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
 test("legal dong helper rejects malformed official row fields", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
@@ -838,6 +883,41 @@ test("rent market comparison surfaces public-data error payloads", async () => {
     await assert.rejects(
       compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" }),
       /returned error: 30 SERVICE KEY IS NOT REGISTERED ERROR/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
+test("market API helpers redact service keys from XML error payloads", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY_ENCODED;
+    globalThis.fetch = async () => new Response(`
+      <OpenAPI_ServiceResponse>
+        <cmmMsgHeader>
+          <returnReasonCode>30</returnReasonCode>
+          <returnAuthMsg>SERVICE KEY ${VALID_TEST_SERVICE_KEY_ENCODED} / ${VALID_TEST_SERVICE_KEY} IS NOT REGISTERED.</returnAuthMsg>
+        </cmmMsgHeader>
+      </OpenAPI_ServiceResponse>
+    `);
+
+    await assert.rejects(
+      compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" }),
+      error => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /returned error: 30/);
+        assert.match(error.message, /\[DATA_GO_KR_SERVICE_KEY 생략\]/);
+        assert.doesNotMatch(error.message, new RegExp(VALID_TEST_SERVICE_KEY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+        assert.doesNotMatch(error.message, new RegExp(VALID_TEST_SERVICE_KEY_ENCODED.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+        return true;
+      }
     );
   } finally {
     globalThis.fetch = previousFetch;

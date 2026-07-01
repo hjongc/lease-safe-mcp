@@ -253,12 +253,16 @@ function dataGoKrServiceKeyRedactionValues(): string[] {
   return values.sort((a, b) => b.length - a.length);
 }
 
-function compactPublicDataResponseExcerpt(body: string): string {
-  let excerpt = body.replace(/\s+/g, " ").trim().slice(0, 200);
+function redactDataGoKrServiceKeys(value: string): string {
+  let redacted = value;
   for (const serviceKey of dataGoKrServiceKeyRedactionValues()) {
-    excerpt = excerpt.split(serviceKey).join("[DATA_GO_KR_SERVICE_KEY 생략]");
+    redacted = redacted.split(serviceKey).join("[DATA_GO_KR_SERVICE_KEY 생략]");
   }
-  return excerpt;
+  return redacted;
+}
+
+function compactPublicDataResponseExcerpt(body: string): string {
+  return redactDataGoKrServiceKeys(body.replace(/\s+/g, " ").trim().slice(0, 200));
 }
 
 async function fetchPublicDataText(label: string, url: URL): Promise<string> {
@@ -287,10 +291,10 @@ function publicDataErrorMessage(body: string): string | undefined {
   const xmlErrorCode = extractTag(body, "returnReasonCode") ?? extractTag(body, "resultCode");
   const xmlErrorMessage = extractTag(body, "returnAuthMsg") ?? extractTag(body, "returnReasonMsg") ?? extractTag(body, "resultMsg");
   if (xmlErrorCode && !["00", "000", "INFO-000", "INFO-0"].includes(xmlErrorCode.trim())) {
-    return `${xmlErrorCode.trim()} ${xmlErrorMessage ?? "public-data API error"}`.trim();
+    return redactDataGoKrServiceKeys(`${xmlErrorCode.trim()} ${xmlErrorMessage ?? "public-data API error"}`.trim());
   }
   if (/SERVICE_KEY|LIMITED_NUMBER_OF_SERVICE_REQUESTS|INVALID_REQUEST_PARAMETER|APPLICATION_ERROR/i.test(body)) {
-    return xmlErrorMessage ?? "public-data API returned an error payload";
+    return redactDataGoKrServiceKeys(xmlErrorMessage ?? "public-data API returned an error payload");
   }
   return undefined;
 }
@@ -316,7 +320,7 @@ function assertPublicDataResultCode(label: string, body: string): void {
   }
   if (!["00", "000", "INFO-000", "INFO-0"].includes(resultCode)) {
     const resultMsg = extractTag(body, "resultMsg") ?? "public-data API error";
-    throw new Error(`${label} returned error: ${resultCode} ${resultMsg}`);
+    throw new Error(`${label} returned error: ${resultCode} ${redactDataGoKrServiceKeys(resultMsg)}`);
   }
 }
 
@@ -341,7 +345,7 @@ function parseLegalDongRows(payload: unknown): LegalDongRecord[] {
   }
   if (resultCode && !["INFO-000", "INFO-0", "00", "000"].includes(resultCode)) {
     const resultMsg = typeof resultRecord?.resultMsg === "string" ? resultRecord.resultMsg : "legal-dong API error";
-    throw new Error(`행정표준코드 법정동코드 API returned error: ${resultCode} ${resultMsg}`);
+    throw new Error(`행정표준코드 법정동코드 API returned error: ${resultCode} ${redactDataGoKrServiceKeys(resultMsg)}`);
   }
 
   const rowContainer = stanReginCd.map(item => asRecord(item)?.row).find(row => Array.isArray(row)) as unknown[] | undefined;
