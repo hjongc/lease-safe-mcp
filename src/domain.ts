@@ -269,8 +269,16 @@ function parseLegalDongRows(payload: unknown): LegalDongRecord[] {
     .filter((record): record is LegalDongRecord => Boolean(record));
 }
 
+function legalDongRegionQuery(region: string | undefined): string {
+  const cleaned = cleanText(region);
+  if (cleaned === "미확인" || cleaned.length < 2) {
+    throw new Error("region must include at least 2 meaningful characters for legal-dong lookup.");
+  }
+  return cleaned;
+}
+
 export async function resolveLegalDongCode(input: { region: string }): Promise<string> {
-  const region = cleanText(input.region);
+  const region = legalDongRegionQuery(input.region);
   const serviceKey = dataGoKrServiceKey();
   const url = new URL(LEGAL_DONG_API.endpoint);
   url.searchParams.set("ServiceKey", serviceKey);

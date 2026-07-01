@@ -135,6 +135,27 @@ test("legal dong helper fails clearly without public-data key", async () => {
   }
 });
 
+test("legal dong helper fails fast on empty or placeholder regions", async () => {
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => {
+      throw new Error("fetch should not be called for invalid region values");
+    };
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "" }),
+      /region must include at least 2 meaningful characters/
+    );
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "unknown" }),
+      /region must include at least 2 meaningful characters/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("market API helpers fail fast on invalid public-data query parameters", async () => {
   const previousFetch = globalThis.fetch;
   try {
