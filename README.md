@@ -96,10 +96,18 @@ Live public-data smoke before production rollout:
 DATA_GO_KR_SERVICE_KEY=... npm run smoke:public-data
 ```
 
+By default, the live public-data smoke checks legal-dong lookup, rent-market APIs for all four housing types, sale-market APIs for all four housing types, and the flagship one-shot assessment.
+
 Optional overrides:
 
 ```bash
 PUBLIC_DATA_SMOKE_REGION="서울 관악구" PUBLIC_DATA_SMOKE_LAWD_CD=11620 PUBLIC_DATA_SMOKE_DEAL_YMD=202605 DATA_GO_KR_SERVICE_KEY=... npm run smoke:public-data
+```
+
+To narrow the live smoke while debugging one source:
+
+```bash
+PUBLIC_DATA_SMOKE_HOUSING_TYPES=apartment,rowhouse DATA_GO_KR_SERVICE_KEY=... npm run smoke:public-data
 ```
 
 PlayMCP in KC Git-source build:

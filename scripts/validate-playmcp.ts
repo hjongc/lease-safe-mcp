@@ -78,4 +78,10 @@ assert(/supportedPlayMcpProtocolVersions/.test(smoke), "smoke must verify protoc
 assert(/getServerVersion/.test(smoke), "smoke must verify server identity");
 assert(/3-10 tools/.test(smoke), "smoke must verify tool count");
 
+const publicDataSmoke = readFileSync("scripts/public-data-smoke.ts", "utf8");
+for (const housingType of ["apartment", "rowhouse", "single_multi", "officetel"]) {
+  assert(publicDataSmoke.includes(`"${housingType}"`), `public-data smoke must cover ${housingType}`);
+}
+assert(/assessLeaseSafety/.test(publicDataSmoke), "public-data smoke must verify the flagship assessment tool");
+
 console.log("Lease Safe PlayMCP validation passed");
