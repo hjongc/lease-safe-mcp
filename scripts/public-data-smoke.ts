@@ -111,8 +111,8 @@ export function assertLegalDongSmokeMatchesLawdCd(text: string, lawdCd: string):
   }
 }
 
-export function publicDataSmokeConfigLine(region: string, lawdCd: string, dealYmd: string, housingTypes: HousingType[], depositManwon: number): string {
-  return `public_data_smoke_config region=${JSON.stringify(region)} lawd_cd=${lawdCd} deal_ymd=${dealYmd} housing_types=${housingTypes.join(",")} deposit_manwon=${depositManwon}`;
+export function publicDataSmokeConfigLine(region: string, lawdCd: string, dealYmd: string, housingTypes: HousingType[], depositManwon: number, registrationMode: boolean): string {
+  return `public_data_smoke_config registration_mode=${registrationMode ? "true" : "false"} region=${JSON.stringify(region)} lawd_cd=${lawdCd} deal_ymd=${dealYmd} housing_types=${housingTypes.join(",")} deposit_manwon=${depositManwon}`;
 }
 
 async function main() {
@@ -126,7 +126,7 @@ async function main() {
   const housingTypes = publicDataSmokeHousingTypes();
   const deposit = publicDataSmokeDepositManwon();
 
-  console.log(publicDataSmokeConfigLine(region, lawdCd, dealYmd, housingTypes, deposit));
+  console.log(publicDataSmokeConfigLine(region, lawdCd, dealYmd, housingTypes, deposit, process.env.REQUIRE_LIVE_PUBLIC_DATA === "1"));
 
   const legalDong = await resolveLegalDongCode({ region });
   assertLegalDongSmokeMatchesLawdCd(legalDong, lawdCd);

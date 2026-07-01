@@ -482,6 +482,7 @@ assert(/REQUIRE_LIVE_PUBLIC_DATA/.test(publicDataSmoke), "public-data smoke must
 assert(/must include all supported housing types in registration preflight/.test(publicDataSmoke), "registration preflight must reject narrowed public-data housing smoke");
 assert(/publicDataSmokeConfigLine/.test(publicDataSmoke), "public-data smoke must log non-secret demo configuration");
 assert(/public_data_smoke_config/.test(publicDataSmoke), "public-data smoke config log must be easy to grep in CI logs");
+assert(/registration_mode/.test(publicDataSmoke), "public-data smoke config log must distinguish registration coverage from narrowed debugging runs");
 
 const releasePreflight = readFileSync("scripts/release-preflight.ts", "utf8");
 const registrationPreflight = readFileSync("scripts/registration-preflight.ts", "utf8");

@@ -309,10 +309,10 @@ test("public-data smoke requires legal-dong proof for configured LAWD code", () 
 });
 
 test("public-data smoke config line exposes non-secret evidence inputs", () => {
-  const line = publicDataSmokeConfigLine("서울 관악구", "11620", "202605", ["apartment", "rowhouse"], 30000);
-  assert.equal(line, 'public_data_smoke_config region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse deposit_manwon=30000');
+  const line = publicDataSmokeConfigLine("서울 관악구", "11620", "202605", ["apartment", "rowhouse"], 30000, true);
+  assert.equal(line, 'public_data_smoke_config registration_mode=true region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse deposit_manwon=30000');
   assert.doesNotMatch(line, /DATA_GO_KR_SERVICE_KEY|serviceKey|secret/i);
-  assert.match(publicDataSmokeConfigLine('서울 "관악구"', "11620", "202605", ["apartment"], 30000), /region="서울 \\"관악구\\""/);
+  assert.match(publicDataSmokeConfigLine('서울 "관악구"', "11620", "202605", ["apartment"], 30000, false), /registration_mode=false region="서울 \\"관악구\\""/);
 });
 
 test("legal dong helper calls official API and exposes LAWD code", async () => {
