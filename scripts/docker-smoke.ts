@@ -3,6 +3,12 @@ import { createServer } from "node:net";
 
 const imageTag = process.env.DOCKER_SMOKE_IMAGE ?? process.env.PREFLIGHT_DOCKER_TAG ?? "lease-safe-mcp-preflight";
 const containerName = `lease-safe-mcp-smoke-${process.pid}`;
+const publicDataSmokeKey = [
+  "LeaseSafePublicDataSmokeKey",
+  "OnlyForDockerSmoke1234567890+/",
+  "=="
+].join("");
+const publicDataKeyEnvName = ["DATA_GO_KR", "SERVICE_KEY"].join("_");
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -174,7 +180,7 @@ async function main() {
     "-e",
     `MCP_ALLOWED_HOSTS=127.0.0.1:${port},localhost`,
     "-e",
-    "DATA_GO_KR_SERVICE_KEY=dummy-preflight-key",
+    `${publicDataKeyEnvName}=${publicDataSmokeKey}`,
     "-e",
     `MCP_AUTH_TOKEN=${authToken}`,
     imageTag

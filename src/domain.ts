@@ -8,6 +8,7 @@ const DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS = new Set([
   "replace-with-data-go-kr-service-key",
   "data-go-kr-service-key"
 ]);
+const MIN_DATA_GO_KR_SERVICE_KEY_LENGTH = 40;
 
 export interface LeaseProfileInput {
   situation?: string;
@@ -186,6 +187,9 @@ export function dataGoKrServiceKey(): string {
 
   if (DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS.has(serviceKey.toLowerCase())) {
     throw new Error("DATA_GO_KR_SERVICE_KEY must be a real data.go.kr service key, not a placeholder.");
+  }
+  if (serviceKey.length < MIN_DATA_GO_KR_SERVICE_KEY_LENGTH || !/^[A-Za-z0-9+/]+={0,2}$/.test(serviceKey)) {
+    throw new Error("DATA_GO_KR_SERVICE_KEY must look like a real data.go.kr service key.");
   }
   return serviceKey;
 }

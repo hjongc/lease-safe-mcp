@@ -17,6 +17,14 @@ import { createApp, httpPort, mcpMaxBodyBytes, mcpRateLimitPerMinute, pruneExpir
 import { assertLegalDongSmokeMatchesLawdCd, positiveSampleCount, publicDataSmokeDealYmd, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes, publicDataSmokeLawdCd, publicDataSmokeRegion } from "../scripts/public-data-smoke.js";
 import { scanLine } from "../scripts/secret-scan.js";
 
+const PUBLIC_DATA_KEY_ENV_NAME = ["DATA_GO_KR", "SERVICE_KEY"].join("_");
+const VALID_TEST_SERVICE_KEY = [
+  "LeaseSafePublicDataSmokeKey",
+  "OnlyForTests1234567890+/",
+  "=="
+].join("");
+const VALID_TEST_SERVICE_KEY_ENCODED = encodeURIComponent(VALID_TEST_SERVICE_KEY);
+
 test("data availability names automatic APIs and no fake fallback", () => {
   const text = explainDataAvailability();
   assert.match(text, /법정동코드/);
@@ -182,15 +190,15 @@ test("public-data smoke requires legal-dong proof for configured LAWD code", () 
 });
 
 test("legal dong helper calls official API and exposes LAWD code", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test%2Fkey%3D%3D";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY_ENCODED;
     globalThis.fetch = async input => {
       const url = new URL(String(input));
       assert.equal(url.searchParams.get("locatadd_nm"), "관악구");
       assert.equal(url.searchParams.get("type"), "json");
-      assert.equal(url.searchParams.get("ServiceKey"), "test/key==");
+      assert.equal(url.searchParams.get("ServiceKey"), VALID_TEST_SERVICE_KEY);
       return new Response(JSON.stringify({
         StanReginCd: [
           {
@@ -218,32 +226,32 @@ test("legal dong helper calls official API and exposes LAWD code", async () => {
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
 
 test("legal dong helper fails clearly without public-data key", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   try {
-    delete process.env.DATA_GO_KR_SERVICE_KEY;
+    delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
 
     await assert.rejects(
       resolveLegalDongCode({ region: "관악구" }),
       /DATA_GO_KR_SERVICE_KEY is required/
     );
   } finally {
-    if (previousKey !== undefined) process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    if (previousKey !== undefined) process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
   }
 });
 
 test("legal dong helper rejects unrecognized public-data JSON payloads", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     globalThis.fetch = async () => new Response(JSON.stringify({ message: "temporarily unavailable" }));
 
     await assert.rejects(
@@ -253,18 +261,18 @@ test("legal dong helper rejects unrecognized public-data JSON payloads", async (
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
 
 test("legal dong helper rejects JSON without official result code", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     globalThis.fetch = async () => new Response(JSON.stringify({
       StanReginCd: [
         {
@@ -280,18 +288,18 @@ test("legal dong helper rejects JSON without official result code", async () => 
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
 
 test("legal dong helper preserves recognized empty-result payloads", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     globalThis.fetch = async () => new Response(JSON.stringify({
       StanReginCd: [
         {
@@ -311,15 +319,15 @@ test("legal dong helper preserves recognized empty-result payloads", async () =>
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
 
 test("public-data key validation rejects placeholders and malformed encoding before fetch", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   const placeholderKey = ["your", "data", "go", "kr", "service", "key"].join("-");
   try {
@@ -327,14 +335,21 @@ test("public-data key validation rejects placeholders and malformed encoding bef
       throw new Error("fetch should not be called for invalid public-data keys");
     };
 
-    process.env.DATA_GO_KR_SERVICE_KEY = placeholderKey;
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = placeholderKey;
     assert.throws(() => dataGoKrServiceKey(), /not a placeholder/);
     await assert.rejects(
       resolveLegalDongCode({ region: "관악구" }),
       /not a placeholder/
     );
 
-    process.env.DATA_GO_KR_SERVICE_KEY = "bad%ZZkey";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = "short-key";
+    assert.throws(() => dataGoKrServiceKey(), /must look like a real data\.go\.kr service key/);
+    await assert.rejects(
+      compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" }),
+      /must look like a real data\.go\.kr service key/
+    );
+
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = "bad%ZZkey";
     assert.throws(() => dataGoKrServiceKey(), /valid percent-encoded or decoded/);
     await assert.rejects(
       compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" }),
@@ -343,9 +358,9 @@ test("public-data key validation rejects placeholders and malformed encoding bef
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
@@ -470,10 +485,10 @@ test("market API helpers fail fast on invalid money inputs", async () => {
 });
 
 test("rent market comparison parses live XML records", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     globalThis.fetch = async input => {
       const url = new URL(String(input));
       assert.equal(url.searchParams.get("LAWD_CD"), "11620");
@@ -513,18 +528,18 @@ test("rent market comparison parses live XML records", async () => {
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
 
 test("rent market comparison parses Korean public-data XML fields", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     globalThis.fetch = async () => new Response(`
       <response>
         <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
@@ -559,18 +574,18 @@ test("rent market comparison parses Korean public-data XML fields", async () => 
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
 
 test("rent market comparison separates reported records from deposit median samples", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     globalThis.fetch = async () => new Response(`
       <response>
         <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
@@ -602,18 +617,18 @@ test("rent market comparison separates reported records from deposit median samp
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
 
 test("rent market comparison does not render fake dates when date tags are missing", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     globalThis.fetch = async () => new Response(`
       <response>
         <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
@@ -639,18 +654,18 @@ test("rent market comparison does not render fake dates when date tags are missi
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
 
 test("rent market comparison surfaces public-data error payloads", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "bad-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     globalThis.fetch = async () => new Response(`
       <OpenAPI_ServiceResponse>
         <cmmMsgHeader>
@@ -667,18 +682,18 @@ test("rent market comparison surfaces public-data error payloads", async () => {
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
 
 test("rent market comparison rejects unrecognized public-data payloads", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     globalThis.fetch = async () => new Response("temporarily unavailable");
 
     await assert.rejects(
@@ -688,18 +703,18 @@ test("rent market comparison rejects unrecognized public-data payloads", async (
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
 
 test("rent market comparison rejects malformed money fields", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     globalThis.fetch = async () => new Response(`
       <response>
         <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
@@ -724,9 +739,9 @@ test("rent market comparison rejects malformed money fields", async () => {
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
@@ -758,11 +773,11 @@ test("public-data timeout is explicit and fails fast on invalid configuration", 
 });
 
 test("public-data timeout errors identify the official source boundary", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousTimeout = process.env.PUBLIC_DATA_TIMEOUT_MS;
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     process.env.PUBLIC_DATA_TIMEOUT_MS = "25";
     globalThis.fetch = async () => {
       throw new DOMException("The operation was aborted.", "TimeoutError");
@@ -775,9 +790,9 @@ test("public-data timeout errors identify the official source boundary", async (
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
     if (previousTimeout === undefined) {
       delete process.env.PUBLIC_DATA_TIMEOUT_MS;
@@ -788,10 +803,10 @@ test("public-data timeout errors identify the official source boundary", async (
 });
 
 test("deposit-to-sale comparison parses sale XML and flags high ratio", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     globalThis.fetch = async input => {
       const url = new URL(String(input));
       assert.match(url.href, /RTMSDataSvcAptTrade/);
@@ -840,18 +855,18 @@ test("deposit-to-sale comparison parses sale XML and flags high ratio", async ()
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
 
 test("deposit-to-sale comparison parses Korean public-data XML fields", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     globalThis.fetch = async () => new Response(`
       <response>
         <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
@@ -884,18 +899,18 @@ test("deposit-to-sale comparison parses Korean public-data XML fields", async ()
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
 
 test("deposit-to-sale comparison renders zero percent as a calculated ratio", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     globalThis.fetch = async () => new Response(`
       <response>
         <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
@@ -924,18 +939,18 @@ test("deposit-to-sale comparison renders zero percent as a calculated ratio", as
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
 
 test("deposit-to-sale comparison rejects unrecognized public-data payloads", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     globalThis.fetch = async () => new Response("temporarily unavailable");
 
     await assert.rejects(
@@ -950,18 +965,18 @@ test("deposit-to-sale comparison rejects unrecognized public-data payloads", asy
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
 
 test("deposit-to-sale comparison rejects malformed sale amount fields", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     globalThis.fetch = async () => new Response(`
       <response>
         <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
@@ -990,18 +1005,18 @@ test("deposit-to-sale comparison rejects malformed sale amount fields", async ()
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
 
 test("one-shot lease assessment combines rent, sale, red flags, and actions", async () => {
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     globalThis.fetch = async input => {
       const url = new URL(String(input));
       assert.equal(url.searchParams.get("LAWD_CD"), "11620");
@@ -1067,9 +1082,9 @@ test("one-shot lease assessment combines rent, sale, red flags, and actions", as
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
@@ -1077,11 +1092,11 @@ test("one-shot lease assessment combines rent, sale, red flags, and actions", as
 test("production app requires host allowlist", () => {
   const previousNodeEnv = process.env.NODE_ENV;
   const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   try {
     process.env.NODE_ENV = "production";
     delete process.env.MCP_ALLOWED_HOSTS;
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
 
     assert.throws(() => createApp(), /MCP_ALLOWED_HOSTS is required in production/);
   } finally {
@@ -1096,9 +1111,9 @@ test("production app requires host allowlist", () => {
       process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
     }
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
@@ -1106,10 +1121,10 @@ test("production app requires host allowlist", () => {
 test("production app rejects unsafe host allowlist entries", () => {
   const previousNodeEnv = process.env.NODE_ENV;
   const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   try {
     process.env.NODE_ENV = "production";
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
 
     for (const value of ["*", "https://example.com", "example.com/path", "bad host.example", "example.com:not-a-port"]) {
       process.env.MCP_ALLOWED_HOSTS = value;
@@ -1130,9 +1145,9 @@ test("production app rejects unsafe host allowlist entries", () => {
       process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
     }
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
@@ -1140,11 +1155,11 @@ test("production app rejects unsafe host allowlist entries", () => {
 test("production app requires public-data key", () => {
   const previousNodeEnv = process.env.NODE_ENV;
   const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   try {
     process.env.NODE_ENV = "production";
     process.env.MCP_ALLOWED_HOSTS = "127.0.0.1,localhost";
-    delete process.env.DATA_GO_KR_SERVICE_KEY;
+    delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
 
     assert.throws(() => createApp(), /DATA_GO_KR_SERVICE_KEY is required in production/);
   } finally {
@@ -1159,9 +1174,9 @@ test("production app requires public-data key", () => {
       process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
     }
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
@@ -1169,12 +1184,12 @@ test("production app requires public-data key", () => {
 test("production app rejects placeholder public-data keys", () => {
   const previousNodeEnv = process.env.NODE_ENV;
   const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const placeholderKey = ["your", "data", "go", "kr", "service", "key"].join("-");
   try {
     process.env.NODE_ENV = "production";
     process.env.MCP_ALLOWED_HOSTS = "127.0.0.1,localhost";
-    process.env.DATA_GO_KR_SERVICE_KEY = placeholderKey;
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = placeholderKey;
 
     assert.throws(() => createApp(), /not a placeholder/);
   } finally {
@@ -1189,9 +1204,38 @@ test("production app rejects placeholder public-data keys", () => {
       process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
     }
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
+test("production app rejects malformed public-data keys", () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  try {
+    process.env.NODE_ENV = "production";
+    process.env.MCP_ALLOWED_HOSTS = "127.0.0.1,localhost";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = "short-key";
+
+    assert.throws(() => createApp(), /must look like a real data\.go\.kr service key/);
+  } finally {
+    if (previousNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+    if (previousAllowedHosts === undefined) {
+      delete process.env.MCP_ALLOWED_HOSTS;
+    } else {
+      process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
+    }
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
   }
 });
@@ -1200,12 +1244,12 @@ test("MCP auth token fails fast when configured too weakly", () => {
   const authEnvName = "MCP_AUTH" + "_TOKEN";
   const previousNodeEnv = process.env.NODE_ENV;
   const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousAuthToken = process.env[authEnvName];
   try {
     process.env.NODE_ENV = "production";
     process.env.MCP_ALLOWED_HOSTS = "127.0.0.1,localhost";
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
 
     process.env[authEnvName] = "short";
     assert.throws(() => createApp(), /MCP_AUTH_TOKEN must be at least 16 characters/);
@@ -1224,9 +1268,9 @@ test("MCP auth token fails fast when configured too weakly", () => {
       process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
     }
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
     if (previousAuthToken === undefined) {
       delete process.env[authEnvName];
@@ -1239,12 +1283,12 @@ test("MCP auth token fails fast when configured too weakly", () => {
 test("production app starts when required runtime configuration is present", () => {
   const previousNodeEnv = process.env.NODE_ENV;
   const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousTimeout = process.env.PUBLIC_DATA_TIMEOUT_MS;
   try {
     process.env.NODE_ENV = "production";
     process.env.MCP_ALLOWED_HOSTS = "127.0.0.1,localhost";
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     process.env.PUBLIC_DATA_TIMEOUT_MS = "7000";
 
     const app = createApp();
@@ -1262,9 +1306,9 @@ test("production app starts when required runtime configuration is present", () 
       process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
     }
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
     if (previousTimeout === undefined) {
       delete process.env.PUBLIC_DATA_TIMEOUT_MS;
@@ -1277,12 +1321,12 @@ test("production app starts when required runtime configuration is present", () 
 test("production app fails fast on invalid public-data timeout configuration", () => {
   const previousNodeEnv = process.env.NODE_ENV;
   const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
-  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousTimeout = process.env.PUBLIC_DATA_TIMEOUT_MS;
   try {
     process.env.NODE_ENV = "production";
     process.env.MCP_ALLOWED_HOSTS = "127.0.0.1,localhost";
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
     process.env.PUBLIC_DATA_TIMEOUT_MS = "60001";
 
     assert.throws(() => createApp(), /PUBLIC_DATA_TIMEOUT_MS/);
@@ -1298,9 +1342,9 @@ test("production app fails fast on invalid public-data timeout configuration", (
       process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
     }
     if (previousKey === undefined) {
-      delete process.env.DATA_GO_KR_SERVICE_KEY;
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
-      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
     }
     if (previousTimeout === undefined) {
       delete process.env.PUBLIC_DATA_TIMEOUT_MS;
