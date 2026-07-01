@@ -506,11 +506,16 @@ function publicDataNumberFromRequiredTag(xml: string, tags: string[], label: str
   }
 
   const normalized = rawValue.replace(/,/g, "").trim();
-  const value = Number(normalized);
+  const value = parsePublicDataInteger(normalized);
   if (normalized === "" || !Number.isFinite(value) || !Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${label} returned invalid numeric field ${tags.join(" or ")}: ${rawValue}`);
   }
   return value;
+}
+
+function parsePublicDataInteger(value: string): number {
+  if (!/^\d+$/.test(value)) return Number.NaN;
+  return Number(value);
 }
 
 function publicDataNumberFromOptionalTag(xml: string, tags: string[], label: string): number | undefined {
