@@ -114,6 +114,7 @@ assert(/isFutureDealYmd/.test(domain), "domain must reject future public-data de
 assert(/dealYmdSchema[\s\S]*\.refine\(value => !isFutureDealYmd\(value\)/.test(server), "server must reject future MCP deal months");
 assert(/PUBLIC_DATA_TIMEOUT_MS/.test(domain), "domain must support a bounded public-data timeout");
 assert(/parsePlainInteger/.test(domain), "domain must parse public-data timeout as a plain integer");
+assert(/MAX_PUBLIC_DATA_RESPONSE_BYTES/.test(domain), "domain must bound official public-data response sizes");
 assert(/publicDataTimeoutMs/.test(server), "server must validate the public-data timeout at startup");
 assert(/SIGTERM/.test(server), "server must handle SIGTERM for container shutdown");
 assert(/x-powered-by/.test(server), "server must disable x-powered-by");

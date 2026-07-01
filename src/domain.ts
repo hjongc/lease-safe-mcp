@@ -2,6 +2,7 @@ import { LEGAL_DONG_API, RENT_API_SPECS, SALE_API_SPECS, renderSources, SOURCES,
 
 const DEFAULT_PUBLIC_DATA_TIMEOUT_MS = 8000;
 const MAX_PUBLIC_DATA_TIMEOUT_MS = 60000;
+const MAX_PUBLIC_DATA_RESPONSE_BYTES = 1_000_000;
 const DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS = new Set([
   "...",
   "your-data-go-kr-service-key",
@@ -313,6 +314,12 @@ function compactPublicDataFieldValue(value: string): string {
   return redactDataGoKrServiceKeys(value.replace(/\s+/g, " ").trim().slice(0, 80));
 }
 
+function assertPublicDataResponseSize(label: string, bytes: number): void {
+  if (!Number.isSafeInteger(bytes) || bytes < 0 || bytes > MAX_PUBLIC_DATA_RESPONSE_BYTES) {
+    throw new Error(`${label} response must be ${MAX_PUBLIC_DATA_RESPONSE_BYTES} bytes or fewer.`);
+  }
+}
+
 async function fetchPublicDataText(label: string, url: URL): Promise<string> {
   const timeoutMs = publicDataTimeoutMs();
   let response: Response;
@@ -326,7 +333,14 @@ async function fetchPublicDataText(label: string, url: URL): Promise<string> {
     throw new Error(`${label} request failed before receiving a response: ${message}`, { cause: error });
   }
 
+  const contentLength = response.headers.get("content-length")?.trim();
+  if (contentLength) {
+    const parsedContentLength = parsePlainInteger(contentLength);
+    assertPublicDataResponseSize(label, parsedContentLength);
+  }
+
   const body = await response.text();
+  assertPublicDataResponseSize(label, Buffer.byteLength(body, "utf8"));
   if (!response.ok) {
     const status = response.statusText ? `${response.status} ${response.statusText}` : String(response.status);
     const excerpt = compactPublicDataResponseExcerpt(body);
