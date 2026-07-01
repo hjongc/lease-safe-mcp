@@ -9,6 +9,7 @@ const DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS = new Set([
   "data-go-kr-service-key"
 ]);
 const MIN_DATA_GO_KR_SERVICE_KEY_LENGTH = 40;
+const MAX_LEGAL_DONG_REGION_LENGTH = 80;
 
 export interface LeaseProfileInput {
   situation?: string;
@@ -375,6 +376,9 @@ function legalDongRegionQuery(region: string | undefined): string {
   }
   if (cleaned.includes("[민감번호 생략]") || cleaned.includes("[연락처 생략]") || cleaned.includes("[이메일 생략]")) {
     throw new Error("region must not include personal identifiers, email addresses, or phone numbers for legal-dong lookup.");
+  }
+  if (cleaned.length > MAX_LEGAL_DONG_REGION_LENGTH) {
+    throw new Error(`region must be ${MAX_LEGAL_DONG_REGION_LENGTH} characters or fewer for legal-dong lookup.`);
   }
   return cleaned;
 }

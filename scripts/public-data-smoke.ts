@@ -2,6 +2,7 @@ import { assessLeaseSafety, compareDepositToSaleMarket, compareRentMarket, resol
 import type { HousingType } from "../src/sources.js";
 
 const HOUSING_TYPES = ["apartment", "rowhouse", "single_multi", "officetel"] as const satisfies readonly HousingType[];
+const MAX_PUBLIC_DATA_SMOKE_REGION_LENGTH = 80;
 
 export function positiveSampleCount(text: string, label: string, pattern: RegExp): number {
   const match = text.match(pattern);
@@ -57,6 +58,9 @@ export function publicDataSmokeRegion(): string {
   }
   if (/\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b/.test(region) || /\b\d{6}[\s.-]?[1-4]\d{6}\b/.test(region) || /\b01[016789][\s.-]?\d{3,4}[\s.-]?\d{4}\b/.test(region) || /\b0(?:2|[3-6][1-5]|70|80)[\s.-]?\d{3,4}[\s.-]?\d{4}\b/.test(region)) {
     throw new Error("PUBLIC_DATA_SMOKE_REGION must not include personal identifiers, email addresses, or phone numbers.");
+  }
+  if (region.length > MAX_PUBLIC_DATA_SMOKE_REGION_LENGTH) {
+    throw new Error(`PUBLIC_DATA_SMOKE_REGION must be ${MAX_PUBLIC_DATA_SMOKE_REGION_LENGTH} characters or fewer.`);
   }
   return region;
 }

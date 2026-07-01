@@ -106,6 +106,9 @@ test("public-data smoke validates demo region before API calls", () => {
 
     process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 user@example.com";
     assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, or phone numbers/);
+
+    process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 ".repeat(12);
+    assert.throws(() => publicDataSmokeRegion(), /PUBLIC_DATA_SMOKE_REGION must be 80 characters or fewer/);
   } finally {
     if (previousRegion === undefined) {
       delete process.env.PUBLIC_DATA_SMOKE_REGION;
@@ -476,6 +479,11 @@ test("legal dong helper fails fast on empty or placeholder regions", async () =>
     await assert.rejects(
       resolveLegalDongCode({ region: "서울 관악구 user@example.com" }),
       /region must not include personal identifiers, email addresses, or phone numbers/
+    );
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "서울 관악구 ".repeat(12) }),
+      /region must be 80 characters or fewer/
     );
   } finally {
     globalThis.fetch = previousFetch;
