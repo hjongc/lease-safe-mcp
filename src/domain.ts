@@ -541,9 +541,9 @@ function contractDateFromTags(xml: string): string {
   const day = extractFirstTag(xml, ["dealDay", "일"]);
   if (!year || !month || !day) return "날짜 미확인";
 
-  const parsedYear = Number(year);
-  const parsedMonth = Number(month);
-  const parsedDay = Number(day);
+  const parsedYear = parsePublicDataInteger(year.trim());
+  const parsedMonth = parsePublicDataInteger(month.trim());
+  const parsedDay = parsePublicDataInteger(day.trim());
   if (
     !Number.isSafeInteger(parsedYear) ||
     !Number.isSafeInteger(parsedMonth) ||

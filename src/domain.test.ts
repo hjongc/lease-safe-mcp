@@ -950,6 +950,46 @@ test("rent market comparison does not render impossible calendar dates", async (
   }
 });
 
+test("rent market comparison does not coerce malformed date fields", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악지수날짜</aptNm>
+            <umdNm>봉천동</umdNm>
+            <deposit>30,000</deposit>
+            <monthlyRent>0</monthlyRent>
+            <dealYear>2e3</dealYear>
+            <dealMonth>5</dealMonth>
+            <dealDay>10</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    const text = await compareRentMarket({
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605"
+    });
+
+    assert.match(text, /날짜 미확인/);
+    assert.doesNotMatch(text, /2000-05-10/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
 test("rent market comparison surfaces public-data error payloads", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
@@ -1515,6 +1555,46 @@ test("deposit-to-sale comparison renders zero percent as a calculated ratio", as
 
     assert.match(text, /매매가 대비 보증금 비율: 0%/);
     assert.doesNotMatch(text, /매매가 대비 보증금 비율: 계산 불가/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
+test("deposit-to-sale comparison does not coerce malformed date fields", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악지수날짜매매</aptNm>
+            <umdNm>봉천동</umdNm>
+            <dealAmount>40,000</dealAmount>
+            <dealYear>2e3</dealYear>
+            <dealMonth>5</dealMonth>
+            <dealDay>10</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    const text = await compareDepositToSaleMarket({
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605",
+      depositManwon: 30000
+    });
+
+    assert.match(text, /날짜 미확인/);
+    assert.doesNotMatch(text, /2000-05-10/);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
