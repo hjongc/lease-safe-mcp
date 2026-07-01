@@ -30,6 +30,12 @@ const VERSION = "0.1.0";
 const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
 const DEFAULT_MCP_RATE_LIMIT_PER_MINUTE = 120;
 const MIN_MCP_AUTH_TOKEN_LENGTH = 16;
+const MCP_AUTH_TOKEN_PLACEHOLDERS = new Set([
+  "replace-with-runtime-secret",
+  "your-mcp-auth-token",
+  "mcp-auth-token",
+  "..."
+]);
 
 export const MCP_TEXT_LIMITS = {
   region: 80,
@@ -136,6 +142,9 @@ function requireProductionDataKey(): void {
 function mcpAuthToken(): string | undefined {
   const token = process.env.MCP_AUTH_TOKEN?.trim();
   if (!token) return undefined;
+  if (MCP_AUTH_TOKEN_PLACEHOLDERS.has(token.toLowerCase())) {
+    throw new Error("MCP_AUTH_TOKEN must be a real bearer token, not a placeholder.");
+  }
   if (token.length < MIN_MCP_AUTH_TOKEN_LENGTH) {
     throw new Error(`MCP_AUTH_TOKEN must be at least ${MIN_MCP_AUTH_TOKEN_LENGTH} characters when set.`);
   }
