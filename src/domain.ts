@@ -102,11 +102,15 @@ export function explainDataAvailability(): string {
 }
 
 function dataGoKrServiceKey(): string {
-  const serviceKey = process.env.DATA_GO_KR_SERVICE_KEY?.trim();
-  if (!serviceKey) {
+  const rawServiceKey = process.env.DATA_GO_KR_SERVICE_KEY?.trim();
+  if (!rawServiceKey) {
     throw new Error("DATA_GO_KR_SERVICE_KEY is required for live public-data lookup. 샘플 데이터로 대체하지 않습니다.");
   }
-  return serviceKey;
+  try {
+    return rawServiceKey.includes("%") ? decodeURIComponent(rawServiceKey) : rawServiceKey;
+  } catch {
+    return rawServiceKey;
+  }
 }
 
 function publicDataErrorMessage(body: string): string | undefined {

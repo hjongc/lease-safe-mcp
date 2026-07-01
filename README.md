@@ -39,7 +39,7 @@ Reviewed official guidance:
 - 한국부동산원·LH 임대차분쟁조정위원회
 - HUG 주택도시보증공사
 
-`DATA_GO_KR_SERVICE_KEY` is required for API-backed tools: `resolve_legal_dong_code` and `compare_rent_market`. If it is missing or rejected by data.go.kr, those tools fail clearly instead of using fake sample data.
+`DATA_GO_KR_SERVICE_KEY` is required for API-backed tools: `resolve_legal_dong_code` and `compare_rent_market`. Encoded and decoded data.go.kr keys are both accepted. If the key is missing or rejected by data.go.kr, those tools fail clearly instead of using fake sample data.
 
 ## Production Configuration
 

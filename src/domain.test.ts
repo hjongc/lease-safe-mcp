@@ -22,11 +22,12 @@ test("legal dong helper calls official API and exposes LAWD code", async () => {
   const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env.DATA_GO_KR_SERVICE_KEY = "test%2Fkey%3D%3D";
     globalThis.fetch = async input => {
       const url = new URL(String(input));
       assert.equal(url.searchParams.get("locatadd_nm"), "관악구");
       assert.equal(url.searchParams.get("type"), "json");
+      assert.equal(url.searchParams.get("ServiceKey"), "test/key==");
       return new Response(JSON.stringify({
         StanReginCd: [
           {
