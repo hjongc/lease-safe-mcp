@@ -239,6 +239,10 @@ function isAbortLikeError(error: unknown): boolean {
   return name === "AbortError" || name === "TimeoutError";
 }
 
+function compactPublicDataResponseExcerpt(body: string): string {
+  return body.replace(/\s+/g, " ").trim().slice(0, 200);
+}
+
 async function fetchPublicDataText(label: string, url: URL): Promise<string> {
   const timeoutMs = publicDataTimeoutMs();
   let response: Response;
@@ -254,7 +258,9 @@ async function fetchPublicDataText(label: string, url: URL): Promise<string> {
 
   const body = await response.text();
   if (!response.ok) {
-    throw new Error(`${label} request failed: ${response.status}`);
+    const status = response.statusText ? `${response.status} ${response.statusText}` : String(response.status);
+    const excerpt = compactPublicDataResponseExcerpt(body);
+    throw new Error(`${label} request failed: ${status}${excerpt ? ` - ${excerpt}` : ""}`);
   }
   return body;
 }
