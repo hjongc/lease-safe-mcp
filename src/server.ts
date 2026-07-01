@@ -5,6 +5,7 @@ import type { Request, Response } from "express";
 import * as z from "zod/v4";
 import {
   buildMoveInProtectionPlan,
+  compareDepositToSaleMarket,
   checkLeaseRedFlags,
   compareRentMarket,
   explainDataAvailability,
@@ -144,6 +145,23 @@ export function createServer(): McpServer {
       annotations: readOnlyAnnotations("전월세 실거래 비교")
     },
     async input => textResult(await compareRentMarket(input))
+  );
+
+  server.registerTool(
+    "compare_deposit_to_sale_market",
+    {
+      title: "매매가 대비 보증금 점검",
+      description:
+        "전월세안전내비가 국토교통부 매매 실거래가 OpenAPI를 호출해 입력 보증금이 주변 매매가 중앙값 대비 어느 정도인지 전세가율 관점으로 점검합니다. DATA_GO_KR_SERVICE_KEY가 필요합니다.",
+      inputSchema: {
+        housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("매매 실거래가를 조회할 주택 유형입니다."),
+        lawdCd: z.string().regex(/^\d{5}$/).describe("법정동 코드 10자리 중 앞 5자리인 시군구 코드입니다. 예: 서울 관악구 11620."),
+        dealYmd: z.string().regex(/^\d{6}$/).describe("계약년월 6자리입니다. 예: 202605."),
+        depositManwon: z.number().nonnegative().describe("비교할 보증금을 만원 단위 숫자로 적어주세요. 예: 30000은 3억원입니다.")
+      },
+      annotations: readOnlyAnnotations("매매가 대비 보증금 점검")
+    },
+    async input => textResult(await compareDepositToSaleMarket(input))
   );
 
   server.registerTool(

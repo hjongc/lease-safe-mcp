@@ -17,6 +17,14 @@
    - Required query: `LAWD_CD`, `DEAL_YMD`, `serviceKey`.
    - Key fields: `deposit`, `monthlyRent`, `dealYear`, `dealMonth`, `dealDay`, `excluUseAr`, `contractTerm`, `contractType`.
 
+3. 국토교통부 매매 실거래가 APIs
+   - Apartment: https://www.data.go.kr/data/15126469/openapi.do
+   - Row house/multifamily: https://www.data.go.kr/data/15126467/openapi.do
+   - Single/multifamily detached: https://www.data.go.kr/data/15126465/openapi.do
+   - Officetel: https://www.data.go.kr/data/15126464/openapi.do
+   - Required query: `LAWD_CD`, `DEAL_YMD`, `serviceKey`.
+   - Key fields: `dealAmount`, `dealYear`, `dealMonth`, `dealDay`, `excluUseAr`, `totalArea`.
+
 ## Curated Official Guidance
 
 These are stored as reviewed source records and rule text, not scraped live at answer time.

@@ -6,6 +6,7 @@ It uses official public data and reviewed official guidance to help users:
 
 - convert a region name into official legal-dong codes through the official legal-dong API
 - compare nearby reported rent deposits when a data.go.kr API key is configured
+- compare a deposit against nearby sale prices to estimate sale-price-to-deposit risk
 - detect contract red flags without making legal conclusions
 - plan move-in protection steps such as move-in report, fixed date, and lease report
 - prepare questions for landlords, agents, and official institutions
@@ -16,7 +17,7 @@ It uses official public data and reviewed official guidance to help users:
 
 - Streamable HTTP transport: `POST /mcp`
 - Stateless server
-- Tool count: 8
+- Tool count: 9
 - No `kakao` string in server or tool names
 - Required tool annotations included
 - Compact Korean markdown outputs
@@ -28,6 +29,7 @@ Automatic data:
 
 - 행정안전부 행정표준코드 법정동코드 OpenAPI
 - 국토교통부 아파트, 연립다세대, 단독/다가구, 오피스텔 전월세 실거래가 OpenAPI
+- 국토교통부 아파트, 연립다세대, 단독/다가구, 오피스텔 매매 실거래가 OpenAPI
 
 Reviewed official guidance:
 
@@ -39,7 +41,7 @@ Reviewed official guidance:
 - 한국부동산원·LH 임대차분쟁조정위원회
 - HUG 주택도시보증공사
 
-`DATA_GO_KR_SERVICE_KEY` is required for API-backed tools: `resolve_legal_dong_code` and `compare_rent_market`. Encoded and decoded data.go.kr keys are both accepted. If the key is missing or rejected by data.go.kr, those tools fail clearly instead of using fake sample data.
+`DATA_GO_KR_SERVICE_KEY` is required for API-backed tools: `resolve_legal_dong_code`, `compare_rent_market`, and `compare_deposit_to_sale_market`. Encoded and decoded data.go.kr keys are both accepted. If the key is missing or rejected by data.go.kr, those tools fail clearly instead of using fake sample data.
 
 ## Production Configuration
 

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { RENT_API_SPECS, SOURCES } from "../src/sources.js";
+import { RENT_API_SPECS, SALE_API_SPECS, SOURCES } from "../src/sources.js";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -47,6 +47,10 @@ for (const expected of [
   "molit-rowhouse-rent",
   "molit-single-rent",
   "molit-officetel-rent",
+  "molit-apartment-sale",
+  "molit-rowhouse-sale",
+  "molit-single-sale",
+  "molit-officetel-sale",
   "gov24",
   "rtms-lease-report",
   "iros-fixed-date",
@@ -61,6 +65,11 @@ for (const expected of [
 for (const spec of Object.values(RENT_API_SPECS)) {
   assert(spec.endpoint.includes("apis.data.go.kr/1613000/"), `rent endpoint must use official data.go.kr gateway: ${spec.housingType}`);
   assert(spec.portalUrl.includes("data.go.kr"), `rent portal must use data.go.kr: ${spec.housingType}`);
+}
+
+for (const spec of Object.values(SALE_API_SPECS)) {
+  assert(spec.endpoint.includes("apis.data.go.kr/1613000/"), `sale endpoint must use official data.go.kr gateway: ${spec.housingType}`);
+  assert(spec.portalUrl.includes("data.go.kr"), `sale portal must use data.go.kr: ${spec.housingType}`);
 }
 
 const smoke = readFileSync("scripts/smoke.ts", "utf8");

@@ -1,4 +1,4 @@
-import { compareRentMarket, resolveLegalDongCode } from "../src/domain.js";
+import { compareDepositToSaleMarket, compareRentMarket, resolveLegalDongCode } from "../src/domain.js";
 
 async function main() {
   if (!process.env.DATA_GO_KR_SERVICE_KEY?.trim()) {
@@ -24,6 +24,17 @@ async function main() {
     throw new Error("Rent-market smoke did not return a sample count.");
   }
   console.log("rent_market=ok");
+
+  const saleMarket = await compareDepositToSaleMarket({
+    housingType: "apartment",
+    lawdCd,
+    dealYmd,
+    depositManwon: Number(process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON ?? 30000)
+  });
+  if (!saleMarket.includes("매매가 대비 보증금 비율:")) {
+    throw new Error("Sale-market smoke did not return a deposit-to-sale ratio.");
+  }
+  console.log("sale_market=ok");
 }
 
 main().catch(error => {

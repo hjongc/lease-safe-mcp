@@ -1,4 +1,4 @@
-import { LEGAL_DONG_API, RENT_API_SPECS, renderSources, SOURCES, type HousingType } from "./sources.js";
+import { LEGAL_DONG_API, RENT_API_SPECS, SALE_API_SPECS, renderSources, SOURCES, type HousingType } from "./sources.js";
 
 export interface LeaseProfileInput {
   situation?: string;
@@ -21,6 +21,15 @@ export interface RentRecord {
   contractDate: string;
   floor?: string;
   contractType?: string;
+}
+
+export interface SaleRecord {
+  name?: string;
+  legalDong?: string;
+  area?: number;
+  dealAmountManwon: number;
+  contractDate: string;
+  floor?: string;
 }
 
 interface LegalDongRecord {
@@ -86,7 +95,8 @@ export function explainDataAvailability(): string {
     "자동 연동 가능",
     lineItems([
       `법정동코드: ${LEGAL_DONG_API.endpoint} / 지역명 검색 후 10자리 법정동 코드와 실거래 조회용 앞 5자리 코드 사용`,
-      "국토교통부 전월세 실거래가: 아파트, 연립다세대, 단독/다가구, 오피스텔별 OpenAPI / LAWD_CD, DEAL_YMD, serviceKey 필요"
+      "국토교통부 전월세 실거래가: 아파트, 연립다세대, 단독/다가구, 오피스텔별 OpenAPI / LAWD_CD, DEAL_YMD, serviceKey 필요",
+      "국토교통부 매매 실거래가: 아파트, 연립다세대, 단독/다가구, 오피스텔별 OpenAPI / 보증금-매매가 비율 참고"
     ]),
     "",
     "수동 검토 레지스트리 권장",
@@ -231,6 +241,23 @@ function extractItems(xml: string, specNameField?: string): RentRecord[] {
     .filter(item => item.depositManwon > 0 || item.monthlyRentManwon > 0);
 }
 
+function extractSaleItems(xml: string, specNameField?: string): SaleRecord[] {
+  const items = [...xml.matchAll(/<item>(.*?)<\/item>/gs)].map(match => match[1]);
+  return items
+    .map(item => {
+      const dealAmount = Number((extractTag(item, "dealAmount") ?? "0").replace(/,/g, ""));
+      return {
+        name: specNameField ? extractTag(item, specNameField) : undefined,
+        legalDong: extractTag(item, "umdNm"),
+        area: Number(extractTag(item, "excluUseAr") ?? extractTag(item, "totalArea") ?? "0") || undefined,
+        dealAmountManwon: dealAmount,
+        contractDate: `${extractTag(item, "dealYear") ?? ""}-${(extractTag(item, "dealMonth") ?? "").padStart(2, "0")}-${(extractTag(item, "dealDay") ?? "").padStart(2, "0")}`,
+        floor: extractTag(item, "floor")
+      };
+    })
+    .filter(item => item.dealAmountManwon > 0);
+}
+
 export async function compareRentMarket(input: {
   housingType: HousingType;
   lawdCd: string;
@@ -288,6 +315,76 @@ export async function compareRentMarket(input: {
     "",
     "## 공식 출처",
     renderSources([`molit-${input.housingType === "single_multi" ? "single" : input.housingType}-rent`])
+  ].join("\n");
+}
+
+function saleRatioSignal(ratio: number | undefined): string {
+  if (!Number.isFinite(ratio)) {
+    return "입력 보증금이나 매매 표본 중앙값이 부족해 매매가 대비 비율을 계산하지 않았습니다.";
+  }
+  if ((ratio as number) >= 90) {
+    return "입력 보증금이 주변 매매가 중앙값의 90% 이상입니다. 깡통전세 위험 가능성이 매우 크므로 등기부 선순위 권리, 보증보험 가능 여부, 잔금 전 등기 변동을 최우선으로 확인하세요.";
+  }
+  if ((ratio as number) >= 80) {
+    return "입력 보증금이 주변 매매가 중앙값의 80% 이상입니다. 매매가 하락이나 선순위 권리까지 고려하면 보증금 회수 위험이 커질 수 있습니다.";
+  }
+  if ((ratio as number) >= 70) {
+    return "입력 보증금이 주변 매매가 중앙값의 70% 이상입니다. 보증보험, 선순위 권리, 동일 면적 표본을 추가로 확인하세요.";
+  }
+  return "입력 보증금은 주변 매매가 중앙값 대비 70% 미만입니다. 그래도 개별 등기부, 선순위 보증금, 특약 확인은 별도입니다.";
+}
+
+export async function compareDepositToSaleMarket(input: {
+  housingType: HousingType;
+  lawdCd: string;
+  dealYmd: string;
+  depositManwon: number;
+}): Promise<string> {
+  const serviceKey = dataGoKrServiceKey();
+  const spec = SALE_API_SPECS[input.housingType];
+  const url = new URL(spec.endpoint);
+  url.searchParams.set("LAWD_CD", input.lawdCd);
+  url.searchParams.set("DEAL_YMD", input.dealYmd);
+  url.searchParams.set("serviceKey", serviceKey);
+
+  const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  const xml = await response.text();
+  if (!response.ok) {
+    throw new Error(`국토교통부 매매 실거래 API request failed: ${response.status}`);
+  }
+  const publicDataError = publicDataErrorMessage(xml);
+  if (publicDataError) {
+    throw new Error(`국토교통부 매매 실거래 API returned error: ${publicDataError}`);
+  }
+
+  const records = extractSaleItems(xml, spec.nameField);
+  const saleAmounts = records.map(record => record.dealAmountManwon).sort((a, b) => a - b);
+  const sampleCount = saleAmounts.length;
+  const median = sampleCount > 0 ? saleAmounts[Math.floor(sampleCount / 2)] : undefined;
+  const max = sampleCount > 0 ? saleAmounts[sampleCount - 1] : undefined;
+  const ratio = median ? Math.round((input.depositManwon / median) * 1000) / 10 : undefined;
+
+  return [
+    "## 매매가 대비 보증금 점검",
+    `주택유형: ${spec.label}`,
+    `조회 기준: LAWD_CD ${input.lawdCd}, 계약월 ${input.dealYmd}`,
+    `매매 표본 수: ${sampleCount}`,
+    sampleCount > 0 ? `매매가 중앙값: ${money(median)} / 최대값: ${money(max)}` : "조회된 매매 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
+    `입력 보증금: ${money(input.depositManwon)}`,
+    ratio ? `매매가 대비 보증금 비율: ${ratio.toLocaleString("ko-KR")}%` : "매매가 대비 보증금 비율: 계산 불가",
+    "",
+    "## 해석",
+    saleRatioSignal(ratio),
+    "",
+    records.slice(0, 5).length > 0
+      ? ["## 매매 표본 일부", ...records.slice(0, 5).map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 매매가 ${money(record.dealAmountManwon)}`)].join("\n")
+      : "",
+    "",
+    "## 확인 필요",
+    "이 비율은 주변 신고 표본을 이용한 참고 지표입니다. 특정 매물의 안전성, 선순위 권리, 보증보험 가입 가능 여부를 확정하지 않습니다.",
+    "",
+    "## 공식 출처",
+    renderSources([`molit-${input.housingType === "single_multi" ? "single" : input.housingType}-sale`])
   ].join("\n");
 }
 

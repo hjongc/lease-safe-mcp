@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildMoveInProtectionPlan,
   checkLeaseRedFlags,
+  compareDepositToSaleMarket,
   compareRentMarket,
   explainDataAvailability,
   prepareContractQuestions,
@@ -144,6 +145,66 @@ test("rent market comparison surfaces public-data error payloads", async () => {
       compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" }),
       /returned error: 30 SERVICE KEY IS NOT REGISTERED ERROR/
     );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
+test("deposit-to-sale comparison parses sale XML and flags high ratio", async () => {
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    globalThis.fetch = async input => {
+      const url = new URL(String(input));
+      assert.match(url.href, /RTMSDataSvcAptTrade/);
+      assert.equal(url.searchParams.get("LAWD_CD"), "11620");
+      assert.equal(url.searchParams.get("DEAL_YMD"), "202605");
+      return new Response(`
+        <response>
+          <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
+          <body><items>
+            <item>
+              <aptNm>관악매매1</aptNm>
+              <umdNm>봉천동</umdNm>
+              <dealAmount>40,000</dealAmount>
+              <dealYear>2026</dealYear>
+              <dealMonth>5</dealMonth>
+              <dealDay>10</dealDay>
+              <excluUseAr>59.9</excluUseAr>
+              <floor>7</floor>
+            </item>
+            <item>
+              <aptNm>관악매매2</aptNm>
+              <umdNm>봉천동</umdNm>
+              <dealAmount>50,000</dealAmount>
+              <dealYear>2026</dealYear>
+              <dealMonth>5</dealMonth>
+              <dealDay>20</dealDay>
+              <excluUseAr>59.9</excluUseAr>
+              <floor>9</floor>
+            </item>
+          </items></body>
+        </response>
+      `);
+    };
+
+    const text = await compareDepositToSaleMarket({
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605",
+      depositManwon: 42000
+    });
+
+    assert.match(text, /매매 표본 수: 2/);
+    assert.match(text, /매매가 대비 보증금 비율: 84%/);
+    assert.match(text, /80% 이상/);
+    assert.match(text, /특정 매물의 안전성/);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {

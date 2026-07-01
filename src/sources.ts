@@ -19,6 +19,15 @@ export interface RentApiSpec {
   nameField?: string;
 }
 
+export interface SaleApiSpec {
+  housingType: HousingType;
+  label: string;
+  portalUrl: string;
+  endpoint: string;
+  operationId: string;
+  nameField?: string;
+}
+
 export type HousingType = "apartment" | "rowhouse" | "single_multi" | "officetel";
 
 export const REVIEWED_AT = "2026-06-30";
@@ -68,6 +77,42 @@ export const SOURCES: SourceRecord[] = [
     reviewedAt: REVIEWED_AT,
     confidence: "official_national",
     useFor: "지역과 계약월 기준 오피스텔 전월세 신고 자료 조회"
+  },
+  {
+    id: "molit-apartment-sale",
+    title: "아파트 매매 실거래가 OpenAPI",
+    sourceName: "국토교통부_아파트 매매 실거래가 자료",
+    url: "https://www.data.go.kr/data/15126469/openapi.do",
+    reviewedAt: REVIEWED_AT,
+    confidence: "official_national",
+    useFor: "지역과 계약월 기준 아파트 매매 신고 자료 조회 및 보증금-매매가 비율 참고"
+  },
+  {
+    id: "molit-rowhouse-sale",
+    title: "연립다세대 매매 실거래가 OpenAPI",
+    sourceName: "국토교통부_연립다세대 매매 실거래가 자료",
+    url: "https://www.data.go.kr/data/15126467/openapi.do",
+    reviewedAt: REVIEWED_AT,
+    confidence: "official_national",
+    useFor: "지역과 계약월 기준 연립다세대 매매 신고 자료 조회 및 보증금-매매가 비율 참고"
+  },
+  {
+    id: "molit-single-sale",
+    title: "단독/다가구 매매 실거래가 OpenAPI",
+    sourceName: "국토교통부_단독/다가구 매매 실거래가 자료",
+    url: "https://www.data.go.kr/data/15126465/openapi.do",
+    reviewedAt: REVIEWED_AT,
+    confidence: "official_national",
+    useFor: "지역과 계약월 기준 단독/다가구 매매 신고 자료 조회 및 보증금-매매가 비율 참고"
+  },
+  {
+    id: "molit-officetel-sale",
+    title: "오피스텔 매매 실거래가 OpenAPI",
+    sourceName: "국토교통부_오피스텔 매매 실거래가 자료",
+    url: "https://www.data.go.kr/data/15126464/openapi.do",
+    reviewedAt: REVIEWED_AT,
+    confidence: "official_national",
+    useFor: "지역과 계약월 기준 오피스텔 매매 신고 자료 조회 및 보증금-매매가 비율 참고"
   },
   {
     id: "gov24",
@@ -172,6 +217,40 @@ export const RENT_API_SPECS: Record<HousingType, RentApiSpec> = {
     portalUrl: "https://www.data.go.kr/data/15126475/openapi.do",
     endpoint: "https://apis.data.go.kr/1613000/RTMSDataSvcOffiRent/getRTMSDataSvcOffiRent",
     operationId: "getRTMSDataSvcOffiRent",
+    nameField: "offiNm"
+  }
+};
+
+export const SALE_API_SPECS: Record<HousingType, SaleApiSpec> = {
+  apartment: {
+    housingType: "apartment",
+    label: "아파트",
+    portalUrl: "https://www.data.go.kr/data/15126469/openapi.do",
+    endpoint: "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade",
+    operationId: "getRTMSDataSvcAptTrade",
+    nameField: "aptNm"
+  },
+  rowhouse: {
+    housingType: "rowhouse",
+    label: "연립다세대",
+    portalUrl: "https://www.data.go.kr/data/15126467/openapi.do",
+    endpoint: "https://apis.data.go.kr/1613000/RTMSDataSvcRHTrade/getRTMSDataSvcRHTrade",
+    operationId: "getRTMSDataSvcRHTrade",
+    nameField: "mhouseNm"
+  },
+  single_multi: {
+    housingType: "single_multi",
+    label: "단독/다가구",
+    portalUrl: "https://www.data.go.kr/data/15126465/openapi.do",
+    endpoint: "https://apis.data.go.kr/1613000/RTMSDataSvcSHTrade/getRTMSDataSvcSHTrade",
+    operationId: "getRTMSDataSvcSHTrade"
+  },
+  officetel: {
+    housingType: "officetel",
+    label: "오피스텔",
+    portalUrl: "https://www.data.go.kr/data/15126464/openapi.do",
+    endpoint: "https://apis.data.go.kr/1613000/RTMSDataSvcOffiTrade/getRTMSDataSvcOffiTrade",
+    operationId: "getRTMSDataSvcOffiTrade",
     nameField: "offiNm"
   }
 };
