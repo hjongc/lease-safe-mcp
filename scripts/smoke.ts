@@ -27,7 +27,16 @@ async function main() {
     version: "0.1.0"
   });
 
-  const transport = new StreamableHTTPClientTransport(new URL(endpoint));
+  const authToken = process.env.MCP_AUTH_TOKEN?.trim();
+  const transport = new StreamableHTTPClientTransport(new URL(endpoint), authToken
+    ? {
+        requestInit: {
+          headers: {
+            authorization: `Bearer ${authToken}`
+          }
+        }
+      }
+    : undefined);
   await client.connect(transport);
 
   const protocolVersion = transport.protocolVersion;

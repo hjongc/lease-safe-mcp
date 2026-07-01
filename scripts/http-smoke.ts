@@ -69,6 +69,30 @@ async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): P
   }
 }
 
+async function verifyUnauthorizedRequest(endpoint: string): Promise<void> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "unauthorized-smoke",
+      method: "tools/list"
+    })
+  });
+
+  if (response.status !== 401) {
+    const text = await response.text();
+    throw new Error(`Expected unauthenticated MCP request to return 401, got ${response.status}: ${text}`);
+  }
+
+  const body = await response.json() as { error?: { message?: unknown } };
+  if (body.error?.message !== "Unauthorized") {
+    throw new Error("Unauthenticated MCP request did not return the expected JSON-RPC error.");
+  }
+}
+
 function runNode(args: string[], env: NodeJS.ProcessEnv): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, {
@@ -107,6 +131,7 @@ async function main() {
   const env = {
     ...process.env,
     MCP_ALLOWED_HOSTS: process.env.MCP_ALLOWED_HOSTS ?? "127.0.0.1,localhost",
+    MCP_AUTH_TOKEN: process.env.MCP_AUTH_TOKEN ?? "smoke-token",
     MCP_ENDPOINT: endpoint,
     PORT: String(port)
   };
@@ -120,6 +145,8 @@ async function main() {
   try {
     const maxBodyBytes = await waitForHealth(port, server);
     console.log("healthz=ok");
+    await verifyUnauthorizedRequest(endpoint);
+    console.log("auth_rejection=ok");
     await verifyOversizedRequest(endpoint, maxBodyBytes);
     console.log("oversized_request=ok");
     await runNode(["dist/scripts/smoke.js"], env);

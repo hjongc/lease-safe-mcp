@@ -58,9 +58,9 @@ Recommended demo input:
 ## Health And Smoke Checks
 
 - `GET /healthz` must return `ok: true`, `service: lease-safe`, `transport: streamable-http`, `stateless: true`, `maxBodyBytes`, `rateLimitPerMinute`, and `publicDataTimeoutMs`.
-- `npm run smoke:http` verifies local HTTP MCP handshake, tool metadata, a lightweight tool call, and oversized request rejection.
+- `npm run smoke:http` verifies local HTTP MCP handshake, tool metadata, bearer-auth rejection, a lightweight tool call, and oversized request rejection.
 - `npm run smoke:rate-limit` verifies the MCP POST rate limiter returns `429` with `Retry-After`.
-- `npm run smoke:docker` verifies the built image starts in production mode, answers `/healthz`, rejects oversized MCP requests, and completes MCP handshake/list-tools.
+- `npm run smoke:docker` verifies the built image starts in production mode, answers `/healthz`, rejects unauthenticated and oversized MCP requests, and completes MCP handshake/list-tools.
 - `npm run smoke:public-data` verifies legal-dong lookup, all rent APIs, all sale APIs, and the flagship assessment against live official APIs.
 - `npm run preflight:registration` runs the full release preflight and fails if live public-data smoke cannot run.
 

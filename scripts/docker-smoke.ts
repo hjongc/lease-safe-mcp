@@ -125,6 +125,30 @@ async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): P
   }
 }
 
+async function verifyUnauthorizedRequest(endpoint: string): Promise<void> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "docker-unauthorized-smoke",
+      method: "tools/list"
+    })
+  });
+
+  if (response.status !== 401) {
+    const text = await response.text();
+    throw new Error(`Expected unauthenticated Docker MCP request to return 401, got ${response.status}: ${text}`);
+  }
+
+  const body = await response.json() as { error?: { message?: unknown } };
+  if (body.error?.message !== "Unauthorized") {
+    throw new Error("Unauthenticated Docker MCP request did not return the expected JSON-RPC error.");
+  }
+}
+
 async function stopContainer(containerId: string): Promise<void> {
   try {
     await collectOutput("docker", ["stop", "--time", "3", containerId]);
@@ -136,6 +160,7 @@ async function stopContainer(containerId: string): Promise<void> {
 async function main() {
   const port = Number(process.env.DOCKER_SMOKE_PORT || await getFreePort());
   const endpoint = `http://127.0.0.1:${port}/mcp`;
+  const authToken = process.env.DOCKER_SMOKE_MCP_AUTH_TOKEN ?? "smoke-token";
 
   console.log(`Starting Docker smoke container ${containerName} from ${imageTag}`);
   const containerId = await collectOutput("docker", [
@@ -150,16 +175,21 @@ async function main() {
     "MCP_ALLOWED_HOSTS=127.0.0.1,localhost",
     "-e",
     "DATA_GO_KR_SERVICE_KEY=dummy-preflight-key",
+    "-e",
+    `MCP_AUTH_TOKEN=${authToken}`,
     imageTag
   ]);
 
   try {
     const maxBodyBytes = await waitForHealth(port, containerId);
     console.log("docker_healthz=ok");
+    await verifyUnauthorizedRequest(endpoint);
+    console.log("docker_auth_rejection=ok");
     await verifyOversizedRequest(endpoint, maxBodyBytes);
     console.log("docker_oversized_request=ok");
     await runNode(["dist/scripts/smoke.js"], {
       ...process.env,
+      MCP_AUTH_TOKEN: authToken,
       MCP_ENDPOINT: endpoint
     });
     console.log("docker_smoke=ok");
