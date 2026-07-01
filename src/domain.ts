@@ -578,10 +578,44 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function decodeXmlEntity(entity: string): string {
+  const namedEntities: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    quot: "\""
+  };
+  if (entity in namedEntities) return namedEntities[entity];
+
+  const codePoint = entity.startsWith("#x") || entity.startsWith("#X")
+    ? Number.parseInt(entity.slice(2), 16)
+    : entity.startsWith("#")
+      ? Number.parseInt(entity.slice(1), 10)
+      : Number.NaN;
+  if (!Number.isSafeInteger(codePoint) || codePoint < 0 || codePoint > 0x10ffff) {
+    return `&${entity};`;
+  }
+
+  try {
+    return String.fromCodePoint(codePoint);
+  } catch {
+    return `&${entity};`;
+  }
+}
+
+function decodeXmlTextContent(value: string): string {
+  return value.replace(/&([A-Za-z]+|#[0-9]+|#x[0-9A-Fa-f]+);/g, (_match, entity: string) => decodeXmlEntity(entity));
+}
+
 function extractTag(xml: string, tag: string): string | undefined {
   const escapedTag = escapeRegExp(tag);
   const match = xml.match(new RegExp(`<\\s*${escapedTag}(?:\\s[^>]*)?>(.*?)<\\/\\s*${escapedTag}\\s*>`, "s"));
-  return match?.[1]?.replace(/<!\[CDATA\[(.*?)\]\]>/s, "$1").trim();
+  if (!match) return undefined;
+
+  const rawContent = match[1].trim();
+  const cdata = rawContent.match(/^<!\[CDATA\[(.*?)\]\]>$/s);
+  return cdata ? cdata[1].trim() : decodeXmlTextContent(rawContent).trim();
 }
 
 function extractBlocks(xml: string, tag: string): string[] {

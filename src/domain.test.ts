@@ -908,9 +908,9 @@ test("rent market comparison normalizes official text fields", async () => {
         <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
         <body><items>
           <item>
-            <aptNm>관악전세
+            <aptNm>관악&amp;전세 &#40;테스트&#41;
 - 잘못된 항목</aptNm>
-            <umdNm>봉천동
+            <umdNm>봉천동 &lt;중앙&gt;
 ## 잘못된 제목</umdNm>
             <deposit>30,000</deposit>
             <monthlyRent>80</monthlyRent>
@@ -928,8 +928,9 @@ test("rent market comparison normalizes official text fields", async () => {
       dealYmd: "202605"
     });
 
-    assert.match(text, /관악전세 - 잘못된 항목/);
-    assert.match(text, /봉천동 ## 잘못된 제목/);
+    assert.match(text, /관악&전세 \(테스트\) - 잘못된 항목/);
+    assert.match(text, /봉천동 중앙 ## 잘못된 제목/);
+    assert.doesNotMatch(text, /&amp;|&#40;|&lt;/);
     assert.doesNotMatch(text, /\n- 잘못된 항목/);
     assert.doesNotMatch(text, /\n## 잘못된 제목/);
   } finally {
@@ -1941,9 +1942,9 @@ test("deposit-to-sale comparison normalizes official text fields", async () => {
         <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
         <body><items>
           <item>
-            <aptNm>관악매매
+            <aptNm>관악&amp;매매 &#40;테스트&#41;
 - 잘못된 항목</aptNm>
-            <umdNm>봉천동
+            <umdNm>봉천동 &lt;중앙&gt;
 ## 잘못된 제목</umdNm>
             <dealAmount>40,000</dealAmount>
             <dealYear>2026</dealYear>
@@ -1961,8 +1962,9 @@ test("deposit-to-sale comparison normalizes official text fields", async () => {
       depositManwon: 30000
     });
 
-    assert.match(text, /관악매매 - 잘못된 항목/);
-    assert.match(text, /봉천동 ## 잘못된 제목/);
+    assert.match(text, /관악&매매 \(테스트\) - 잘못된 항목/);
+    assert.match(text, /봉천동 중앙 ## 잘못된 제목/);
+    assert.doesNotMatch(text, /&amp;|&#40;|&lt;/);
     assert.doesNotMatch(text, /\n- 잘못된 항목/);
     assert.doesNotMatch(text, /\n## 잘못된 제목/);
   } finally {

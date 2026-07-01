@@ -142,6 +142,7 @@ assert(/inferOfficialHelpIssueType/.test(domain), "official help router must inf
 assert(domain.includes("보증\\s*보험"), "official help router must infer HUG routes from natural-language guarantee questions");
 assert(/등기부\|등기/.test(domain), "official help router must infer registry routes from natural-language registry questions");
 assert(/publicDataTextFromOptionalTag/.test(domain), "domain must normalize official public-data text fields before rendering");
+assert(/decodeXmlTextContent/.test(domain), "domain must decode XML entities in official public-data text fields before rendering");
 assert(/compactPublicDataFieldValue/.test(domain), "domain must bound and redact invalid official public-data field excerpts");
 assert(/request failed before receiving a response: \$\{redactDataGoKrServiceKeys\(message\)\}/.test(domain), "domain must redact public-data network error messages");
 assert(!/request failed before receiving a response:[\s\S]*\{\s*cause:\s*error\s*\}/.test(domain), "domain must not attach raw public-data network error causes");
