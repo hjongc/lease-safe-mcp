@@ -9,6 +9,7 @@ import {
   dataGoKrServiceKey,
   explainDataAvailability,
   prepareContractQuestions,
+  MONEY_INPUT_LIMITS,
   publicDataTimeoutMs,
   resolveLegalDongCode,
   routeOfficialHelp
@@ -621,6 +622,27 @@ test("market API helpers fail fast on invalid money inputs", async () => {
         monthlyRentManwon: 80.5
       }),
       /monthlyRentManwon must be a finite non-negative integer number/
+    );
+
+    await assert.rejects(
+      compareDepositToSaleMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: MONEY_INPUT_LIMITS.depositManwon + 1
+      }),
+      /depositManwon must be no greater than/
+    );
+
+    await assert.rejects(
+      assessLeaseSafety({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: 30000,
+        monthlyRentManwon: MONEY_INPUT_LIMITS.monthlyRentManwon + 1
+      }),
+      /monthlyRentManwon must be no greater than/
     );
   } finally {
     globalThis.fetch = previousFetch;
@@ -2022,6 +2044,8 @@ test("MCP tool input schemas bound free-text fields", () => {
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, moveInDate: "가".repeat(MCP_TEXT_LIMITS.dateText + 1) }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, contractDate: "가".repeat(MCP_TEXT_LIMITS.dateText + 1) }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, concerns: "가".repeat(MCP_TEXT_LIMITS.concerns + 1) }).success, false);
+  assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, depositManwon: MONEY_INPUT_LIMITS.depositManwon + 1 }).success, false);
+  assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, monthlyRentManwon: MONEY_INPUT_LIMITS.monthlyRentManwon + 1 }).success, false);
 
   const legalDongSchema = registeredToolSchema("resolve_legal_dong_code");
   assert.equal(legalDongSchema.safeParse({ region: "서울 관악구" }).success, true);

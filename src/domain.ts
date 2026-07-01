@@ -11,6 +11,11 @@ const DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS = new Set([
 const MIN_DATA_GO_KR_SERVICE_KEY_LENGTH = 40;
 const MAX_LEGAL_DONG_REGION_LENGTH = 80;
 
+export const MONEY_INPUT_LIMITS = {
+  depositManwon: 10_000_000,
+  monthlyRentManwon: 100_000
+} as const;
+
 export interface LeaseProfileInput {
   situation?: string;
   region?: string;
@@ -217,16 +222,28 @@ function validateMarketQuery(lawdCd: string, dealYmd: string): void {
   }
 }
 
-function assertOptionalNonNegativeManwon(label: string, value: unknown): asserts value is number | undefined {
+function moneyInputLimit(label: keyof typeof MONEY_INPUT_LIMITS): number {
+  return MONEY_INPUT_LIMITS[label];
+}
+
+function assertOptionalNonNegativeManwon(label: keyof typeof MONEY_INPUT_LIMITS, value: unknown): asserts value is number | undefined {
   if (value === undefined) return;
   if (typeof value !== "number" || !Number.isFinite(value) || !Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${label} must be a finite non-negative integer number of manwon.`);
   }
+  const limit = moneyInputLimit(label);
+  if (value > limit) {
+    throw new Error(`${label} must be no greater than ${limit} manwon.`);
+  }
 }
 
-function assertRequiredNonNegativeManwon(label: string, value: unknown): asserts value is number {
+function assertRequiredNonNegativeManwon(label: keyof typeof MONEY_INPUT_LIMITS, value: unknown): asserts value is number {
   if (typeof value !== "number" || !Number.isFinite(value) || !Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${label} must be a finite non-negative integer number of manwon.`);
+  }
+  const limit = moneyInputLimit(label);
+  if (value > limit) {
+    throw new Error(`${label} must be no greater than ${limit} manwon.`);
   }
 }
 
