@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { hostHeaderValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { Server } from "node:http";
 import type { NextFunction, Request, Response } from "express";
 import express from "express";
@@ -31,6 +31,8 @@ const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
 const DEFAULT_MCP_RATE_LIMIT_PER_MINUTE = 120;
 const MIN_MCP_AUTH_TOKEN_LENGTH = 16;
 const MAX_MCP_AUTH_TOKEN_LENGTH = 4096;
+const REQUEST_ID_HEADER = "X-Request-Id";
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 const MCP_AUTH_TOKEN_PLACEHOLDERS = new Set([
   "replace-with-runtime-secret",
   "your-mcp-auth-token",
@@ -383,6 +385,35 @@ function setSecurityHeaders(_req: Request, res: Response, next: NextFunction): v
   next();
 }
 
+function requestIdFromHeader(value: string | undefined): string {
+  const trimmed = value?.trim();
+  return trimmed && REQUEST_ID_PATTERN.test(trimmed) ? trimmed : randomUUID();
+}
+
+function setRequestId(req: Request, res: Response, next: NextFunction): void {
+  const requestId = requestIdFromHeader(req.header(REQUEST_ID_HEADER));
+  res.locals.requestId = requestId;
+  res.setHeader(REQUEST_ID_HEADER, requestId);
+  next();
+}
+
+function requestIdForLog(res: Response): string {
+  return typeof res.locals.requestId === "string" ? res.locals.requestId : "unknown";
+}
+
+function compactLogError(error: unknown): { name: string; message: string } {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message.replace(/\s+/g, " ").slice(0, 500)
+    };
+  }
+  return {
+    name: typeof error,
+    message: String(error).replace(/\s+/g, " ").slice(0, 500)
+  };
+}
+
 export function createServer(): McpServer {
   const server = new McpServer(
     {
@@ -616,6 +647,7 @@ export function createApp() {
 
   app.disable("x-powered-by");
   app.use(setSecurityHeaders);
+  app.use(setRequestId);
   app.use(hostHeaderValidation(allowedHosts));
 
   app.get("/", (_req: Request, res: Response) => {
@@ -652,7 +684,10 @@ export function createApp() {
         await server.connect(transport);
         await transport.handleRequest(req, res, req.body);
       } catch (error) {
-        console.error("Error handling MCP request", error);
+        console.error("Error handling MCP request", {
+          requestId: requestIdForLog(res),
+          error: compactLogError(error)
+        });
         if (!res.headersSent) {
           res.status(500).json({
             jsonrpc: "2.0",

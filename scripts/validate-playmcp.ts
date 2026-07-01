@@ -103,6 +103,7 @@ for (const required of [
   "invalid-JSON rejection",
   "unsupported-content-type rejection",
   "WWW-Authenticate",
+  "X-Request-Id",
   "Cache-Control",
   "X-Frame-Options",
   "Content-Security-Policy",
@@ -202,6 +203,10 @@ assert(!/rateLimitPerMinute/.test(healthzRoute), "healthz must not expose rate-l
 assert(!/publicDataTimeoutMs/.test(healthzRoute), "healthz must not expose public-data timeout tuning");
 assert(/SIGTERM/.test(server), "server must handle SIGTERM for container shutdown");
 assert(/x-powered-by/.test(server), "server must disable x-powered-by");
+assert(/X-Request-Id/.test(server), "server must set X-Request-Id");
+assert(/app\.use\(setRequestId\)[\s\S]*app\.use\(hostHeaderValidation\(allowedHosts\)\)/.test(server), "server must assign request IDs before host validation");
+assert(/REQUEST_ID_PATTERN/.test(server), "server must validate incoming request IDs before echoing them");
+assert(/compactLogError/.test(server), "server must log compact internal error summaries");
 assert(/X-Content-Type-Options/.test(server), "server must set X-Content-Type-Options");
 assert(/X-Frame-Options/.test(server), "server must set X-Frame-Options");
 assert(/Content-Security-Policy/.test(server), "server must set Content-Security-Policy");
@@ -289,6 +294,8 @@ assert(/국세청/.test(smoke) && /위택스/.test(smoke), "smoke output quality
 const httpSmoke = readFileSync("scripts/http-smoke.ts", "utf8");
 assert(/healthz/.test(httpSmoke), "HTTP smoke must verify healthz");
 assert(/assertSecurityHeaders/.test(httpSmoke), "HTTP smoke must verify security headers");
+assert(/request_id=ok/.test(httpSmoke), "HTTP smoke must verify request ID propagation");
+assert(/safe X-Request-Id/.test(httpSmoke), "HTTP smoke must verify safe request IDs on boundary responses");
 assert(/smokePortFromEnv/.test(httpSmoke), "HTTP smoke must fail fast on invalid port env values");
 assert(/listen\(0,\s*"0\.0\.0\.0"/.test(httpSmoke), "HTTP smoke free-port probe must match the server bind address");
 assert(/host_rejection/.test(httpSmoke), "HTTP smoke must verify DNS rebinding Host rejection");
@@ -315,6 +322,8 @@ const dockerSmoke = readFileSync("scripts/docker-smoke.ts", "utf8");
 assert(/docker/.test(dockerSmoke), "Docker smoke must run a container");
 assert(/healthz/.test(dockerSmoke), "Docker smoke must verify healthz");
 assert(/assertSecurityHeaders/.test(dockerSmoke), "Docker smoke must verify security headers");
+assert(/docker_request_id=ok/.test(dockerSmoke), "Docker smoke must verify request ID propagation");
+assert(/safe X-Request-Id/.test(dockerSmoke), "Docker smoke must verify safe request IDs on boundary responses");
 assert(/smokePortFromEnv/.test(dockerSmoke), "Docker smoke must fail fast on invalid port env values");
 assert(/docker_host_rejection/.test(dockerSmoke), "Docker smoke must verify DNS rebinding Host rejection");
 assert(/Invalid Host: evil\.example/.test(dockerSmoke), "Docker smoke must verify the host validation error shape");

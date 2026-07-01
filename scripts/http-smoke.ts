@@ -89,6 +89,10 @@ async function waitForHealth(port: number, server: ChildProcess): Promise<void> 
 }
 
 function assertSecurityHeaders(response: Response, label: string): void {
+  const requestId = response.headers.get("x-request-id");
+  if (!requestId || !/^[A-Za-z0-9._-]{1,64}$/.test(requestId)) {
+    throw new Error(`${label} response must set a safe X-Request-Id.`);
+  }
   if (response.headers.get("x-content-type-options") !== "nosniff") {
     throw new Error(`${label} response must set X-Content-Type-Options: nosniff.`);
   }
@@ -103,6 +107,19 @@ function assertSecurityHeaders(response: Response, label: string): void {
   }
   if (response.headers.get("cache-control") !== "no-store") {
     throw new Error(`${label} response must set Cache-Control: no-store.`);
+  }
+}
+
+async function verifyRequestIdPropagation(endpoint: string): Promise<void> {
+  const response = await fetch(endpoint.replace(/\/mcp$/, "/healthz"), {
+    headers: {
+      "x-request-id": "lease-safe-smoke-request-1"
+    }
+  });
+
+  assertSecurityHeaders(response, "request-id propagation");
+  if (response.headers.get("x-request-id") !== "lease-safe-smoke-request-1") {
+    throw new Error("Health response did not preserve the supplied safe X-Request-Id.");
   }
 }
 
@@ -123,7 +140,7 @@ async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): P
 
 async function verifyRejectedHost(endpoint: string): Promise<void> {
   const target = new URL(endpoint.replace(/\/mcp$/, "/healthz"));
-  const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+  const response = await new Promise<{ statusCode: number; body: string; requestId: string | string[] | undefined }>((resolve, reject) => {
     const req = request({
       hostname: target.hostname,
       port: target.port,
@@ -139,7 +156,7 @@ async function verifyRejectedHost(endpoint: string): Promise<void> {
         body += chunk;
       });
       res.on("end", () => {
-        resolve({ statusCode: res.statusCode ?? 0, body });
+        resolve({ statusCode: res.statusCode ?? 0, body, requestId: res.headers["x-request-id"] });
       });
     });
     req.on("error", reject);
@@ -148,6 +165,9 @@ async function verifyRejectedHost(endpoint: string): Promise<void> {
 
   if (response.statusCode !== 403) {
     throw new Error(`Expected disallowed Host header to return 403, got ${response.statusCode}: ${response.body}`);
+  }
+  if (typeof response.requestId !== "string" || !/^[A-Za-z0-9._-]{1,64}$/.test(response.requestId)) {
+    throw new Error("Disallowed Host header response must include a safe X-Request-Id.");
   }
 
   const body = JSON.parse(response.body) as { error?: { code?: unknown; message?: unknown } };
@@ -371,6 +391,8 @@ async function main() {
   try {
     await waitForHealth(port, server);
     console.log("healthz=ok");
+    await verifyRequestIdPropagation(endpoint);
+    console.log("request_id=ok");
     await verifyRejectedHost(endpoint);
     console.log("host_rejection=ok");
     await verifyHeadMethodNotAllowed(endpoint);

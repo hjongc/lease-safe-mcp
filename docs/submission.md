@@ -36,7 +36,7 @@ Do not commit runtime secrets. Configure them in PlayMCP or deployment environme
 
 The production server fails at startup if `MCP_ALLOWED_HOSTS` or `DATA_GO_KR_SERVICE_KEY` is missing. This is intentional: missing official-data configuration should be fixed before the demo, not hidden until a user calls the flagship tool.
 
-The server also rejects unsupported `/mcp` methods with `Allow: POST`, rejects invalid JSON and non-JSON MCP POST bodies before transport handling, advertises bearer authentication failures with `WWW-Authenticate` when `MCP_AUTH_TOKEN` is set, rejects oversized MCP request bodies, rate-limits MCP POST traffic, fails clearly on public-data timeout, disables `x-powered-by`, sets `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Content-Security-Policy: default-src 'none'; base-uri 'none'; frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`, and handles container shutdown signals so PlayMCP can stop the image cleanly.
+The server also rejects unsupported `/mcp` methods with `Allow: POST`, rejects invalid JSON and non-JSON MCP POST bodies before transport handling, advertises bearer authentication failures with `WWW-Authenticate` when `MCP_AUTH_TOKEN` is set, rejects oversized MCP request bodies, rate-limits MCP POST traffic, fails clearly on public-data timeout, disables `x-powered-by`, emits `X-Request-Id` for log correlation, sets `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Content-Security-Policy: default-src 'none'; base-uri 'none'; frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`, and handles container shutdown signals so PlayMCP can stop the image cleanly.
 
 ## Demo Scenario
 
