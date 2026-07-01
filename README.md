@@ -64,6 +64,8 @@ Production requires DNS rebinding protection:
 MCP_ALLOWED_HOSTS=your.playmcp.host,your.custom.domain
 ```
 
+Use plain hostnames or `host:port` values only. Do not include `https://`, paths, whitespace, or wildcards.
+
 Production also requires the official public-data key at startup because the flagship tool depends on live legal-dong, rent, and sale APIs:
 
 ```bash

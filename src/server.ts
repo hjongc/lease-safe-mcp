@@ -62,7 +62,18 @@ function textResult(text: string) {
 }
 
 function allowedHostsFromEnv(): string[] | undefined {
-  const hosts = process.env.MCP_ALLOWED_HOSTS?.split(",").map(host => host.trim()).filter(Boolean);
+  const hosts = process.env.MCP_ALLOWED_HOSTS?.split(",").map(host => host.trim()).filter(Boolean).map(host => {
+    if (
+      host === "*" ||
+      host.includes("://") ||
+      host.includes("/") ||
+      /\s/.test(host) ||
+      host.length > 253
+    ) {
+      throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames or host:port values, not URLs, paths, wildcards, or whitespace.");
+    }
+    return host;
+  });
   return hosts && hosts.length > 0 ? hosts : undefined;
 }
 

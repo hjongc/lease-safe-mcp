@@ -22,7 +22,7 @@ Lease Safe(전월세안전내비) is a Korean lease-safety MCP server for people
 Required:
 
 - `DATA_GO_KR_SERVICE_KEY`: data.go.kr service key for legal-dong, rent, and sale transaction APIs
-- `MCP_ALLOWED_HOSTS`: PlayMCP host or deployment domain for DNS rebinding protection
+- `MCP_ALLOWED_HOSTS`: PlayMCP host or deployment domain for DNS rebinding protection, using plain hostnames or `host:port` values only
 
 Optional:
 

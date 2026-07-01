@@ -25,7 +25,7 @@ gh workflow run CI --repo hjongc/lease-safe-mcp --ref main
 PlayMCP runtime:
 
 - Set `DATA_GO_KR_SERVICE_KEY` in the PlayMCP runtime environment.
-- Set `MCP_ALLOWED_HOSTS` to the PlayMCP host or custom deployment domain.
+- Set `MCP_ALLOWED_HOSTS` to the PlayMCP host or custom deployment domain. Use plain hostnames or `host:port` values only; do not include `https://`, paths, whitespace, or wildcards.
 - Leave `MCP_AUTH_TOKEN` unset unless the deployment is private and the client can send bearer auth.
 
 Never paste secrets into issues, commits, README examples, screenshots, or CI logs.

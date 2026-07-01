@@ -378,6 +378,40 @@ test("production app requires host allowlist", () => {
   }
 });
 
+test("production app rejects unsafe host allowlist entries", () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  try {
+    process.env.NODE_ENV = "production";
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+
+    for (const value of ["*", "https://example.com", "example.com/path", "bad host.example"]) {
+      process.env.MCP_ALLOWED_HOSTS = value;
+      assert.throws(() => createApp(), /plain hostnames or host:port values/);
+    }
+
+    process.env.MCP_ALLOWED_HOSTS = "lease-safe.example.com,127.0.0.1:3000";
+    assert.doesNotThrow(() => createApp());
+  } finally {
+    if (previousNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+    if (previousAllowedHosts === undefined) {
+      delete process.env.MCP_ALLOWED_HOSTS;
+    } else {
+      process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
+    }
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
 test("production app requires public-data key", () => {
   const previousNodeEnv = process.env.NODE_ENV;
   const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
