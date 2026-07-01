@@ -612,6 +612,49 @@ test("rent market comparison parses live XML records", async () => {
   }
 });
 
+test("rent market comparison parses XML tags with attributes", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode source="molit">00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+        <body><items>
+          <item seq="1">
+            <aptNm lang="ko">관악속성전세</aptNm>
+            <umdNm code="11620">봉천동</umdNm>
+            <deposit unit="만원">30,000</deposit>
+            <monthlyRent unit="만원">80</monthlyRent>
+            <dealYear>2026</dealYear>
+            <dealMonth>5</dealMonth>
+            <dealDay>10</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    const text = await compareRentMarket({
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605",
+      depositManwon: 32000,
+      monthlyRentManwon: 80
+    });
+
+    assert.match(text, /신고 표본 수: 1/);
+    assert.match(text, /관악속성전세/);
+    assert.match(text, /30,000만원/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
 test("rent market comparison parses Korean public-data XML fields", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
@@ -1144,6 +1187,47 @@ test("deposit-to-sale comparison parses sale XML and flags high ratio", async ()
     assert.match(text, /매매가 대비 보증금 비율: 93.3%/);
     assert.match(text, /90% 이상/);
     assert.match(text, /특정 매물의 안전성/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
+test("deposit-to-sale comparison parses XML tags with attributes", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode source="molit">000</resultCode><resultMsg>OK</resultMsg></header>
+        <body><items>
+          <item seq="1">
+            <aptNm lang="ko">관악속성매매</aptNm>
+            <umdNm code="11620">봉천동</umdNm>
+            <dealAmount unit="만원">40,000</dealAmount>
+            <dealYear>2026</dealYear>
+            <dealMonth>5</dealMonth>
+            <dealDay>10</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    const text = await compareDepositToSaleMarket({
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605",
+      depositManwon: 32000
+    });
+
+    assert.match(text, /매매 표본 수: 1/);
+    assert.match(text, /관악속성매매/);
+    assert.match(text, /매매가 대비 보증금 비율: 80%/);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {

@@ -418,9 +418,19 @@ export async function resolveLegalDongCode(input: { region: string }): Promise<s
   ].join("\n");
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function extractTag(xml: string, tag: string): string | undefined {
-  const match = xml.match(new RegExp(`<${tag}>(.*?)</${tag}>`, "s"));
+  const escapedTag = escapeRegExp(tag);
+  const match = xml.match(new RegExp(`<\\s*${escapedTag}(?:\\s[^>]*)?>(.*?)<\\/\\s*${escapedTag}\\s*>`, "s"));
   return match?.[1]?.replace(/<!\[CDATA\[(.*?)\]\]>/s, "$1").trim();
+}
+
+function extractBlocks(xml: string, tag: string): string[] {
+  const escapedTag = escapeRegExp(tag);
+  return [...xml.matchAll(new RegExp(`<\\s*${escapedTag}(?:\\s[^>]*)?>(.*?)<\\/\\s*${escapedTag}\\s*>`, "gs"))].map(match => match[1]);
 }
 
 function extractFirstTag(xml: string, tags: string[]): string | undefined {
@@ -497,7 +507,7 @@ function contractDateFromTags(xml: string): string {
 }
 
 function extractItems(xml: string, specNameField?: string): RentRecord[] {
-  const items = [...xml.matchAll(/<item>(.*?)<\/item>/gs)].map(match => match[1]);
+  const items = extractBlocks(xml, "item");
   return items
     .map(item => {
       const deposit = publicDataNumberFromRequiredTag(item, ["deposit", "보증금액", "보증금"], "국토교통부 전월세 실거래 API");
@@ -517,7 +527,7 @@ function extractItems(xml: string, specNameField?: string): RentRecord[] {
 }
 
 function extractSaleItems(xml: string, specNameField?: string): SaleRecord[] {
-  const items = [...xml.matchAll(/<item>(.*?)<\/item>/gs)].map(match => match[1]);
+  const items = extractBlocks(xml, "item");
   return items
     .map(item => {
       const dealAmount = publicDataNumberFromRequiredTag(item, ["dealAmount", "거래금액"], "국토교통부 매매 실거래 API");
