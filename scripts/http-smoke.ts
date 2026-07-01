@@ -83,6 +83,25 @@ async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): P
   }
 }
 
+async function verifyMethodNotAllowed(endpoint: string, method: "GET" | "DELETE", expectedMessage: string): Promise<void> {
+  const response = await fetch(endpoint, { method });
+
+  if (response.status !== 405) {
+    const text = await response.text();
+    throw new Error(`Expected ${method} MCP request to return 405, got ${response.status}: ${text}`);
+  }
+
+  const allow = response.headers.get("allow");
+  if (allow !== "POST") {
+    throw new Error(`Expected ${method} MCP request to advertise Allow: POST, got ${allow ?? "missing"}.`);
+  }
+
+  const body = await response.json() as { error?: { code?: unknown; message?: unknown } };
+  if (body.error?.code !== -32000 || body.error?.message !== expectedMessage) {
+    throw new Error(`${method} MCP request did not return the expected JSON-RPC method error.`);
+  }
+}
+
 async function verifyUnauthorizedRequest(endpoint: string): Promise<void> {
   const response = await fetch(endpoint, {
     method: "POST",
@@ -159,6 +178,9 @@ async function main() {
   try {
     const maxBodyBytes = await waitForHealth(port, server);
     console.log("healthz=ok");
+    await verifyMethodNotAllowed(endpoint, "GET", "Method not allowed. Use POST /mcp for Streamable HTTP requests.");
+    await verifyMethodNotAllowed(endpoint, "DELETE", "Method not allowed for stateless server.");
+    console.log("method_rejection=ok");
     await verifyUnauthorizedRequest(endpoint);
     console.log("auth_rejection=ok");
     await verifyOversizedRequest(endpoint, maxBodyBytes);

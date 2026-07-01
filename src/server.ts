@@ -191,6 +191,11 @@ function jsonRpcError(res: Response, httpStatus: number, code: number, message: 
   });
 }
 
+function methodNotAllowedForMcp(res: Response, message: string): void {
+  res.setHeader("Allow", "POST");
+  jsonRpcError(res, 405, -32000, message);
+}
+
 function clientKey(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
 }
@@ -597,25 +602,11 @@ export function createApp() {
   });
 
   app.get("/mcp", (_req: Request, res: Response) => {
-    res.status(405).json({
-      jsonrpc: "2.0",
-      error: {
-        code: -32000,
-        message: "Method not allowed. Use POST /mcp for Streamable HTTP requests."
-      },
-      id: null
-    });
+    methodNotAllowedForMcp(res, "Method not allowed. Use POST /mcp for Streamable HTTP requests.");
   });
 
   app.delete("/mcp", (_req: Request, res: Response) => {
-    res.status(405).json({
-      jsonrpc: "2.0",
-      error: {
-        code: -32000,
-        message: "Method not allowed for stateless server."
-      },
-      id: null
-    });
+    methodNotAllowedForMcp(res, "Method not allowed for stateless server.");
   });
 
   app.use("/mcp", handleMcpExpressError);
