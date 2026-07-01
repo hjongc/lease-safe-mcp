@@ -203,6 +203,33 @@ test("legal dong helper rejects unrecognized public-data JSON payloads", async (
   }
 });
 
+test("legal dong helper rejects JSON without official result code", async () => {
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      StanReginCd: [
+        {
+          row: []
+        }
+      ]
+    }));
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "관악구" }),
+      /행정표준코드 법정동코드 API returned JSON without RESULT\.resultCode/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
 test("legal dong helper preserves recognized empty-result payloads", async () => {
   const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
   const previousFetch = globalThis.fetch;

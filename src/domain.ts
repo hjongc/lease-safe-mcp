@@ -295,6 +295,9 @@ function parseLegalDongRows(payload: unknown): LegalDongRecord[] {
   const result = resultHead?.map(item => asRecord(item)?.RESULT).find(Boolean);
   const resultRecord = asRecord(result);
   const resultCode = typeof resultRecord?.resultCode === "string" ? resultRecord.resultCode : undefined;
+  if (!resultCode) {
+    throw new Error("행정표준코드 법정동코드 API returned JSON without RESULT.resultCode.");
+  }
   if (resultCode && !["INFO-000", "INFO-0", "00", "000"].includes(resultCode)) {
     const resultMsg = typeof resultRecord?.resultMsg === "string" ? resultRecord.resultMsg : "legal-dong API error";
     throw new Error(`행정표준코드 법정동코드 API returned error: ${resultCode} ${resultMsg}`);
