@@ -30,7 +30,7 @@ Optional:
 - `MCP_MAX_BODY_BYTES`: MCP POST request body limit, default `262144`
 - `MCP_RATE_LIMIT_PER_MINUTE`: MCP POST rate limit per client, default `120`, set `0` to disable
 - `PUBLIC_DATA_TIMEOUT_MS`: official public-data API timeout, default `8000`, maximum `60000`
-- `PORT`: HTTP port, default `3000`
+- `PORT`: HTTP port, default `3000`, integer `1..65535`
 
 Do not commit runtime secrets. Configure them in PlayMCP or deployment environment settings.
 

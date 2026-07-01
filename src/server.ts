@@ -133,6 +133,17 @@ export function mcpRateLimitPerMinute(): number {
   return parsed;
 }
 
+export function httpPort(): number {
+  const rawPort = process.env.PORT?.trim();
+  if (!rawPort) return 3000;
+
+  const parsed = Number(rawPort);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 65535) {
+    throw new Error("PORT must be an integer between 1 and 65535.");
+  }
+  return parsed;
+}
+
 function jsonRpcError(res: Response, httpStatus: number, code: number, message: string): void {
   res.status(httpStatus).json({
     jsonrpc: "2.0",
@@ -568,7 +579,7 @@ export function createApp() {
   return app;
 }
 
-export function startHttpServer(port = Number(process.env.PORT || 3000)): Server {
+export function startHttpServer(port = httpPort()): Server {
   const app = createApp();
   const httpServer = app.listen(port, "0.0.0.0", error => {
     if (error) {

@@ -12,7 +12,7 @@ import {
   resolveLegalDongCode,
   routeOfficialHelp
 } from "./domain.js";
-import { createApp, mcpMaxBodyBytes, mcpRateLimitPerMinute } from "./server.js";
+import { createApp, httpPort, mcpMaxBodyBytes, mcpRateLimitPerMinute } from "./server.js";
 import { positiveSampleCount, publicDataSmokeDepositManwon } from "../scripts/public-data-smoke.js";
 import { scanLine } from "../scripts/secret-scan.js";
 
@@ -868,6 +868,32 @@ test("MCP rate limit is explicit and fails fast on invalid configuration", () =>
       delete process.env.MCP_RATE_LIMIT_PER_MINUTE;
     } else {
       process.env.MCP_RATE_LIMIT_PER_MINUTE = previousLimit;
+    }
+  }
+});
+
+test("HTTP port is explicit and fails fast on invalid configuration", () => {
+  const previousPort = process.env.PORT;
+  try {
+    delete process.env.PORT;
+    assert.equal(httpPort(), 3000);
+
+    process.env.PORT = "8080";
+    assert.equal(httpPort(), 8080);
+
+    process.env.PORT = "0";
+    assert.throws(() => httpPort(), /PORT must be an integer between 1 and 65535/);
+
+    process.env.PORT = "65536";
+    assert.throws(() => httpPort(), /PORT must be an integer between 1 and 65535/);
+
+    process.env.PORT = "not-a-port";
+    assert.throws(() => httpPort(), /PORT must be an integer between 1 and 65535/);
+  } finally {
+    if (previousPort === undefined) {
+      delete process.env.PORT;
+    } else {
+      process.env.PORT = previousPort;
     }
   }
 });
