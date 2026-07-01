@@ -141,6 +141,49 @@ async function verifyUnknownRoute(endpoint: string): Promise<void> {
   }
 }
 
+async function verifyEncodedOddPathRejected(endpoint: string): Promise<void> {
+  const target = new URL(endpoint);
+  const response = await new Promise<{ statusCode: number; body: string; contentType: string | string[] | undefined; requestId: string | string[] | undefined }>((resolve, reject) => {
+    const req = request({
+      hostname: target.hostname,
+      port: target.port,
+      path: "/%",
+      method: "GET"
+    }, res => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", chunk => {
+        body += chunk;
+      });
+      res.on("end", () => {
+        resolve({
+          statusCode: res.statusCode ?? 0,
+          body,
+          contentType: res.headers["content-type"],
+          requestId: res.headers["x-request-id"]
+        });
+      });
+    });
+    req.on("error", reject);
+    req.end();
+  });
+
+  if (response.statusCode !== 404) {
+    throw new Error(`Expected encoded odd path to return 404, got ${response.statusCode}: ${response.body}`);
+  }
+  if (typeof response.requestId !== "string" || !/^[A-Za-z0-9._-]{1,64}$/.test(response.requestId)) {
+    throw new Error("Encoded odd path response must include a safe X-Request-Id.");
+  }
+  if (typeof response.contentType !== "string" || !response.contentType.includes("application/json")) {
+    throw new Error("Encoded odd path response must return application/json, not the default HTML error response.");
+  }
+
+  const body = JSON.parse(response.body) as { error?: unknown };
+  if (body.error !== "Not found") {
+    throw new Error("Encoded odd path response did not return the expected not-found JSON body.");
+  }
+}
+
 async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): Promise<void> {
   const response = await fetch(endpoint, {
     method: "POST",
@@ -440,6 +483,8 @@ async function main() {
     console.log("request_id=ok");
     await verifyUnknownRoute(endpoint);
     console.log("unknown_route=ok");
+    await verifyEncodedOddPathRejected(endpoint);
+    console.log("encoded_odd_path=ok");
     await verifyRejectedHost(endpoint);
     console.log("host_rejection=ok");
     await verifyHeadMethodNotAllowed(endpoint);

@@ -240,6 +240,31 @@ function notFound(_req: Request, res: Response): void {
   });
 }
 
+function expressErrorStatus(error: unknown): number {
+  const candidate = error as { status?: unknown; statusCode?: unknown };
+  const status = typeof candidate.status === "number" ? candidate.status : candidate.statusCode;
+  return typeof status === "number" && Number.isInteger(status) && status >= 400 && status < 500 ? status : 500;
+}
+
+function handleUnexpectedExpressError(error: unknown, _req: Request, res: Response, next: NextFunction): void {
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
+
+  const status = expressErrorStatus(error);
+  if (status >= 500) {
+    console.error("Unexpected Express error", {
+      requestId: requestIdForLog(res),
+      error: compactLogError(error)
+    });
+  }
+
+  res.status(status).json({
+    error: status === 400 ? "Bad request" : "Internal server error"
+  });
+}
+
 function clientKey(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
 }
@@ -742,6 +767,7 @@ export function createApp() {
 
   app.use("/mcp", handleMcpExpressError);
   app.use(notFound);
+  app.use(handleUnexpectedExpressError);
 
   return app;
 }
