@@ -40,6 +40,7 @@ interface RentMarketSnapshot {
   lawdCd: string;
   dealYmd: string;
   sampleCount: number;
+  depositSampleCount: number;
   median?: number;
   max?: number;
   userDeposit?: number;
@@ -376,9 +377,10 @@ async function fetchRentMarketSnapshot(input: {
 
   const records = extractItems(xml, spec.nameField);
   const deposits = records.map(record => record.depositManwon).filter(value => value > 0);
-  const sampleCount = deposits.length;
+  const sampleCount = records.length;
+  const depositSampleCount = deposits.length;
   const medianDeposit = median(deposits);
-  const max = sampleCount > 0 ? Math.max(...deposits) : undefined;
+  const max = depositSampleCount > 0 ? Math.max(...deposits) : undefined;
   const userDeposit = input.depositManwon;
   const position =
     userDeposit && medianDeposit
@@ -394,6 +396,7 @@ async function fetchRentMarketSnapshot(input: {
     lawdCd: input.lawdCd,
     dealYmd: input.dealYmd,
     sampleCount,
+    depositSampleCount,
     median: medianDeposit,
     max,
     userDeposit,
@@ -409,8 +412,12 @@ function renderRentMarketSnapshot(snapshot: RentMarketSnapshot): string {
     "## 전월세 실거래 비교",
     `주택유형: ${snapshot.label}`,
     `조회 기준: LAWD_CD ${snapshot.lawdCd}, 계약월 ${snapshot.dealYmd}`,
-    `표본 수: ${snapshot.sampleCount}`,
-    snapshot.sampleCount > 0 ? `보증금 중앙값: ${money(snapshot.median)} / 최대값: ${money(snapshot.max)}` : "조회된 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
+    `신고 표본 수: ${snapshot.sampleCount}`,
+    snapshot.depositSampleCount > 0
+      ? `보증금 표본 수: ${snapshot.depositSampleCount} / 보증금 중앙값: ${money(snapshot.median)} / 최대값: ${money(snapshot.max)}`
+      : snapshot.sampleCount > 0
+        ? "조회된 신고 표본은 있지만 보증금 중앙값을 계산할 수 있는 보증금 표본이 없습니다."
+        : "조회된 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
     `입력 보증금: ${money(snapshot.userDeposit)} / 입력 월세: ${money(snapshot.userMonthlyRent)}`,
     "",
     "## 해석",
@@ -474,7 +481,7 @@ function assessmentRiskSummary(
     reasons.push("보증금이 주변 매매가 중앙값의 70% 이상입니다.");
   }
 
-  if (!rentMarket.median || rentMarket.sampleCount === 0) {
+  if (!rentMarket.median || rentMarket.depositSampleCount === 0) {
     score += 15;
     reasons.push("전월세 표본이 부족해 주변 임대 시세 위치가 약합니다.");
   } else if (input.depositManwon > rentMarket.median * 1.25) {
@@ -619,7 +626,7 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
     "## 핵심 판단",
     lineItems([
       `위험도 근거: ${riskSummary.reasons.join(" / ")}`,
-      `전월세 신고 표본 ${rentMarket.sampleCount}건, 보증금 중앙값 ${money(rentMarket.median)}`,
+      `전월세 신고 표본 ${rentMarket.sampleCount}건, 보증금 산출 표본 ${rentMarket.depositSampleCount}건, 보증금 중앙값 ${money(rentMarket.median)}`,
       `매매 신고 표본 ${saleMarket.sampleCount}건, 매매가 중앙값 ${money(saleMarket.median)}`,
       `매매가 대비 보증금 비율 ${ratioLine}: ${saleMarket.signal}`,
       rentMarket.position

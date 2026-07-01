@@ -136,7 +136,8 @@ test("rent market comparison parses live XML records", async () => {
       monthlyRentManwon: 80
     });
 
-    assert.match(text, /표본 수: 1/);
+    assert.match(text, /신고 표본 수: 1/);
+    assert.match(text, /보증금 표본 수: 1/);
     assert.match(text, /관악테스트/);
     assert.match(text, /30,000만원/);
   } finally {
@@ -180,10 +181,54 @@ test("rent market comparison parses Korean public-data XML fields", async () => 
       depositManwon: 32000
     });
 
-    assert.match(text, /표본 수: 1/);
+    assert.match(text, /신고 표본 수: 1/);
+    assert.match(text, /보증금 표본 수: 1/);
     assert.match(text, /관악한글전세/);
     assert.match(text, /31,000만원/);
     assert.match(text, /2026-05-11/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
+test("rent market comparison separates reported records from deposit median samples", async () => {
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악월세</aptNm>
+            <umdNm>봉천동</umdNm>
+            <deposit>0</deposit>
+            <monthlyRent>85</monthlyRent>
+            <dealYear>2026</dealYear>
+            <dealMonth>5</dealMonth>
+            <dealDay>13</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    const text = await compareRentMarket({
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605",
+      monthlyRentManwon: 85
+    });
+
+    assert.match(text, /신고 표본 수: 1/);
+    assert.match(text, /보증금 중앙값을 계산할 수 있는 보증금 표본이 없습니다/);
+    assert.match(text, /관악월세/);
+    assert.match(text, /월세 85만원/);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
@@ -443,6 +488,7 @@ test("one-shot lease assessment combines rent, sale, red flags, and actions", as
     assert.match(text, /종합 위험도: 매우 높음/);
     assert.match(text, /위험도 근거:/);
     assert.match(text, /전월세 신고 표본 1건/);
+    assert.match(text, /보증금 산출 표본 1건/);
     assert.match(text, /매매 신고 표본 1건/);
     assert.match(text, /매매가 대비 보증금 비율 95%/);
     assert.match(text, /대리계약/);
