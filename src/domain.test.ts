@@ -11,7 +11,7 @@ import {
   resolveLegalDongCode,
   routeOfficialHelp
 } from "./domain.js";
-import { createApp } from "./server.js";
+import { createApp, mcpMaxBodyBytes } from "./server.js";
 
 test("data availability names automatic APIs and no fake fallback", () => {
   const text = explainDataAvailability();
@@ -359,7 +359,8 @@ test("production app starts when required runtime configuration is present", () 
     process.env.MCP_ALLOWED_HOSTS = "127.0.0.1,localhost";
     process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
 
-    assert.doesNotThrow(() => createApp());
+    const app = createApp();
+    assert.equal(app.enabled("x-powered-by"), false);
   } finally {
     if (previousNodeEnv === undefined) {
       delete process.env.NODE_ENV;
@@ -375,6 +376,29 @@ test("production app starts when required runtime configuration is present", () 
       delete process.env.DATA_GO_KR_SERVICE_KEY;
     } else {
       process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
+test("MCP body limit is explicit and fails fast on invalid configuration", () => {
+  const previousLimit = process.env.MCP_MAX_BODY_BYTES;
+  try {
+    delete process.env.MCP_MAX_BODY_BYTES;
+    assert.equal(mcpMaxBodyBytes(), 262144);
+
+    process.env.MCP_MAX_BODY_BYTES = "1024";
+    assert.equal(mcpMaxBodyBytes(), 1024);
+
+    process.env.MCP_MAX_BODY_BYTES = "0";
+    assert.throws(() => mcpMaxBodyBytes(), /positive integer/);
+
+    process.env.MCP_MAX_BODY_BYTES = "not-a-number";
+    assert.throws(() => mcpMaxBodyBytes(), /positive integer/);
+  } finally {
+    if (previousLimit === undefined) {
+      delete process.env.MCP_MAX_BODY_BYTES;
+    } else {
+      process.env.MCP_MAX_BODY_BYTES = previousLimit;
     }
   }
 });

@@ -57,6 +57,7 @@ for (const required of [
   "overall risk level",
   "DATA_GO_KR_SERVICE_KEY",
   "MCP_ALLOWED_HOSTS",
+  "MCP_MAX_BODY_BYTES",
   "fails at startup",
   "npm run preflight"
 ]) {
@@ -66,6 +67,9 @@ for (const required of [
 const server = readFileSync("src/server.ts", "utf8");
 assert(/MCP_ALLOWED_HOSTS/.test(server), "server must support MCP_ALLOWED_HOSTS");
 assert(/DATA_GO_KR_SERVICE_KEY is required in production/.test(server), "server must fail fast without DATA_GO_KR_SERVICE_KEY in production");
+assert(/MCP_MAX_BODY_BYTES/.test(server), "server must support a bounded MCP request body size");
+assert(/SIGTERM/.test(server), "server must handle SIGTERM for container shutdown");
+assert(/x-powered-by/.test(server), "server must disable x-powered-by");
 assert(/name:\s*"lease-safe"/.test(server), "MCP server name must be lease-safe");
 assert(!/name:\s*"[^"]*kakao[^"]*"/i.test(server), "MCP server name must not include kakao");
 assert(/StreamableHTTPServerTransport/.test(server), "server must use Streamable HTTP");
@@ -117,11 +121,13 @@ assert(/3-10 tools/.test(smoke), "smoke must verify tool count");
 
 const httpSmoke = readFileSync("scripts/http-smoke.ts", "utf8");
 assert(/healthz/.test(httpSmoke), "HTTP smoke must verify healthz");
+assert(/oversized_request/.test(httpSmoke), "HTTP smoke must verify oversized MCP request rejection");
 assert(/dist\/scripts\/smoke\.js/.test(httpSmoke), "HTTP smoke must run the MCP client smoke");
 
 const dockerSmoke = readFileSync("scripts/docker-smoke.ts", "utf8");
 assert(/docker/.test(dockerSmoke), "Docker smoke must run a container");
 assert(/healthz/.test(dockerSmoke), "Docker smoke must verify healthz");
+assert(/docker_oversized_request/.test(dockerSmoke), "Docker smoke must verify oversized MCP request rejection");
 assert(/dist\/scripts\/smoke\.js/.test(dockerSmoke), "Docker smoke must run the MCP client smoke");
 
 const secretScan = readFileSync("scripts/secret-scan.ts", "utf8");

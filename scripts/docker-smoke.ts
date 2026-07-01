@@ -78,7 +78,7 @@ async function containerLogs(containerId: string): Promise<string> {
   }
 }
 
-async function waitForHealth(port: number, containerId: string): Promise<void> {
+async function waitForHealth(port: number, containerId: string): Promise<number> {
   const healthUrl = `http://127.0.0.1:${port}/healthz`;
   const startedAt = Date.now();
   let lastError: unknown;
@@ -91,8 +91,10 @@ async function waitForHealth(port: number, containerId: string): Promise<void> {
     try {
       const response = await fetch(healthUrl);
       if (response.ok) {
-        const body = await response.json() as { ok?: unknown; service?: unknown };
-        if (body.ok === true && body.service === "lease-safe") return;
+        const body = await response.json() as { ok?: unknown; service?: unknown; maxBodyBytes?: unknown };
+        if (body.ok === true && body.service === "lease-safe" && Number.isSafeInteger(body.maxBodyBytes)) {
+          return Number(body.maxBodyBytes);
+        }
       }
     } catch (error) {
       lastError = error;
@@ -101,6 +103,21 @@ async function waitForHealth(port: number, containerId: string): Promise<void> {
   }
 
   throw new Error(`Timed out waiting for ${healthUrl}: ${(lastError as Error | undefined)?.message ?? "no response"}`);
+}
+
+async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): Promise<void> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: "x".repeat(maxBodyBytes + 1)
+  });
+
+  if (response.status !== 413) {
+    const text = await response.text();
+    throw new Error(`Expected oversized MCP request to return 413, got ${response.status}: ${text}`);
+  }
 }
 
 async function stopContainer(containerId: string): Promise<void> {
@@ -132,8 +149,10 @@ async function main() {
   ]);
 
   try {
-    await waitForHealth(port, containerId);
+    const maxBodyBytes = await waitForHealth(port, containerId);
     console.log("docker_healthz=ok");
+    await verifyOversizedRequest(endpoint, maxBodyBytes);
+    console.log("docker_oversized_request=ok");
     await runNode(["dist/scripts/smoke.js"], {
       ...process.env,
       MCP_ENDPOINT: endpoint

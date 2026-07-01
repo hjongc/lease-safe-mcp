@@ -78,6 +78,14 @@ MCP_AUTH_TOKEN=replace-with-runtime-secret
 
 When `MCP_AUTH_TOKEN` is set, `POST /mcp` requires `Authorization: Bearer <token>`.
 
+Optional request-size hardening is available for deployments with stricter ingress limits:
+
+```bash
+MCP_MAX_BODY_BYTES=262144
+```
+
+The default MCP request body limit is 262144 bytes. Invalid values fail at startup instead of silently changing runtime behavior.
+
 ## Run Locally
 
 ```bash

@@ -22,7 +22,7 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function waitForHealth(port: number, server: ChildProcess): Promise<void> {
+async function waitForHealth(port: number, server: ChildProcess): Promise<number> {
   const healthUrl = `http://127.0.0.1:${port}/healthz`;
   const startedAt = Date.now();
   let lastError: unknown;
@@ -35,8 +35,10 @@ async function waitForHealth(port: number, server: ChildProcess): Promise<void> 
     try {
       const response = await fetch(healthUrl);
       if (response.ok) {
-        const body = await response.json() as { ok?: unknown; service?: unknown };
-        if (body.ok === true && body.service === "lease-safe") return;
+        const body = await response.json() as { ok?: unknown; service?: unknown; maxBodyBytes?: unknown };
+        if (body.ok === true && body.service === "lease-safe" && Number.isSafeInteger(body.maxBodyBytes)) {
+          return Number(body.maxBodyBytes);
+        }
       }
     } catch (error) {
       lastError = error;
@@ -45,6 +47,21 @@ async function waitForHealth(port: number, server: ChildProcess): Promise<void> 
   }
 
   throw new Error(`Timed out waiting for ${healthUrl}: ${(lastError as Error | undefined)?.message ?? "no response"}`);
+}
+
+async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): Promise<void> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: "x".repeat(maxBodyBytes + 1)
+  });
+
+  if (response.status !== 413) {
+    const text = await response.text();
+    throw new Error(`Expected oversized MCP request to return 413, got ${response.status}: ${text}`);
+  }
 }
 
 function runNode(args: string[], env: NodeJS.ProcessEnv): Promise<void> {
@@ -96,8 +113,10 @@ async function main() {
   });
 
   try {
-    await waitForHealth(port, server);
+    const maxBodyBytes = await waitForHealth(port, server);
     console.log("healthz=ok");
+    await verifyOversizedRequest(endpoint, maxBodyBytes);
+    console.log("oversized_request=ok");
     await runNode(["dist/scripts/smoke.js"], env);
     console.log("http_smoke=ok");
   } finally {

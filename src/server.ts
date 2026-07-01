@@ -1,7 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
-import type { Request, Response } from "express";
+import type { Server } from "node:http";
+import type { NextFunction, Request, Response } from "express";
 import * as z from "zod/v4";
 import {
   assessLeaseSafety,
@@ -19,6 +20,7 @@ import {
 
 const SERVICE_NAME = "Lease Safe(전월세안전내비)";
 const VERSION = "0.1.0";
+const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
 
 type ToolAnnotations = {
   title: string;
@@ -75,6 +77,75 @@ function requireProductionDataKey(): void {
   if (process.env.NODE_ENV !== "production") return;
   if (process.env.DATA_GO_KR_SERVICE_KEY?.trim()) return;
   throw new Error("DATA_GO_KR_SERVICE_KEY is required in production for official public-data tools.");
+}
+
+export function mcpMaxBodyBytes(): number {
+  const rawLimit = process.env.MCP_MAX_BODY_BYTES?.trim();
+  if (!rawLimit) return DEFAULT_MCP_MAX_BODY_BYTES;
+
+  const parsed = Number(rawLimit);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error("MCP_MAX_BODY_BYTES must be a positive integer.");
+  }
+  return parsed;
+}
+
+function jsonRpcError(res: Response, httpStatus: number, code: number, message: string): void {
+  res.status(httpStatus).json({
+    jsonrpc: "2.0",
+    error: {
+      code,
+      message
+    },
+    id: null
+  });
+}
+
+function rejectOversizedMcpRequest(maxBodyBytes: number) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== "POST") {
+      next();
+      return;
+    }
+
+    const contentLength = req.header("content-length");
+    if (!contentLength) {
+      next();
+      return;
+    }
+
+    if (!/^\d+$/.test(contentLength)) {
+      jsonRpcError(res, 400, -32600, "Invalid Content-Length header.");
+      return;
+    }
+
+    if (Number(contentLength) > maxBodyBytes) {
+      jsonRpcError(res, 413, -32600, `MCP request body exceeds ${maxBodyBytes} bytes.`);
+      return;
+    }
+
+    next();
+  };
+}
+
+function handleMcpExpressError(error: unknown, _req: Request, res: Response, next: NextFunction): void {
+  const expressError = error as { status?: number; type?: string; message?: string };
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
+
+  if (expressError.status === 413 || expressError.type === "entity.too.large") {
+    jsonRpcError(res, 413, -32600, "MCP request body is too large.");
+    return;
+  }
+
+  if (expressError instanceof SyntaxError || expressError.type === "entity.parse.failed") {
+    jsonRpcError(res, 400, -32700, "Invalid JSON request body.");
+    return;
+  }
+
+  next(error);
 }
 
 function requireBearerToken(req: Request, res: Response): boolean {
@@ -321,7 +392,10 @@ export function createServer(): McpServer {
 export function createApp() {
   const allowedHosts = requiredAllowedHosts();
   requireProductionDataKey();
+  const maxBodyBytes = mcpMaxBodyBytes();
   const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts });
+
+  app.disable("x-powered-by");
 
   app.get("/", (_req: Request, res: Response) => {
     res.type("text/plain").send(`${SERVICE_NAME} MCP server is running. Use POST /mcp for Streamable HTTP.`);
@@ -333,9 +407,12 @@ export function createApp() {
       service: "lease-safe",
       version: VERSION,
       transport: "streamable-http",
-      stateless: true
+      stateless: true,
+      maxBodyBytes
     });
   });
+
+  app.use("/mcp", rejectOversizedMcpRequest(maxBodyBytes));
 
   app.post("/mcp", async (req: Request, res: Response) => {
     if (!requireBearerToken(req, res)) return;
@@ -390,18 +467,45 @@ export function createApp() {
     });
   });
 
+  app.use("/mcp", handleMcpExpressError);
+
   return app;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const port = Number(process.env.PORT || 3000);
+export function startHttpServer(port = Number(process.env.PORT || 3000)): Server {
   const app = createApp();
-
-  app.listen(port, "0.0.0.0", error => {
+  const httpServer = app.listen(port, "0.0.0.0", error => {
     if (error) {
       console.error("Failed to start server", error);
       process.exit(1);
     }
     console.log(`${SERVICE_NAME} listening on port ${port}`);
   });
+
+  function shutdown(signal: NodeJS.Signals) {
+    console.log(`Received ${signal}; shutting down ${SERVICE_NAME}`);
+    const forceExit = setTimeout(() => {
+      console.error("Graceful shutdown timed out.");
+      process.exit(1);
+    }, 5000);
+    forceExit.unref();
+
+    httpServer.close(error => {
+      clearTimeout(forceExit);
+      if (error) {
+        console.error("Failed to close server", error);
+        process.exit(1);
+      }
+      process.exit(0);
+    });
+  }
+
+  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", shutdown);
+
+  return httpServer;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  startHttpServer();
 }

@@ -27,11 +27,14 @@ Required:
 Optional:
 
 - `MCP_AUTH_TOKEN`: bearer token for direct deployments that need private access control
+- `MCP_MAX_BODY_BYTES`: MCP POST request body limit, default `262144`
 - `PORT`: HTTP port, default `3000`
 
 Do not commit runtime secrets. Configure them in PlayMCP or deployment environment settings.
 
 The production server fails at startup if `MCP_ALLOWED_HOSTS` or `DATA_GO_KR_SERVICE_KEY` is missing. This is intentional: missing official-data configuration should be fixed before the demo, not hidden until a user calls the flagship tool.
+
+The server also rejects oversized MCP request bodies, disables `x-powered-by`, and handles container shutdown signals so PlayMCP can stop the image cleanly.
 
 ## Demo Scenario
 
