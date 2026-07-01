@@ -28,6 +28,8 @@ assert(/EXPOSE 3000/.test(dockerfile), "Dockerfile must expose port 3000");
 assert(/CMD \["node", "dist\/src\/server\.js"\]/.test(dockerfile), "Dockerfile CMD must start built server");
 
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+assert(/actions\/checkout@v5/.test(ci), "CI must use actions/checkout@v5");
+assert(/actions\/setup-node@v5/.test(ci), "CI must use actions/setup-node@v5");
 for (const command of ["npm ci", "npm test", "npm run validate:playmcp", "npm audit --omit=dev", "docker build"]) {
   assert(ci.includes(command), `CI must run ${command}`);
 }
