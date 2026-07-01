@@ -458,6 +458,10 @@ function saleRatioSignal(ratio: number | undefined): string {
   return "입력 보증금은 주변 매매가 중앙값 대비 70% 미만입니다. 그래도 개별 등기부, 선순위 보증금, 특약 확인은 별도입니다.";
 }
 
+function formatRatio(ratio: number | undefined): string {
+  return Number.isFinite(ratio) ? `${(ratio as number).toLocaleString("ko-KR")}%` : "계산 불가";
+}
+
 function assessmentRiskSummary(
   input: LeaseProfileInput & { depositManwon: number },
   rentMarket: RentMarketSnapshot,
@@ -563,7 +567,7 @@ function renderSaleMarketSnapshot(snapshot: SaleMarketSnapshot): string {
     `매매 표본 수: ${snapshot.sampleCount}`,
     snapshot.sampleCount > 0 ? `매매가 중앙값: ${money(snapshot.median)} / 최대값: ${money(snapshot.max)}` : "조회된 매매 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
     `입력 보증금: ${money(snapshot.userDeposit)}`,
-    snapshot.ratio ? `매매가 대비 보증금 비율: ${snapshot.ratio.toLocaleString("ko-KR")}%` : "매매가 대비 보증금 비율: 계산 불가",
+    `매매가 대비 보증금 비율: ${formatRatio(snapshot.ratio)}`,
     "",
     "## 해석",
     snapshot.signal,
@@ -601,9 +605,7 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
   ]);
   const redFlags = inferRiskSignals(input);
   const riskSummary = assessmentRiskSummary(input, rentMarket, saleMarket, redFlags);
-  const ratioLine = saleMarket.ratio
-    ? `${saleMarket.ratio.toLocaleString("ko-KR")}%`
-    : "계산 불가";
+  const ratioLine = formatRatio(saleMarket.ratio);
   const immediateActions = [
     "잔금 전 등기부등본을 다시 발급해 소유자, 근저당, 압류, 가압류, 신탁, 경매 표시를 확인",
     "계약 상대방이 등기부 소유자와 다르면 위임장, 인감증명, 본인 통화로 대리권 확인",
@@ -611,7 +613,7 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
     "특약에 잔금 전 추가 근저당 금지, 등기 변동 시 해제·반환 조건, 하자·수리 책임을 문서화"
   ];
 
-  if (saleMarket.ratio && saleMarket.ratio >= 80) {
+  if (Number.isFinite(saleMarket.ratio) && (saleMarket.ratio as number) >= 80) {
     immediateActions.unshift("매매가 대비 보증금 비율이 높으므로 보증보험 가능 여부와 선순위 권리 확인 전 계약금 송금을 보류");
   }
 

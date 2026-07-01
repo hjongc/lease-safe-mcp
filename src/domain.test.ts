@@ -440,6 +440,46 @@ test("deposit-to-sale comparison parses Korean public-data XML fields", async ()
   }
 });
 
+test("deposit-to-sale comparison renders zero percent as a calculated ratio", async () => {
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악매매</aptNm>
+            <umdNm>봉천동</umdNm>
+            <dealAmount>40,000</dealAmount>
+            <dealYear>2026</dealYear>
+            <dealMonth>5</dealMonth>
+            <dealDay>10</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    const text = await compareDepositToSaleMarket({
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605",
+      depositManwon: 0
+    });
+
+    assert.match(text, /매매가 대비 보증금 비율: 0%/);
+    assert.doesNotMatch(text, /매매가 대비 보증금 비율: 계산 불가/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
 test("one-shot lease assessment combines rent, sale, red flags, and actions", async () => {
   const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
   const previousFetch = globalThis.fetch;
