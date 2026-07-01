@@ -134,10 +134,13 @@ test("public-data smoke validates demo region before API calls", () => {
     assert.throws(() => publicDataSmokeRegion(), /PUBLIC_DATA_SMOKE_REGION must include at least 2 meaningful characters/);
 
     process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 010 1234 5678";
-    assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, or phone numbers/);
+    assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, phone numbers, or payment account details/);
 
     process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 user@example.com";
-    assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, or phone numbers/);
+    assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, phone numbers, or payment account details/);
+
+    process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 송금 계좌 110-123-456789";
+    assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, phone numbers, or payment account details/);
 
     process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 ".repeat(12);
     assert.throws(() => publicDataSmokeRegion(), /PUBLIC_DATA_SMOKE_REGION must be 80 characters or fewer/);
@@ -616,12 +619,17 @@ test("legal dong helper fails fast on empty or placeholder regions", async () =>
 
     await assert.rejects(
       resolveLegalDongCode({ region: "서울 관악구 010-1234-5678" }),
-      /region must not include personal identifiers, email addresses, or phone numbers/
+      /region must not include personal identifiers, email addresses, phone numbers, or payment account details/
     );
 
     await assert.rejects(
       resolveLegalDongCode({ region: "서울 관악구 user@example.com" }),
-      /region must not include personal identifiers, email addresses, or phone numbers/
+      /region must not include personal identifiers, email addresses, phone numbers, or payment account details/
+    );
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "서울 관악구 계약금 계좌는 110-123-456789" }),
+      /region must not include personal identifiers, email addresses, phone numbers, or payment account details/
     );
 
     await assert.rejects(
