@@ -827,6 +827,31 @@ test("rent market comparison rejects unrecognized public-data payloads", async (
   }
 });
 
+test("rent market comparison requires official result code", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <body><items></items></body>
+      </response>
+    `);
+
+    await assert.rejects(
+      compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" }),
+      /국토교통부 전월세 실거래 API returned XML without resultCode/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
 test("rent market comparison rejects malformed money fields", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
@@ -1078,6 +1103,36 @@ test("deposit-to-sale comparison rejects unrecognized public-data payloads", asy
         depositManwon: 30000
       }),
       /국토교통부 매매 실거래 API returned unrecognized XML payload/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
+test("deposit-to-sale comparison requires official result code", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <body><items></items></body>
+      </response>
+    `);
+
+    await assert.rejects(
+      compareDepositToSaleMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: 30000
+      }),
+      /국토교통부 매매 실거래 API returned XML without resultCode/
     );
   } finally {
     globalThis.fetch = previousFetch;
