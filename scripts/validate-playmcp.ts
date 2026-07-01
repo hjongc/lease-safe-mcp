@@ -20,7 +20,7 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   dependencies?: Record<string, string>;
 };
 
-for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", ".github/workflows/registration-preflight.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/registration-preflight.ts", "scripts/require-registration-env.mjs", "scripts/rate-limit-smoke.ts"]) {
+for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", ".github/workflows/registration-preflight.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/docker-image-reference.ts", "scripts/registration-preflight.ts", "scripts/require-registration-env.mjs", "scripts/rate-limit-smoke.ts"]) {
   readFileSync(file, "utf8");
 }
 
@@ -493,6 +493,11 @@ assert(/registration_mode/.test(publicDataSmoke), "public-data smoke config log 
 
 const releasePreflight = readFileSync("scripts/release-preflight.ts", "utf8");
 const registrationPreflight = readFileSync("scripts/registration-preflight.ts", "utf8");
+const dockerImageReference = readFileSync("scripts/docker-image-reference.ts", "utf8");
+assert(/DOCKER_IMAGE_REFERENCE_PATTERN/.test(dockerImageReference), "preflight scripts must define a Docker image reference allowlist");
+assert(/plain Docker image reference/.test(dockerImageReference), "preflight scripts must fail clearly on unsafe Docker image references");
+assert(/dockerImageReferenceFromEnv/.test(releasePreflight), "release preflight must validate PREFLIGHT_DOCKER_TAG before Docker build");
+assert(/dockerImageReferenceFromEnv/.test(dockerSmoke), "Docker smoke must validate DOCKER_SMOKE_IMAGE before Docker run");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"scan:secrets"\]/.test(releasePreflight), "release preflight must include npm run scan:secrets");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["test"\]/.test(releasePreflight), "release preflight must include npm test");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"validate:playmcp"\]/.test(releasePreflight), "release preflight must include npm run validate:playmcp");

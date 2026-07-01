@@ -1,8 +1,9 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { request } from "node:http";
 import { createServer } from "node:net";
+import { dockerImageReferenceFromEnv } from "./docker-image-reference.js";
 
-const imageTag = process.env.DOCKER_SMOKE_IMAGE ?? process.env.PREFLIGHT_DOCKER_TAG ?? "lease-safe-mcp-preflight";
+const imageTag = dockerImageReferenceFromEnv("DOCKER_SMOKE_IMAGE", "PREFLIGHT_DOCKER_TAG", "lease-safe-mcp-preflight");
 const containerName = `lease-safe-mcp-smoke-${process.pid}`;
 const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
 const publicDataSmokeKey = [

@@ -59,6 +59,14 @@ function processStderr(result: ReturnType<typeof spawnSync>): string {
   return typeof result.stderr === "string" ? result.stderr : result.stderr.toString("utf8");
 }
 
+function runBuiltScript(scriptPath: string, envPatch: Record<string, string>): ReturnType<typeof spawnSync> {
+  return spawnSync(process.execPath, [scriptPath], {
+    cwd: process.cwd(),
+    env: { ...process.env, ...envPatch },
+    encoding: "utf8"
+  });
+}
+
 test("data availability names automatic APIs and no fake fallback", () => {
   const text = explainDataAvailability();
   assert.match(text, /법정동코드/);
@@ -115,6 +123,20 @@ test("registration preflight env check rejects bad public-data keys before build
   const encoded = runRegistrationEnvCheck(VALID_TEST_SERVICE_KEY_ENCODED);
   assert.equal(encoded.status, 0);
   assert.equal(processStderr(encoded), "");
+});
+
+test("preflight scripts reject unsafe Docker image references before running Docker", () => {
+  const releasePreflight = runBuiltScript("dist/scripts/release-preflight.js", {
+    PREFLIGHT_DOCKER_TAG: "lease-safe\nspoof"
+  });
+  assert.notEqual(releasePreflight.status, 0);
+  assert.match(processStderr(releasePreflight), /PREFLIGHT_DOCKER_TAG must be a plain Docker image reference/);
+
+  const dockerSmoke = runBuiltScript("dist/scripts/docker-smoke.js", {
+    DOCKER_SMOKE_IMAGE: "lease-safe;rm"
+  });
+  assert.notEqual(dockerSmoke.status, 0);
+  assert.match(processStderr(dockerSmoke), /DOCKER_SMOKE_IMAGE must be a plain Docker image reference/);
 });
 
 test("public-data smoke requires positive live sample counts", () => {
