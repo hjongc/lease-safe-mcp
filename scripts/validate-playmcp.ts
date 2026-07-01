@@ -143,6 +143,7 @@ assert(/등기부\|등기/.test(domain), "official help router must infer regist
 assert(/publicDataTextFromOptionalTag/.test(domain), "domain must normalize official public-data text fields before rendering");
 assert(/compactPublicDataFieldValue/.test(domain), "domain must bound and redact invalid official public-data field excerpts");
 assert(/동호수 생략/.test(domain), "domain must redact household unit details from user-rendered text");
+assert(/계좌번호 생략/.test(domain), "domain must redact account-number-like payment details from user-rendered text");
 assert(/\.replace\(\/!\\\[/.test(domain) && /\.replace\(\/<\\\/\?\[A-Za-z\]/.test(domain), "domain must strip user-provided markdown media and HTML tags before rendering");
 assert(/parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data money fields");
 assert(/parsePublicDataDecimal/.test(domain), "domain must reject exponent-style official public-data decimal fields");
