@@ -164,8 +164,8 @@ function inferRiskSignals(input: LeaseProfileInput): string[] {
   if (/대리|위임|명의|소유자|집주인/.test(text)) {
     signals.push("계약 상대방과 등기부 소유자가 일치하는지, 대리계약이면 위임장·인감증명·본인 통화 확인이 필요합니다.");
   }
-  if (/근저당|압류|가압류|경매|채권/.test(text)) {
-    signals.push("근저당·압류·가압류·경매 관련 표현이 있으면 잔금 전 등기부 재확인과 전문가 상담 우선입니다.");
+  if (/근저당|압류|가압류|경매|채권|신탁/.test(text)) {
+    signals.push("근저당·압류·가압류·신탁·경매 관련 표현이 있으면 잔금 전 등기부 재확인과 전문가 상담 우선입니다.");
   }
   if (/전입|확정|신고/.test(text) || input.moveInDate) {
     signals.push("전입신고, 확정일자, 임대차신고는 보증금 보호의 기본 확인 항목입니다.");
@@ -867,9 +867,9 @@ function assessmentRiskSummary(
     score += 15;
     reasons.push("대리계약 또는 소유자 확인 신호가 있습니다.");
   }
-  if (/근저당|압류|가압류|경매|채권/.test(joinedFlags)) {
+  if (/근저당|압류|가압류|경매|채권|신탁/.test(joinedFlags)) {
     score += 20;
-    reasons.push("근저당, 압류, 경매 등 선순위 권리 확인 신호가 있습니다.");
+    reasons.push("근저당, 압류, 신탁, 경매 등 선순위 권리 확인 신호가 있습니다.");
   }
   if (/송금|가계약|계약금|압박/.test(joinedFlags)) {
     score += 15;

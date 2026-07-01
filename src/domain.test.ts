@@ -2927,6 +2927,19 @@ test("red flag checker surfaces registry and rushed deposit pressure", () => {
   assert.match(text, /법률 자문/);
 });
 
+test("red flag checker treats trust registry language as a senior-right signal", () => {
+  const text = checkLeaseRedFlags({
+    region: "서울 관악구",
+    situation: "등기부에 신탁등기가 보입니다.",
+    contractType: "jeonse",
+    depositManwon: 30000
+  });
+
+  assert.match(text, /신탁/);
+  assert.match(text, /잔금 전 등기부 재확인/);
+  assert.doesNotMatch(text, /현재 입력만으로 확정 위험/);
+});
+
 test("move-in plan includes official protection steps", () => {
   const text = buildMoveInProtectionPlan({ moveInDate: "2026-07-20", contractDate: "2026-07-01" });
   assert.match(text, /전입신고/);
