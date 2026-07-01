@@ -239,8 +239,26 @@ function isAbortLikeError(error: unknown): boolean {
   return name === "AbortError" || name === "TimeoutError";
 }
 
+function dataGoKrServiceKeyRedactionValues(): string[] {
+  const rawServiceKey = process.env.DATA_GO_KR_SERVICE_KEY?.trim();
+  if (!rawServiceKey) return [];
+
+  const values = [rawServiceKey];
+  try {
+    const decoded = decodeURIComponent(rawServiceKey);
+    if (decoded !== rawServiceKey) values.push(decoded);
+  } catch {
+    // Redaction must never hide the original public-data failure.
+  }
+  return values.sort((a, b) => b.length - a.length);
+}
+
 function compactPublicDataResponseExcerpt(body: string): string {
-  return body.replace(/\s+/g, " ").trim().slice(0, 200);
+  let excerpt = body.replace(/\s+/g, " ").trim().slice(0, 200);
+  for (const serviceKey of dataGoKrServiceKeyRedactionValues()) {
+    excerpt = excerpt.split(serviceKey).join("[DATA_GO_KR_SERVICE_KEY 생략]");
+  }
+  return excerpt;
 }
 
 async function fetchPublicDataText(label: string, url: URL): Promise<string> {

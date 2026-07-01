@@ -1063,6 +1063,37 @@ test("public-data HTTP errors include a bounded response excerpt", async () => {
   }
 });
 
+test("public-data HTTP error excerpts redact configured service keys", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY_ENCODED;
+    globalThis.fetch = async () => new Response(
+      `approval sync failed for ${VALID_TEST_SERVICE_KEY_ENCODED} and ${VALID_TEST_SERVICE_KEY}`,
+      { status: 403, statusText: "Forbidden" }
+    );
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "관악구" }),
+      error => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /403 Forbidden/);
+        assert.match(error.message, /\[DATA_GO_KR_SERVICE_KEY 생략\]/);
+        assert.doesNotMatch(error.message, new RegExp(VALID_TEST_SERVICE_KEY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+        assert.doesNotMatch(error.message, new RegExp(VALID_TEST_SERVICE_KEY_ENCODED.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+        return true;
+      }
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
 test("deposit-to-sale comparison parses sale XML and flags high ratio", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
