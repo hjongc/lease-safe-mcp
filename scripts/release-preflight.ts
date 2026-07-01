@@ -35,6 +35,11 @@ const steps: Step[] = [
     args: ["run", "smoke:http"]
   },
   {
+    name: "MCP rate-limit smoke",
+    command: "npm",
+    args: ["run", "smoke:rate-limit"]
+  },
+  {
     name: "Production dependency audit",
     command: "npm",
     args: ["audit", "--omit=dev"]

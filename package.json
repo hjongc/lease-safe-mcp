@@ -13,6 +13,7 @@
     "smoke": "npm run build && node dist/scripts/smoke.js",
     "smoke:http": "npm run build && node dist/scripts/http-smoke.js",
     "smoke:docker": "npm run build && node dist/scripts/docker-smoke.js",
+    "smoke:rate-limit": "npm run build && node dist/scripts/rate-limit-smoke.js",
     "smoke:public-data": "npm run build && node dist/scripts/public-data-smoke.js",
     "preflight": "npm run build && node dist/scripts/release-preflight.js",
     "preflight:registration": "npm run build && node dist/scripts/registration-preflight.js",

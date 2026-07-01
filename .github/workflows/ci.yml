@@ -48,6 +48,9 @@ jobs:
       - name: Smoke local MCP HTTP server
         run: npm run smoke:http
 
+      - name: Smoke MCP rate limit
+        run: npm run smoke:rate-limit
+
       - name: Audit production dependencies
         run: npm audit --omit=dev
 

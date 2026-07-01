@@ -134,7 +134,7 @@ Release preflight:
 npm run preflight
 ```
 
-`npm run preflight` runs secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke, production dependency audit, Docker build, Docker runtime smoke, and live public-data smoke when `DATA_GO_KR_SERVICE_KEY` is set.
+`npm run preflight` runs secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke, MCP rate-limit smoke, production dependency audit, Docker build, Docker runtime smoke, and live public-data smoke when `DATA_GO_KR_SERVICE_KEY` is set.
 
 Registration preflight:
 
@@ -172,6 +172,7 @@ The repository includes `.github/workflows/ci.yml` for the submission branch. It
 - `npm run scan:secrets`
 - `npm run validate:playmcp`
 - `npm run smoke:http`
+- `npm run smoke:rate-limit`
 - `npm audit --omit=dev`
 - `docker build -t lease-safe-mcp-ci .`
 - `npm run smoke:docker`

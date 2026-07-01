@@ -11,7 +11,7 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   dependencies?: Record<string, string>;
 };
 
-for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", "README.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/registration-preflight.ts"]) {
+for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", "README.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/registration-preflight.ts", "scripts/rate-limit-smoke.ts"]) {
   readFileSync(file, "utf8");
 }
 
@@ -23,6 +23,7 @@ assert(packageJson.scripts?.["scan:secrets"], "secret scan script is required");
 assert(packageJson.scripts?.smoke, "smoke script is required");
 assert(packageJson.scripts?.["smoke:http"], "HTTP smoke script is required");
 assert(packageJson.scripts?.["smoke:docker"], "Docker smoke script is required");
+assert(packageJson.scripts?.["smoke:rate-limit"], "rate-limit smoke script is required");
 assert(packageJson.scripts?.preflight, "preflight script is required");
 assert(packageJson.scripts?.["preflight:registration"], "registration preflight script is required");
 assert(packageJson.scripts?.["validate:playmcp"], "PlayMCP validation script is required");
@@ -43,7 +44,7 @@ for (const pattern of [".git", ".env", ".env.*", "node_modules", "dist"]) {
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
 assert(/actions\/checkout@v5/.test(ci), "CI must use actions/checkout@v5");
 assert(/actions\/setup-node@v5/.test(ci), "CI must use actions/setup-node@v5");
-for (const command of ["npm ci", "npm run scan:secrets", "npm test", "npm run validate:playmcp", "npm run smoke:http", "npm audit --omit=dev", "docker build", "npm run smoke:docker"]) {
+for (const command of ["npm ci", "npm run scan:secrets", "npm test", "npm run validate:playmcp", "npm run smoke:http", "npm run smoke:rate-limit", "npm audit --omit=dev", "docker build", "npm run smoke:docker"]) {
   assert(ci.includes(command), `CI must run ${command}`);
 }
 assert(/DATA_GO_KR_SERVICE_KEY/.test(ci), "CI must support optional live public-data smoke through DATA_GO_KR_SERVICE_KEY");
@@ -142,6 +143,11 @@ assert(/rateLimitPerMinute/.test(dockerSmoke), "Docker smoke must verify rate li
 assert(/docker_oversized_request/.test(dockerSmoke), "Docker smoke must verify oversized MCP request rejection");
 assert(/dist\/scripts\/smoke\.js/.test(dockerSmoke), "Docker smoke must run the MCP client smoke");
 
+const rateLimitSmoke = readFileSync("scripts/rate-limit-smoke.ts", "utf8");
+assert(/MCP_RATE_LIMIT_PER_MINUTE/.test(rateLimitSmoke), "rate-limit smoke must force a low rate limit");
+assert(/Retry-After/.test(rateLimitSmoke), "rate-limit smoke must verify Retry-After");
+assert(/429/.test(rateLimitSmoke), "rate-limit smoke must verify 429 rejection");
+
 const secretScan = readFileSync("scripts/secret-scan.ts", "utf8");
 for (const required of ["DATA_GO_KR_SERVICE_KEY", "MCP_AUTH_TOKEN", "Secret scan failed"]) {
   assert(secretScan.includes(required), `secret scan missing ${required}`);
@@ -159,6 +165,7 @@ assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"scan:secrets"\]/.test(release
 assert(/command:\s*"npm"[\s\S]*args:\s*\["test"\]/.test(releasePreflight), "release preflight must include npm test");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"validate:playmcp"\]/.test(releasePreflight), "release preflight must include npm run validate:playmcp");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"smoke:http"\]/.test(releasePreflight), "release preflight must include npm run smoke:http");
+assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"smoke:rate-limit"\]/.test(releasePreflight), "release preflight must include npm run smoke:rate-limit");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["audit",\s*"--omit=dev"\]/.test(releasePreflight), "release preflight must include npm audit --omit=dev");
 assert(/command:\s*"docker"[\s\S]*args:\s*\["build"/.test(releasePreflight), "release preflight must include docker build");
 assert(/command:\s*"node"[\s\S]*args:\s*\["dist\/scripts\/docker-smoke\.js"\]/.test(releasePreflight), "release preflight must include Docker runtime smoke");
