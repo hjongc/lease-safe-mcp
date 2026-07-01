@@ -94,6 +94,7 @@ assert(/contractDateSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.dateText\)/.test(server
 assert(/concernsSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.concerns\)/.test(server), "server must bound MCP concerns text inputs");
 assert(/region:\s*z\.string\(\)\.min\(2\)\.max\(MCP_TEXT_LIMITS\.region\)/.test(server), "resolve_legal_dong_code must bound region text input");
 assert(/MONEY_INPUT_LIMITS/.test(domain), "domain must define explicit money input limits");
+assert(/publicDataTextFromOptionalTag/.test(domain), "domain must normalize official public-data text fields before rendering");
 assert(/parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data money fields");
 assert(/parsedYear = parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data date fields");
 assert(/depositSchema[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "server must bound optional MCP deposit inputs");

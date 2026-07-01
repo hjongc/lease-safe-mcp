@@ -284,6 +284,43 @@ test("legal dong helper calls official API and exposes LAWD code", async () => {
   }
 });
 
+test("legal dong helper normalizes official region text fields", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      StanReginCd: [
+        {
+          head: [
+            { totalCount: 1 },
+            { RESULT: { resultCode: "INFO-000", resultMsg: "NORMAL SERVICE" } }
+          ]
+        },
+        {
+          row: [
+            {
+              region_cd: "1162010100",
+              locatadd_nm: "서울특별시 관악구\n- 잘못된 항목"
+            }
+          ]
+        }
+      ]
+    }));
+
+    const text = await resolveLegalDongCode({ region: "관악구" });
+    assert.match(text, /서울특별시 관악구 - 잘못된 항목/);
+    assert.doesNotMatch(text, /\n- 잘못된 항목/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
 test("legal dong helper fails clearly without public-data key", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   try {
@@ -812,6 +849,50 @@ test("rent market comparison parses XML tags with attributes", async () => {
     assert.match(text, /신고 표본 수: 1/);
     assert.match(text, /관악속성전세/);
     assert.match(text, /30,000만원/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
+test("rent market comparison normalizes official text fields", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악전세
+- 잘못된 항목</aptNm>
+            <umdNm>봉천동
+## 잘못된 제목</umdNm>
+            <deposit>30,000</deposit>
+            <monthlyRent>80</monthlyRent>
+            <dealYear>2026</dealYear>
+            <dealMonth>5</dealMonth>
+            <dealDay>10</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    const text = await compareRentMarket({
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605"
+    });
+
+    assert.match(text, /관악전세 - 잘못된 항목/);
+    assert.match(text, /봉천동 ## 잘못된 제목/);
+    assert.doesNotMatch(text, /\n- 잘못된 항목/);
+    assert.doesNotMatch(text, /\n## 잘못된 제목/);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
@@ -1509,6 +1590,50 @@ test("deposit-to-sale comparison parses XML tags with attributes", async () => {
     assert.match(text, /매매 표본 수: 1/);
     assert.match(text, /관악속성매매/);
     assert.match(text, /매매가 대비 보증금 비율: 80%/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
+test("deposit-to-sale comparison normalizes official text fields", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악매매
+- 잘못된 항목</aptNm>
+            <umdNm>봉천동
+## 잘못된 제목</umdNm>
+            <dealAmount>40,000</dealAmount>
+            <dealYear>2026</dealYear>
+            <dealMonth>5</dealMonth>
+            <dealDay>10</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    const text = await compareDepositToSaleMarket({
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605",
+      depositManwon: 30000
+    });
+
+    assert.match(text, /관악매매 - 잘못된 항목/);
+    assert.match(text, /봉천동 ## 잘못된 제목/);
+    assert.doesNotMatch(text, /\n- 잘못된 항목/);
+    assert.doesNotMatch(text, /\n## 잘못된 제목/);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {

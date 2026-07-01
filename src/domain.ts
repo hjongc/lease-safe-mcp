@@ -10,6 +10,7 @@ const DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS = new Set([
 ]);
 const MIN_DATA_GO_KR_SERVICE_KEY_LENGTH = 40;
 const MAX_LEGAL_DONG_REGION_LENGTH = 80;
+const MAX_PUBLIC_DATA_TEXT_FIELD_LENGTH = 80;
 
 export const MONEY_INPUT_LIMITS = {
   depositManwon: 10_000_000,
@@ -371,6 +372,16 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
+function publicDataText(value: string | undefined, label: string): string | undefined {
+  if (value === undefined) return undefined;
+  const cleaned = cleanText(value, "");
+  if (!cleaned) return undefined;
+  if (cleaned.length > MAX_PUBLIC_DATA_TEXT_FIELD_LENGTH) {
+    throw new Error(`${label} returned malformed text field.`);
+  }
+  return cleaned;
+}
+
 function parseLegalDongRows(payload: unknown): LegalDongRecord[] {
   const root = asRecord(payload);
   if (!Array.isArray(root?.StanReginCd)) {
@@ -398,7 +409,7 @@ function parseLegalDongRows(payload: unknown): LegalDongRecord[] {
   for (const row of rows) {
     const record = asRecord(row);
     const regionCode = typeof record?.region_cd === "string" ? record.region_cd.trim() : "";
-    const regionName = typeof record?.locatadd_nm === "string" ? record.locatadd_nm.trim() : "";
+    const regionName = publicDataText(typeof record?.locatadd_nm === "string" ? record.locatadd_nm : undefined, "행정표준코드 법정동코드 API") ?? "";
     const lawdCd = regionCode.slice(0, 5);
     if (!/^\d{10}$/.test(regionCode) || isAllZeroLawdCd(lawdCd) || !regionName) {
       throw new Error("행정표준코드 법정동코드 API returned malformed row fields.");
@@ -500,6 +511,10 @@ function extractFirstPresentTag(xml: string, tags: string[]): string | undefined
   return undefined;
 }
 
+function publicDataTextFromOptionalTag(xml: string, tags: string[], label: string): string | undefined {
+  return publicDataText(extractFirstTag(xml, tags), label);
+}
+
 function publicDataNumberFromRequiredTag(xml: string, tags: string[], label: string): number {
   const rawValue = extractFirstPresentTag(xml, tags);
   if (rawValue === undefined) {
@@ -569,14 +584,14 @@ function extractItems(xml: string, specNameField?: string): RentRecord[] {
       const deposit = publicDataNumberFromRequiredTag(item, ["deposit", "보증금액", "보증금"], "국토교통부 전월세 실거래 API");
       const monthlyRent = publicDataNumberFromRequiredTag(item, ["monthlyRent", "월세금액", "월세"], "국토교통부 전월세 실거래 API");
       return {
-        name: extractFirstTag(item, [specNameField, "aptNm", "아파트", "mhouseNm", "연립다세대", "offiNm", "단지"].filter((tag): tag is string => Boolean(tag))),
-        legalDong: extractFirstTag(item, ["umdNm", "법정동"]),
+        name: publicDataTextFromOptionalTag(item, [specNameField, "aptNm", "아파트", "mhouseNm", "연립다세대", "offiNm", "단지"].filter((tag): tag is string => Boolean(tag)), "국토교통부 전월세 실거래 API"),
+        legalDong: publicDataTextFromOptionalTag(item, ["umdNm", "법정동"], "국토교통부 전월세 실거래 API"),
         area: publicDataNumberFromOptionalTag(item, ["excluUseAr", "totalFloorAr", "전용면적", "계약면적"], "국토교통부 전월세 실거래 API"),
         depositManwon: deposit,
         monthlyRentManwon: monthlyRent,
         contractDate: contractDateFromTags(item),
-        floor: extractFirstTag(item, ["floor", "층"]),
-        contractType: extractFirstTag(item, ["contractType", "전월세구분"])
+        floor: publicDataTextFromOptionalTag(item, ["floor", "층"], "국토교통부 전월세 실거래 API"),
+        contractType: publicDataTextFromOptionalTag(item, ["contractType", "전월세구분"], "국토교통부 전월세 실거래 API")
       };
     })
     .filter(item => item.depositManwon > 0 || item.monthlyRentManwon > 0);
@@ -588,12 +603,12 @@ function extractSaleItems(xml: string, specNameField?: string): SaleRecord[] {
     .map(item => {
       const dealAmount = publicDataNumberFromRequiredTag(item, ["dealAmount", "거래금액"], "국토교통부 매매 실거래 API");
       return {
-        name: extractFirstTag(item, [specNameField, "aptNm", "아파트", "mhouseNm", "연립다세대", "offiNm", "단지"].filter((tag): tag is string => Boolean(tag))),
-        legalDong: extractFirstTag(item, ["umdNm", "법정동"]),
+        name: publicDataTextFromOptionalTag(item, [specNameField, "aptNm", "아파트", "mhouseNm", "연립다세대", "offiNm", "단지"].filter((tag): tag is string => Boolean(tag)), "국토교통부 매매 실거래 API"),
+        legalDong: publicDataTextFromOptionalTag(item, ["umdNm", "법정동"], "국토교통부 매매 실거래 API"),
         area: publicDataNumberFromOptionalTag(item, ["excluUseAr", "totalArea", "전용면적", "대지면적"], "국토교통부 매매 실거래 API"),
         dealAmountManwon: dealAmount,
         contractDate: contractDateFromTags(item),
-        floor: extractFirstTag(item, ["floor", "층"])
+        floor: publicDataTextFromOptionalTag(item, ["floor", "층"], "국토교통부 매매 실거래 API")
       };
     })
     .filter(item => item.dealAmountManwon > 0);
