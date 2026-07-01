@@ -84,11 +84,11 @@ The service does not provide legal advice, final registry rights analysis, HUG e
 Before registration:
 
 ```bash
-DATA_GO_KR_SERVICE_KEY=... npm run preflight
+DATA_GO_KR_SERVICE_KEY=... npm run preflight:registration
 ```
 
 Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_KEY` is configured as a GitHub repository secret, CI also runs the live public-data smoke.
 
 CI also runs `npm run smoke:docker` after building the image, so registration should use a commit whose Docker image has been proven to boot and answer MCP requests before the optional live API smoke.
 
-Use `docs/operations.md` as the final registration runbook. Registration is not evidence-complete until the GitHub Actions live public-data smoke is passed, not skipped.
+Use `docs/operations.md` as the final registration runbook. Registration is not evidence-complete until `npm run preflight:registration` and the GitHub Actions live public-data smoke are passed, not skipped.

@@ -15,6 +15,7 @@
     "smoke:docker": "npm run build && node dist/scripts/docker-smoke.js",
     "smoke:public-data": "npm run build && node dist/scripts/public-data-smoke.js",
     "preflight": "npm run build && node dist/scripts/release-preflight.js",
+    "preflight:registration": "npm run build && node dist/scripts/registration-preflight.js",
     "validate:playmcp": "npm run build && node dist/scripts/validate-playmcp.js"
   },
   "engines": {

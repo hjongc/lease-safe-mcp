@@ -11,7 +11,7 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   dependencies?: Record<string, string>;
 };
 
-for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", "README.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts"]) {
+for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", "README.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/registration-preflight.ts"]) {
   readFileSync(file, "utf8");
 }
 
@@ -24,6 +24,8 @@ assert(packageJson.scripts?.smoke, "smoke script is required");
 assert(packageJson.scripts?.["smoke:http"], "HTTP smoke script is required");
 assert(packageJson.scripts?.["smoke:docker"], "Docker smoke script is required");
 assert(packageJson.scripts?.preflight, "preflight script is required");
+assert(packageJson.scripts?.["preflight:registration"], "registration preflight script is required");
+assert(packageJson.scripts?.["validate:playmcp"], "PlayMCP validation script is required");
 
 const dockerfile = readFileSync("Dockerfile", "utf8");
 assert(/COPY package\*\.json \.\//.test(dockerfile), "Dockerfile must copy package-lock.json for reproducible builds");
@@ -61,6 +63,7 @@ for (const required of [
   "MCP_MAX_BODY_BYTES",
   "PUBLIC_DATA_TIMEOUT_MS",
   "fails at startup",
+  "npm run preflight:registration",
   "npm run preflight"
 ]) {
   assert(submission.includes(required), `submission pack missing: ${required}`);
@@ -147,6 +150,7 @@ for (const housingType of ["apartment", "rowhouse", "single_multi", "officetel"]
 assert(/assessLeaseSafety/.test(publicDataSmoke), "public-data smoke must verify the flagship assessment tool");
 
 const releasePreflight = readFileSync("scripts/release-preflight.ts", "utf8");
+const registrationPreflight = readFileSync("scripts/registration-preflight.ts", "utf8");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"scan:secrets"\]/.test(releasePreflight), "release preflight must include npm run scan:secrets");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["test"\]/.test(releasePreflight), "release preflight must include npm test");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"validate:playmcp"\]/.test(releasePreflight), "release preflight must include npm run validate:playmcp");
@@ -156,10 +160,13 @@ assert(/command:\s*"docker"[\s\S]*args:\s*\["build"/.test(releasePreflight), "re
 assert(/command:\s*"node"[\s\S]*args:\s*\["dist\/scripts\/docker-smoke\.js"\]/.test(releasePreflight), "release preflight must include Docker runtime smoke");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"smoke:public-data"\]/.test(releasePreflight), "release preflight must include npm run smoke:public-data");
 assert(/DATA_GO_KR_SERVICE_KEY/.test(releasePreflight), "release preflight must gate live public-data smoke on DATA_GO_KR_SERVICE_KEY");
+assert(/REQUIRE_LIVE_PUBLIC_DATA/.test(releasePreflight), "release preflight must support requiring live public-data smoke");
+assert(/REQUIRE_LIVE_PUBLIC_DATA/.test(registrationPreflight), "registration preflight must require live public-data smoke");
 
 for (const required of [
   "Secret Setup",
   "Pre-Registration Evidence",
+  "npm run preflight:registration",
   "Live public-data smoke",
   "Incident Response",
   "Key Rotation",

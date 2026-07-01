@@ -11,6 +11,7 @@ interface Step {
 
 const dockerTag = process.env.PREFLIGHT_DOCKER_TAG ?? "lease-safe-mcp-preflight";
 const hasPublicDataKey = Boolean(process.env.DATA_GO_KR_SERVICE_KEY?.trim());
+const requireLivePublicData = process.env.REQUIRE_LIVE_PUBLIC_DATA === "1";
 
 const steps: Step[] = [
   {
@@ -55,7 +56,7 @@ const steps: Step[] = [
     name: "Live public-data smoke",
     command: "npm",
     args: ["run", "smoke:public-data"],
-    skip: !hasPublicDataKey,
+    skip: !hasPublicDataKey && !requireLivePublicData,
     skipReason: "DATA_GO_KR_SERVICE_KEY is not set"
   }
 ];
@@ -95,6 +96,12 @@ function runStep(step: Step): Promise<void> {
 async function main() {
   console.log("Lease Safe release preflight");
   console.log(`Docker tag: ${dockerTag}`);
+  if (requireLivePublicData) {
+    console.log("Registration mode: live public-data smoke is required.");
+  }
+  if (requireLivePublicData && !hasPublicDataKey) {
+    throw new Error("DATA_GO_KR_SERVICE_KEY is required for registration preflight.");
+  }
   if (!hasPublicDataKey) {
     console.log("Live public-data smoke will be skipped because DATA_GO_KR_SERVICE_KEY is not set.");
   }

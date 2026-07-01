@@ -128,6 +128,14 @@ npm run preflight
 
 `npm run preflight` runs secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke, production dependency audit, Docker build, Docker runtime smoke, and live public-data smoke when `DATA_GO_KR_SERVICE_KEY` is set.
 
+Registration preflight:
+
+```bash
+DATA_GO_KR_SERVICE_KEY=... npm run preflight:registration
+```
+
+`npm run preflight:registration` runs the same checks but requires the live public-data smoke to run and pass. Use it before PlayMCP registration.
+
 Live public-data smoke before production rollout:
 
 ```bash
@@ -168,7 +176,7 @@ Before registering in PlayMCP:
 
 - Review `docs/submission.md`
 - Review `docs/operations.md`
-- Run `npm run preflight` locally with `DATA_GO_KR_SERVICE_KEY` set
+- Run `npm run preflight:registration` locally with `DATA_GO_KR_SERVICE_KEY` set
 - Confirm the latest GitHub Actions CI run is green
 - Confirm GitHub Actions live public-data smoke is passed, not skipped
 - Configure the same `DATA_GO_KR_SERVICE_KEY` as a PlayMCP runtime environment variable
