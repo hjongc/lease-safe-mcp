@@ -31,6 +31,7 @@ const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
 const DEFAULT_MCP_RATE_LIMIT_PER_MINUTE = 120;
 const MIN_MCP_AUTH_TOKEN_LENGTH = 16;
 const MAX_MCP_AUTH_TOKEN_LENGTH = 4096;
+const MCP_AUTH_TOKEN_PATTERN = /^[\x21-\x7E]+$/;
 const REQUEST_ID_HEADER = "X-Request-Id";
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 const MCP_AUTH_TOKEN_PLACEHOLDERS = new Set([
@@ -177,8 +178,11 @@ function requireProductionDataKey(): void {
 }
 
 function mcpAuthToken(): string | undefined {
-  const token = process.env.MCP_AUTH_TOKEN?.trim();
-  if (!token) return undefined;
+  const token = process.env.MCP_AUTH_TOKEN;
+  if (token === undefined || token === "") return undefined;
+  if (token !== token.trim() || /\s/.test(token)) {
+    throw new Error("MCP_AUTH_TOKEN must not contain whitespace.");
+  }
   if (MCP_AUTH_TOKEN_PLACEHOLDERS.has(token.toLowerCase())) {
     throw new Error("MCP_AUTH_TOKEN must be a real bearer token, not a placeholder.");
   }
@@ -187,6 +191,9 @@ function mcpAuthToken(): string | undefined {
   }
   if (token.length > MAX_MCP_AUTH_TOKEN_LENGTH) {
     throw new Error(`MCP_AUTH_TOKEN must be ${MAX_MCP_AUTH_TOKEN_LENGTH} characters or fewer when set.`);
+  }
+  if (!MCP_AUTH_TOKEN_PATTERN.test(token)) {
+    throw new Error("MCP_AUTH_TOKEN must contain only visible ASCII characters.");
   }
   return token;
 }
@@ -402,6 +409,7 @@ function bearerTokenMatches(authorization: string | undefined, expectedToken: st
   if (!authorization?.startsWith("Bearer ")) return false;
   const suppliedToken = authorization.slice("Bearer ".length);
   if (suppliedToken.length > MAX_MCP_AUTH_TOKEN_LENGTH) return false;
+  if (!MCP_AUTH_TOKEN_PATTERN.test(suppliedToken)) return false;
   const supplied = Buffer.from(suppliedToken);
   const expected = Buffer.from(expectedToken);
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);
@@ -516,7 +524,7 @@ export function createServer(): McpServer {
     {
       title: "전월세 안전 종합 진단",
       description:
-        "전월세안전내비의 대표 진단 도구입니다. 국토교통부 전월세·매매 실거래가를 함께 조회해 보증금의 주변 시세 위치, 매매가 대비 비율, 계약 위험 신호, 입주 보호 행동을 한 번에 정리합니다. DATA_GO_KR_SERVICE_KEY가 필요합니다.",
+        "전월세안전내비의 대표 진단 도구입니다. 국토교통부 전월세·매매 실거래가를 함께 조회해 보증금의 주변 시세 위치, 매매가 대비 비율, 계약 위험 신호, 입주 보호 행동을 한 번에 정리합니다. 공식 공공데이터 API 키가 런타임에 필요합니다.",
       inputSchema: {
         housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("진단할 주택 유형입니다."),
         lawdCd: lawdCdSchema,
@@ -552,7 +560,7 @@ export function createServer(): McpServer {
     {
       title: "법정동 코드 확인",
       description:
-        "전월세안전내비가 지역명을 실거래가 조회용 법정동 코드 확인 절차로 연결하고, 내장 검토 목록에 있는 주요 지역은 LAWD_CD 후보를 보여줍니다.",
+        "전월세안전내비가 지역명을 행정안전부 법정동코드 OpenAPI로 확인해 실거래가 조회용 LAWD_CD 후보를 보여줍니다. 공식 공공데이터 API 키가 런타임에 필요합니다.",
       inputSchema: {
         region: z.string().min(2).max(MCP_TEXT_LIMITS.region).describe(`확인할 지역명입니다. ${MCP_TEXT_LIMITS.region}자 이내로 적어주세요. 예: 서울 관악구, 성남시 분당구, 부산 해운대구.`)
       },
@@ -566,7 +574,7 @@ export function createServer(): McpServer {
     {
       title: "전월세 실거래 비교",
       description:
-        "전월세안전내비가 국토교통부 전월세 실거래가 OpenAPI를 호출해 지역·계약월·주택유형 기준 보증금 표본과 사용자의 계약조건을 비교합니다. DATA_GO_KR_SERVICE_KEY가 필요합니다.",
+        "전월세안전내비가 국토교통부 전월세 실거래가 OpenAPI를 호출해 지역·계약월·주택유형 기준 보증금 표본과 사용자의 계약조건을 비교합니다. 공식 공공데이터 API 키가 런타임에 필요합니다.",
       inputSchema: {
         housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("실거래가를 조회할 주택 유형입니다."),
         lawdCd: lawdCdSchema,
@@ -584,7 +592,7 @@ export function createServer(): McpServer {
     {
       title: "매매가 대비 보증금 점검",
       description:
-        "전월세안전내비가 국토교통부 매매 실거래가 OpenAPI를 호출해 입력 보증금이 주변 매매가 중앙값 대비 어느 정도인지 전세가율 관점으로 점검합니다. DATA_GO_KR_SERVICE_KEY가 필요합니다.",
+        "전월세안전내비가 국토교통부 매매 실거래가 OpenAPI를 호출해 입력 보증금이 주변 매매가 중앙값 대비 어느 정도인지 전세가율 관점으로 점검합니다. 공식 공공데이터 API 키가 런타임에 필요합니다.",
       inputSchema: {
         housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("매매 실거래가를 조회할 주택 유형입니다."),
         lawdCd: lawdCdSchema,

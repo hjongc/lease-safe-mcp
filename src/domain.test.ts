@@ -45,14 +45,26 @@ function registeredToolSchema(toolName: string): ToolInputSchema {
   return tool.inputSchema;
 }
 
-function runRegistrationEnvCheck(value?: string): ReturnType<typeof spawnSync> {
+function runRegistrationEnvCheck(value?: string, envPatch: Record<string, string> = {}): ReturnType<typeof spawnSync> {
   const env = { ...process.env };
   delete env[PUBLIC_DATA_KEY_ENV_NAME];
+  for (const name of ["PUBLIC_DATA_SMOKE_REGION", "PUBLIC_DATA_SMOKE_LAWD_CD", "PUBLIC_DATA_SMOKE_DEAL_YMD", "PUBLIC_DATA_SMOKE_DEPOSIT_MANWON", "PUBLIC_DATA_SMOKE_HOUSING_TYPES"]) {
+    delete env[name];
+  }
+  Object.assign(env, envPatch);
   if (value !== undefined) env[PUBLIC_DATA_KEY_ENV_NAME] = value;
 
   return spawnSync(process.execPath, ["scripts/require-registration-env.mjs"], {
     cwd: process.cwd(),
     env,
+    encoding: "utf8"
+  });
+}
+
+function runGitHubSecretCheck(envPatch: Record<string, string>): ReturnType<typeof spawnSync> {
+  return spawnSync(process.execPath, ["scripts/check-github-secret.mjs"], {
+    cwd: process.cwd(),
+    env: { ...process.env, ...envPatch },
     encoding: "utf8"
   });
 }
@@ -141,9 +153,77 @@ test("registration preflight env check rejects bad public-data keys before build
   assert.notEqual(invalidEncoding.status, 0);
   assert.match(processStderr(invalidEncoding), /valid percent-encoded or decoded/);
 
+  const whitespace = runRegistrationEnvCheck(` ${VALID_TEST_SERVICE_KEY}`);
+  assert.notEqual(whitespace.status, 0);
+  assert.match(processStderr(whitespace), /DATA_GO_KR_SERVICE_KEY must not contain whitespace/);
+
+  const encodedWhitespace = runRegistrationEnvCheck(encodeURIComponent(`${VALID_TEST_SERVICE_KEY} `));
+  assert.notEqual(encodedWhitespace.status, 0);
+  assert.match(processStderr(encodedWhitespace), /DATA_GO_KR_SERVICE_KEY must not contain whitespace/);
+
   const encoded = runRegistrationEnvCheck(VALID_TEST_SERVICE_KEY_ENCODED);
   assert.equal(encoded.status, 0);
   assert.equal(processStderr(encoded), "");
+});
+
+test("GitHub secret check rejects unsafe repository slugs before gh calls", () => {
+  const invalidRepo = runGitHubSecretCheck({ GITHUB_REPOSITORY: "hjongc/lease-safe-mcp\nspoof" });
+  assert.notEqual(invalidRepo.status, 0);
+  assert.match(processStderr(invalidRepo), /GITHUB_REPOSITORY must be an owner\/repo GitHub repository slug/);
+  assert.match(processStderr(invalidRepo), /Set GITHUB_REPOSITORY to an owner\/repo GitHub repository slug/);
+  assert.doesNotMatch(processStderr(invalidRepo), /gh secret set DATA_GO_KR_SERVICE_KEY --repo/);
+});
+
+test("registration preflight env check rejects bad demo inputs before install", () => {
+  const badLawd = runRegistrationEnvCheck(VALID_TEST_SERVICE_KEY, { PUBLIC_DATA_SMOKE_LAWD_CD: "1111" });
+  assert.notEqual(badLawd.status, 0);
+  assert.match(processStderr(badLawd), /PUBLIC_DATA_SMOKE_LAWD_CD must be exactly 5 digits/);
+
+  const zeroLawd = runRegistrationEnvCheck(VALID_TEST_SERVICE_KEY, { PUBLIC_DATA_SMOKE_LAWD_CD: "00000" });
+  assert.notEqual(zeroLawd.status, 0);
+  assert.match(processStderr(zeroLawd), /PUBLIC_DATA_SMOKE_LAWD_CD must not be 00000/);
+
+  const badDealMonth = runRegistrationEnvCheck(VALID_TEST_SERVICE_KEY, { PUBLIC_DATA_SMOKE_DEAL_YMD: "202613" });
+  assert.notEqual(badDealMonth.status, 0);
+  assert.match(processStderr(badDealMonth), /PUBLIC_DATA_SMOKE_DEAL_YMD must use YYYYMM format/);
+
+  const futureDealMonth = runRegistrationEnvCheck(VALID_TEST_SERVICE_KEY, { PUBLIC_DATA_SMOKE_DEAL_YMD: FUTURE_DEAL_YMD });
+  assert.notEqual(futureDealMonth.status, 0);
+  assert.match(processStderr(futureDealMonth), /PUBLIC_DATA_SMOKE_DEAL_YMD must not be in the future/);
+
+  const badDeposit = runRegistrationEnvCheck(VALID_TEST_SERVICE_KEY, { PUBLIC_DATA_SMOKE_DEPOSIT_MANWON: "3e4" });
+  assert.notEqual(badDeposit.status, 0);
+  assert.match(processStderr(badDeposit), /PUBLIC_DATA_SMOKE_DEPOSIT_MANWON must be a plain positive integer/);
+
+  const narrowedHousingTypes = runRegistrationEnvCheck(VALID_TEST_SERVICE_KEY, { PUBLIC_DATA_SMOKE_HOUSING_TYPES: "apartment,rowhouse" });
+  assert.notEqual(narrowedHousingTypes.status, 0);
+  assert.match(processStderr(narrowedHousingTypes), /PUBLIC_DATA_SMOKE_HOUSING_TYPES must include all supported housing types/);
+
+  const invalidRegion = runRegistrationEnvCheck(VALID_TEST_SERVICE_KEY, { PUBLIC_DATA_SMOKE_REGION: "서울 관악구\n강남구" });
+  assert.notEqual(invalidRegion.status, 0);
+  assert.match(processStderr(invalidRegion), /PUBLIC_DATA_SMOKE_REGION must not include control characters/);
+
+  for (const region of [
+    "서울 관악구 010 1234 5678",
+    "서울 관악구 user@example.com",
+    "서울 관악구 900101-5123456",
+    "서울 관악구 송금 계좌 110-123-456789",
+    "서울 관악구 101동 202호"
+  ]) {
+    const personalRegion = runRegistrationEnvCheck(VALID_TEST_SERVICE_KEY, { PUBLIC_DATA_SMOKE_REGION: region });
+    assert.notEqual(personalRegion.status, 0);
+    assert.match(processStderr(personalRegion), /PUBLIC_DATA_SMOKE_REGION must not include personal identifiers/);
+  }
+
+  const validInputs = runRegistrationEnvCheck(VALID_TEST_SERVICE_KEY, {
+    PUBLIC_DATA_SMOKE_REGION: "서울 관악구",
+    PUBLIC_DATA_SMOKE_LAWD_CD: "11620",
+    PUBLIC_DATA_SMOKE_DEAL_YMD: "202605",
+    PUBLIC_DATA_SMOKE_DEPOSIT_MANWON: "30000",
+    PUBLIC_DATA_SMOKE_HOUSING_TYPES: "apartment,rowhouse,single_multi,officetel"
+  });
+  assert.equal(validInputs.status, 0);
+  assert.equal(processStderr(validInputs), "");
 });
 
 test("preflight scripts reject unsafe Docker image references before running Docker", () => {
@@ -226,6 +306,9 @@ test("public-data smoke validates demo region before API calls", () => {
     assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details/);
 
     process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 user@example.com";
+    assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details/);
+
+    process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 900101-5123456";
     assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details/);
 
     process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 송금 계좌 110-123-456789";
@@ -810,6 +893,12 @@ test("public-data key validation rejects placeholders and malformed encoding bef
       compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" }),
       /valid percent-encoded or decoded/
     );
+
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = ` ${VALID_TEST_SERVICE_KEY}`;
+    assert.throws(() => dataGoKrServiceKey(), /DATA_GO_KR_SERVICE_KEY must not contain whitespace/);
+
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = encodeURIComponent(`${VALID_TEST_SERVICE_KEY} `);
+    assert.throws(() => dataGoKrServiceKey(), /DATA_GO_KR_SERVICE_KEY must not contain whitespace/);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
@@ -838,12 +927,27 @@ test("legal dong helper fails fast on empty or placeholder regions", async () =>
     );
 
     await assert.rejects(
+      resolveLegalDongCode({ region: "서울 관악구\n강남구" }),
+      /region must not include control characters, line breaks, tabs, or Markdown backticks/
+    );
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "서울 `관악구`" }),
+      /region must not include control characters, line breaks, tabs, or Markdown backticks/
+    );
+
+    await assert.rejects(
       resolveLegalDongCode({ region: "서울 관악구 010-1234-5678" }),
       /region must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details/
     );
 
     await assert.rejects(
       resolveLegalDongCode({ region: "서울 관악구 user@example.com" }),
+      /region must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details/
+    );
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "서울 관악구 900101-5123456" }),
       /region must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details/
     );
 
@@ -2940,6 +3044,15 @@ test("MCP auth token fails fast when configured too weakly", () => {
     process.env[authEnvName] = "short";
     assert.throws(() => createApp(), /MCP_AUTH_TOKEN must be at least 16 characters/);
 
+    process.env[authEnvName] = "token with spaces 123";
+    assert.throws(() => createApp(), /MCP_AUTH_TOKEN must not contain whitespace/);
+
+    process.env[authEnvName] = " token-with-leading-space-123";
+    assert.throws(() => createApp(), /MCP_AUTH_TOKEN must not contain whitespace/);
+
+    process.env[authEnvName] = "token-with-snowman-123-☃";
+    assert.throws(() => createApp(), /MCP_AUTH_TOKEN must contain only visible ASCII characters/);
+
     process.env[authEnvName] = "replace-with-runtime-secret";
     assert.throws(() => createApp(), /MCP_AUTH_TOKEN must be a real bearer token, not a placeholder/);
 
@@ -3286,7 +3399,7 @@ test("contract questions include HUG and lease report", () => {
 
 test("contract questions redact contact details from user text", () => {
   const text = prepareContractQuestions({
-    concerns: "서울 관악구 봉천동 101동 202호, 3층 301호, 1203호입니다. 연락은 user@example.com 또는 010 1234 5678로 주세요. 주민번호는 900101 1234567입니다. 계약금 계좌는 110-123-456789입니다."
+    concerns: "서울 관악구 봉천동 101동 202호, 3층 301호, 1203호입니다. 연락은 user@example.com 또는 010 1234 5678로 주세요. 주민번호는 900101 1234567이고 외국인등록번호는 900101-5123456입니다. 계약금 계좌는 110-123-456789입니다."
   });
 
   assert.match(text, /\[이메일 생략\]/);
@@ -3298,6 +3411,7 @@ test("contract questions redact contact details from user text", () => {
   assert.doesNotMatch(text, /user@example\.com/);
   assert.doesNotMatch(text, /010 1234 5678/);
   assert.doesNotMatch(text, /900101 1234567/);
+  assert.doesNotMatch(text, /900101-5123456/);
   assert.doesNotMatch(text, /110-123-456789/);
   assert.doesNotMatch(text, /101동 202호/);
   assert.doesNotMatch(text, /3층 301호/);

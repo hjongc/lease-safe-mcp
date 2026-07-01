@@ -4,12 +4,12 @@ This runbook is for PlayMCP registration, demo day checks, and post-launch opera
 
 ## Required Runtime Settings
 
-- `DATA_GO_KR_SERVICE_KEY`: required in production and CI live smoke.
+- `DATA_GO_KR_SERVICE_KEY`: required in production and CI live smoke; encoded and decoded keys are accepted, but whitespace is rejected.
 - `MCP_ALLOWED_HOSTS`: required in production for DNS rebinding protection.
 - `MCP_MAX_BODY_BYTES`: optional MCP POST body limit, default `262144`.
 - `MCP_RATE_LIMIT_PER_MINUTE`: optional MCP POST rate limit per client, default `120`, set `0` to disable.
 - `PUBLIC_DATA_TIMEOUT_MS`: optional official public-data timeout, default `8000`, maximum `60000`.
-- `MCP_AUTH_TOKEN`: optional bearer token for private direct deployments; must be a real token, not a placeholder, and at least 16 characters when set.
+- `MCP_AUTH_TOKEN`: optional bearer token for private direct deployments; must be a real visible-ASCII token, not a placeholder, at least 16 characters, and free of whitespace when set.
 
 The server fails at startup when required production settings are missing or malformed. Fix configuration instead of adding fallback data.
 
@@ -19,9 +19,13 @@ GitHub Actions live public-data smoke:
 
 ```bash
 gh secret set DATA_GO_KR_SERVICE_KEY --repo hjongc/lease-safe-mcp
+npm run check:github-secret
+gh secret list --repo hjongc/lease-safe-mcp
 gh workflow run CI --repo hjongc/lease-safe-mcp --ref main
 gh workflow run "Registration Preflight" --repo hjongc/lease-safe-mcp --ref main
 ```
+
+After setting the secret, run `npm run check:github-secret` and confirm that `gh secret list --repo hjongc/lease-safe-mcp` shows `DATA_GO_KR_SERVICE_KEY`. These commands check only secret names and metadata, not the secret value. If the secret is absent, do not treat a green CI run as registration evidence because the live public-data smoke will be skipped.
 
 If the default live demo region or month returns zero official samples, rerun the manual `Registration Preflight` workflow with verified public demo inputs:
 
@@ -38,7 +42,7 @@ PlayMCP runtime:
 - Set `DATA_GO_KR_SERVICE_KEY` in the PlayMCP runtime environment.
 - Set `MCP_ALLOWED_HOSTS` to the PlayMCP host or custom deployment domain. Use unique plain hostnames only; do not include `https://`, ports, paths, wildcards, userinfo, query strings, fragments, backslashes, whitespace, blank comma-separated entries, underscores, empty labels, or labels that start or end with `-`.
 - Put the primary PlayMCP host first in `MCP_ALLOWED_HOSTS`; the Docker `HEALTHCHECK` dials loopback but sends that first allowed host as the `Host` header, so DNS rebinding protection and container liveness checks do not conflict.
-- Leave `MCP_AUTH_TOKEN` unset unless the deployment is private and the client can send bearer auth. If set, use a real token, not a placeholder, with at least 16 characters.
+- Leave `MCP_AUTH_TOKEN` unset unless the deployment is private and the client can send bearer auth. If set, use a real visible-ASCII token, not a placeholder, with at least 16 characters and no whitespace.
 
 Never paste secrets into issues, commits, README examples, screenshots, or CI logs.
 
@@ -48,8 +52,8 @@ Collect this evidence before registering or updating the PlayMCP build:
 
 - `npm run preflight:registration` passes with `DATA_GO_KR_SERVICE_KEY` set locally.
 - GitHub Actions `Registration Preflight` workflow passes on the submitted commit.
-- GitHub Actions `Registration Preflight` job summary shows the submitted commit, workflow run URL, required command, live public-data requirement, sanitized and length-limited demo smoke input values, working-tree/staged/committed whitespace diff check coverage, root route minimality smoke coverage, Docker runtime smoke coverage, non-root runtime evidence, scriptless npm install evidence, and the extracted live public-data evidence lines.
-- Latest GitHub Actions `CI` run is green and its summary shows working-tree/staged/committed whitespace diff checks, root route minimality smoke evidence, Docker runtime smoke evidence, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines when the repository secret is configured.
+- GitHub Actions `Registration Preflight` job summary shows the submitted commit, workflow run URL, required command, GitHub public-data secret status without printing the value, live public-data requirement, required housing coverage, sanitized and length-limited demo smoke input values, working-tree/staged/committed whitespace diff check coverage, root route minimality smoke coverage, MCP request-id smoke coverage, Docker runtime smoke coverage, non-root runtime evidence, scriptless npm install evidence, and the extracted live public-data evidence lines.
+- Latest GitHub Actions `CI` run is green and its summary shows required housing coverage, working-tree/staged/committed whitespace diff checks, root route minimality smoke evidence, MCP request-id smoke evidence, Docker runtime smoke evidence, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines when the repository secret is configured.
 - GitHub Actions `Live public-data smoke` is passed, not skipped, after the repository secret is configured.
 - Docker runtime smoke passes after image build.
 - Demo tool is `assess_lease_safety`.

@@ -45,7 +45,7 @@ Reviewed official guidance:
 - 국세청
 - 위택스
 
-`DATA_GO_KR_SERVICE_KEY` is required for API-backed tools: `assess_lease_safety`, `resolve_legal_dong_code`, `compare_rent_market`, and `compare_deposit_to_sale_market`. Encoded and decoded data.go.kr keys are both accepted. Missing keys, placeholder values, malformed percent-encoding, short or syntactically invalid keys, or data.go.kr rejections fail clearly instead of using fake sample data.
+`DATA_GO_KR_SERVICE_KEY` is required for API-backed tools: `assess_lease_safety`, `resolve_legal_dong_code`, `compare_rent_market`, and `compare_deposit_to_sale_market`. Encoded and decoded data.go.kr keys are both accepted. Missing keys, placeholder values, whitespace, malformed percent-encoding, short or syntactically invalid keys, or data.go.kr rejections fail clearly instead of using fake sample data.
 
 ## Flagship Tool
 
@@ -80,7 +80,7 @@ Optional bearer-token protection is available for direct deployments:
 MCP_AUTH_TOKEN=replace-with-runtime-secret
 ```
 
-When `MCP_AUTH_TOKEN` is set, it must be a real token, not a placeholder, and at least 16 characters. `POST /mcp` then requires `Authorization: Bearer <token>`.
+When `MCP_AUTH_TOKEN` is set, it must be a real token, not a placeholder, at least 16 characters, free of whitespace, and visible ASCII only. `POST /mcp` then requires `Authorization: Bearer <token>`.
 
 Optional request-size hardening is available for deployments with stricter ingress limits:
 
@@ -188,7 +188,7 @@ The repository includes `.github/workflows/ci.yml` for `main`. It runs:
 - `docker build -t lease-safe-mcp-ci .`
 - `npm run smoke:docker`
 
-If the GitHub repository has a `DATA_GO_KR_SERVICE_KEY` secret, CI also runs the live public-data smoke against all supported housing types in registration mode and publishes the extracted live public-data evidence lines in the job summary. Without that secret, the live API smoke is skipped and local pre-submission smoke should be run with the key.
+If the GitHub repository has a `DATA_GO_KR_SERVICE_KEY` secret, CI also runs the live public-data smoke against all supported housing types in registration mode and publishes the required housing coverage plus the extracted live public-data evidence lines in the job summary. Without that secret, the live API smoke is skipped and local pre-submission smoke should be run with the key.
 
 ## Submission Checklist
 
@@ -198,6 +198,7 @@ Before registering in PlayMCP:
 - Review `docs/submission.md`
 - Review `docs/operations.md`
 - Run `npm run preflight:registration` locally with `DATA_GO_KR_SERVICE_KEY` set
+- Run `npm run check:github-secret` and confirm the GitHub repository secret exists before trusting CI live-smoke evidence
 - Run the manual GitHub Actions `Registration Preflight` workflow on the submitted commit
 - Confirm the latest GitHub Actions CI run is green
 - Confirm GitHub Actions live public-data smoke is passed, not skipped

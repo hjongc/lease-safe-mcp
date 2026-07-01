@@ -272,6 +272,47 @@ async function verifyRequestIdPropagation(endpoint: string): Promise<void> {
   }
 }
 
+async function verifyMcpRequestIdPropagation(endpoint: string, authToken: string): Promise<void> {
+  const safeRequestId = "lease-safe-docker-smoke-mcp-request-1";
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${authToken}`,
+      "content-type": "application/json",
+      "x-request-id": safeRequestId
+    },
+    body: "{"
+  });
+
+  assertSecurityHeaders(response, "docker MCP request-id propagation");
+  if (response.status !== 400) {
+    const text = await response.text();
+    throw new Error(`Expected invalid JSON Docker MCP request-id probe to return 400, got ${response.status}: ${text}`);
+  }
+  if (response.headers.get("x-request-id") !== safeRequestId) {
+    throw new Error("Docker MCP response did not preserve the supplied safe X-Request-Id.");
+  }
+
+  const unsafeRequestId = "unsafe docker mcp request id with spaces";
+  const unsafeResponse = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${authToken}`,
+      "content-type": "application/json",
+      "x-request-id": unsafeRequestId
+    },
+    body: "{"
+  });
+  assertSecurityHeaders(unsafeResponse, "docker invalid MCP request-id regeneration");
+  if (unsafeResponse.status !== 400) {
+    const text = await unsafeResponse.text();
+    throw new Error(`Expected unsafe Docker MCP request-id probe to return 400, got ${unsafeResponse.status}: ${text}`);
+  }
+  if (unsafeResponse.headers.get("x-request-id") === unsafeRequestId) {
+    throw new Error("Docker MCP response must not echo an unsafe X-Request-Id value.");
+  }
+}
+
 async function verifyRootRoute(endpoint: string): Promise<void> {
   const response = await fetch(endpoint.replace(/\/mcp$/, "/"));
   assertSecurityHeaders(response, "docker root route");
@@ -653,6 +694,8 @@ async function main() {
     console.log("docker_healthz=ok");
     await verifyRequestIdPropagation(endpoint);
     console.log("docker_request_id=ok");
+    await verifyMcpRequestIdPropagation(endpoint, authToken);
+    console.log("docker_mcp_request_id=ok");
     await verifyRootRoute(endpoint);
     console.log("docker_root_route=ok");
     await verifyUnknownRoute(endpoint);

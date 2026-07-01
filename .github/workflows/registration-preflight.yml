@@ -39,6 +39,7 @@ jobs:
       PUBLIC_DATA_SMOKE_LAWD_CD: ${{ inputs.public_data_smoke_lawd_cd }}
       PUBLIC_DATA_SMOKE_DEAL_YMD: ${{ inputs.public_data_smoke_deal_ymd }}
       PUBLIC_DATA_SMOKE_DEPOSIT_MANWON: ${{ inputs.public_data_smoke_deposit_manwon }}
+      PUBLIC_DATA_SMOKE_HOUSING_TYPES: apartment,rowhouse,single_multi,officetel
 
     steps:
       - name: Verify live public-data secret
@@ -57,7 +58,7 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Verify registration public-data key
+      - name: Verify registration public-data config
         run: node scripts/require-registration-env.mjs
 
       - name: Install dependencies
@@ -101,13 +102,20 @@ jobs:
             echo "- Branch/ref: \`${SAFE_GITHUB_REF_NAME}\`"
             echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "- Required command: \`npm run preflight:registration\`"
+            if [ -n "${DATA_GO_KR_SERVICE_KEY}" ]; then
+              echo "- GitHub public-data secret: configured (value not printed)"
+            else
+              echo "- GitHub public-data secret: missing"
+            fi
             echo "- Live public-data smoke: required by registration preflight"
+            echo "- Required housing coverage: ${PUBLIC_DATA_SMOKE_HOUSING_TYPES}"
             echo "- Demo smoke region: \`${SAFE_PUBLIC_DATA_SMOKE_REGION}\`"
             echo "- Demo smoke LAWD_CD: \`${SAFE_PUBLIC_DATA_SMOKE_LAWD_CD}\`"
             echo "- Demo smoke deal month: \`${SAFE_PUBLIC_DATA_SMOKE_DEAL_YMD}\`"
             echo "- Demo smoke deposit: \`${SAFE_PUBLIC_DATA_SMOKE_DEPOSIT_MANWON}\` manwon"
             echo "- Whitespace diff checks: working tree, staged diff, and submitted commit included"
             echo "- Root route minimality smoke: included in local HTTP and Docker runtime smoke"
+            echo "- MCP request-id smoke: included in local HTTP and Docker runtime smoke"
             echo "- Docker runtime smoke: included in registration preflight"
             echo "- Docker non-root runtime check: included in registration preflight"
             echo "- Dependency lifecycle scripts: disabled during npm ci"

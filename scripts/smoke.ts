@@ -24,6 +24,7 @@ const requiredOfficialSourceIds = [
   "nts-tax",
   "wetax-local-tax"
 ] as const;
+const apiBackedToolNames = new Set(["assess_lease_safety", "resolve_legal_dong_code", "compare_rent_market", "compare_deposit_to_sale_market"]);
 
 function hasKorean(text: unknown): boolean {
   return typeof text === "string" && /[가-힣]/.test(text);
@@ -227,6 +228,12 @@ async function main() {
     if (!/[가-힣]/.test(tool.description) || !tool.description.includes("전월세안전내비")) {
       throw new Error(`Tool ${tool.name} description must be natural Korean and include 전월세안전내비`);
     }
+    if (/DATA_GO_KR_SERVICE_KEY|MCP_AUTH_TOKEN|MCP_ALLOWED_HOSTS|PUBLIC_DATA_TIMEOUT_MS/.test(tool.description)) {
+      throw new Error(`Tool ${tool.name} description must not expose runtime configuration names`);
+    }
+    if (apiBackedToolNames.has(tool.name) && !tool.description.includes("공식 공공데이터 API 키가 런타임에 필요합니다.")) {
+      throw new Error(`Tool ${tool.name} description must explain the runtime public-data key requirement`);
+    }
     const annotations = tool.annotations;
     if (
       !annotations ||
@@ -237,6 +244,12 @@ async function main() {
       typeof annotations.idempotentHint !== "boolean"
     ) {
       throw new Error(`Tool ${tool.name} is missing required PlayMCP annotations`);
+    }
+    if (annotations.title !== tool.title) {
+      throw new Error(`Tool ${tool.name} annotation title must match the public tool title`);
+    }
+    if (!annotations.readOnlyHint || annotations.destructiveHint || annotations.openWorldHint || !annotations.idempotentHint) {
+      throw new Error(`Tool ${tool.name} annotations must declare a read-only, non-destructive, closed-world, idempotent contract`);
     }
     assertInputSchemaDescriptions(tool.name, tool.inputSchema);
   }

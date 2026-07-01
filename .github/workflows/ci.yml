@@ -22,6 +22,7 @@ jobs:
 
     env:
       DATA_GO_KR_SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
+      PUBLIC_DATA_SMOKE_HOUSING_TYPES: apartment,rowhouse,single_multi,officetel
 
     steps:
       - name: Checkout
@@ -100,8 +101,10 @@ jobs:
               echo "- Live public-data smoke: skipped because DATA_GO_KR_SERVICE_KEY is not configured"
               echo "- Registration evidence still requires the manual Registration Preflight workflow to pass"
             fi
+            echo "- Required housing coverage: ${PUBLIC_DATA_SMOKE_HOUSING_TYPES}"
             echo "- Whitespace diff checks: working tree, staged diff, and submitted commit executed"
             echo "- Root route minimality smoke: executed in local HTTP and Docker runtime smoke"
+            echo "- MCP request-id smoke: executed in local HTTP and Docker runtime smoke"
             echo "- Docker runtime smoke: executed"
             echo "- Docker non-root runtime check: executed"
             echo "- Dependency lifecycle scripts: disabled during npm ci"

@@ -167,6 +167,47 @@ async function verifyRequestIdPropagation(endpoint: string): Promise<void> {
   }
 }
 
+async function verifyMcpRequestIdPropagation(endpoint: string, authToken: string): Promise<void> {
+  const safeRequestId = "lease-safe-smoke-mcp-request-1";
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${authToken}`,
+      "content-type": "application/json",
+      "x-request-id": safeRequestId
+    },
+    body: "{"
+  });
+
+  assertSecurityHeaders(response, "MCP request-id propagation");
+  if (response.status !== 400) {
+    const text = await response.text();
+    throw new Error(`Expected invalid JSON MCP request-id probe to return 400, got ${response.status}: ${text}`);
+  }
+  if (response.headers.get("x-request-id") !== safeRequestId) {
+    throw new Error("MCP response did not preserve the supplied safe X-Request-Id.");
+  }
+
+  const unsafeRequestId = "unsafe mcp request id with spaces";
+  const unsafeResponse = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${authToken}`,
+      "content-type": "application/json",
+      "x-request-id": unsafeRequestId
+    },
+    body: "{"
+  });
+  assertSecurityHeaders(unsafeResponse, "invalid MCP request-id regeneration");
+  if (unsafeResponse.status !== 400) {
+    const text = await unsafeResponse.text();
+    throw new Error(`Expected unsafe MCP request-id probe to return 400, got ${unsafeResponse.status}: ${text}`);
+  }
+  if (unsafeResponse.headers.get("x-request-id") === unsafeRequestId) {
+    throw new Error("MCP response must not echo an unsafe X-Request-Id value.");
+  }
+}
+
 async function verifyRootRoute(endpoint: string): Promise<void> {
   const response = await fetch(endpoint.replace(/\/mcp$/, "/"));
   assertSecurityHeaders(response, "root route");
@@ -565,6 +606,8 @@ async function main() {
     console.log("healthz=ok");
     await verifyRequestIdPropagation(endpoint);
     console.log("request_id=ok");
+    await verifyMcpRequestIdPropagation(endpoint, authToken);
+    console.log("mcp_request_id=ok");
     await verifyRootRoute(endpoint);
     console.log("root_route=ok");
     await verifyUnknownRoute(endpoint);

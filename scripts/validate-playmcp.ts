@@ -14,6 +14,18 @@ function assertIncludesInOrder(text: string, values: string[], message: string):
   }
 }
 
+function quotedValues(text: string): string[] {
+  return [...text.matchAll(/"([^"]+)"/g)].map(match => match[1]);
+}
+
+function backtickValues(text: string): string[] {
+  return [...text.matchAll(/`([^`]+)`/g)].map(match => match[1]);
+}
+
+function assertSameValues(actual: string[], expected: string[], message: string): void {
+  assert(JSON.stringify([...actual].sort()) === JSON.stringify([...expected].sort()), `${message}: expected ${expected.join(", ")} got ${actual.join(", ")}`);
+}
+
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   name: string;
   packageManager?: string;
@@ -48,15 +60,27 @@ assert(packageJson.scripts?.smoke, "smoke script is required");
 assert(packageJson.scripts?.["smoke:http"], "HTTP smoke script is required");
 assert(packageJson.scripts?.["smoke:docker"], "Docker smoke script is required");
 assert(packageJson.scripts?.["smoke:rate-limit"], "rate-limit smoke script is required");
+assert(packageJson.scripts?.["check:github-secret"], "GitHub secret presence check script is required");
 assert(packageJson.scripts?.preflight, "preflight script is required");
 assert(packageJson.scripts?.["preflight:registration"], "registration preflight script is required");
 assert(/require-registration-env\.mjs/.test(packageJson.scripts?.["preflight:registration"] ?? ""), "registration preflight must check required live-data env before building");
 assert(packageJson.scripts?.["validate:playmcp"], "PlayMCP validation script is required");
 
 const registrationEnvCheck = readFileSync("scripts/require-registration-env.mjs", "utf8");
+const githubSecretCheck = readFileSync("scripts/check-github-secret.mjs", "utf8");
 assert(/decodeURIComponent/.test(registrationEnvCheck), "registration env check must accept encoded data.go.kr service keys");
 assert(/not a placeholder/.test(registrationEnvCheck), "registration env check must reject placeholder public-data keys before build");
+assert(/requiredEnvName\} must not contain whitespace/.test(registrationEnvCheck), "registration env check must reject whitespace in public-data keys before build");
 assert(/must look like a real data\.go\.kr service key/.test(registrationEnvCheck), "registration env check must reject malformed public-data keys before build");
+assert(/PUBLIC_DATA_SMOKE_LAWD_CD/.test(registrationEnvCheck), "registration env check must validate live-smoke LAWD_CD before dependency install");
+assert(/PUBLIC_DATA_SMOKE_DEAL_YMD/.test(registrationEnvCheck), "registration env check must validate live-smoke deal month before dependency install");
+assert(/PUBLIC_DATA_SMOKE_DEPOSIT_MANWON/.test(registrationEnvCheck), "registration env check must validate live-smoke deposit before dependency install");
+assert(/personal identifiers, email addresses, phone numbers/.test(registrationEnvCheck), "registration env check must reject private region evidence before dependency install");
+assert(/\\d\{6\}\[\\s\.-\]\?\[0-9\]\\d\{6\}/.test(registrationEnvCheck), "registration env check must reject broad Korean resident or foreigner registration numbers");
+assert(/PUBLIC_DATA_SMOKE_HOUSING_TYPES must include all supported housing types/.test(registrationEnvCheck), "registration env check must reject narrowed housing-type evidence before dependency install");
+assert(/isValidRepositorySlug/.test(githubSecretCheck), "GitHub secret check must validate repository slugs before gh calls");
+assert(/spawnSync\("gh", \["secret", "list", "--repo", repo\]/.test(githubSecretCheck), "GitHub secret check must list secret names without reading secret values");
+assert(/A green CI run can still skip live public-data smoke/.test(githubSecretCheck), "GitHub secret check must warn when CI can pass without live public-data evidence");
 
 const dockerfile = readFileSync("Dockerfile", "utf8");
 assert((dockerfile.match(/^FROM node:20-bookworm-slim@sha256:[a-f0-9]{64}/gm) ?? []).length === 3, "Dockerfile must pin every Node base image stage by digest");
@@ -118,6 +142,8 @@ assert(/tee live-public-data-smoke\.log/.test(ci), "CI live public-data smoke mu
 assert(/Publish live public-data status/.test(ci), "CI must publish whether live public-data smoke executed or skipped");
 assert(/skipped because DATA_GO_KR_SERVICE_KEY is not configured/.test(ci), "CI summary must make skipped live public-data evidence explicit");
 assert(/Registration Preflight workflow to pass/.test(ci), "CI summary must point operators to required registration evidence");
+assert(/PUBLIC_DATA_SMOKE_HOUSING_TYPES:\s*apartment,rowhouse,single_multi,officetel/.test(ci), "CI live smoke must explicitly request every supported housing type");
+assert(/Required housing coverage: \$\{PUBLIC_DATA_SMOKE_HOUSING_TYPES\}/.test(ci), "CI summary must publish required housing coverage");
 assert(/Whitespace diff checks: working tree, staged diff, and submitted commit executed/.test(ci), "CI summary must publish whitespace diff evidence");
 assert(/Root route minimality smoke: executed in local HTTP and Docker runtime smoke/.test(ci), "CI summary must publish root route minimality smoke evidence");
 assert(/Docker non-root runtime check: executed/.test(ci), "CI summary must publish non-root Docker runtime evidence");
@@ -143,14 +169,18 @@ for (const envName of [
   "PUBLIC_DATA_SMOKE_REGION",
   "PUBLIC_DATA_SMOKE_LAWD_CD",
   "PUBLIC_DATA_SMOKE_DEAL_YMD",
-  "PUBLIC_DATA_SMOKE_DEPOSIT_MANWON"
+  "PUBLIC_DATA_SMOKE_DEPOSIT_MANWON",
+  "PUBLIC_DATA_SMOKE_HOUSING_TYPES"
 ]) {
   assert(registrationWorkflow.includes(envName), `registration preflight workflow must pass demo env: ${envName}`);
-  assert(registrationWorkflow.includes(`SAFE_${envName}`), `registration preflight summary must use sanitized demo env: ${envName}`);
+  if (envName !== "PUBLIC_DATA_SMOKE_HOUSING_TYPES") {
+    assert(registrationWorkflow.includes(`SAFE_${envName}`), `registration preflight summary must use sanitized demo env: ${envName}`);
+  }
 }
+assert(/PUBLIC_DATA_SMOKE_HOUSING_TYPES:\s*apartment,rowhouse,single_multi,officetel/.test(registrationWorkflow), "registration preflight workflow must explicitly request every supported housing type");
 assert(/Verify live public-data secret/.test(registrationWorkflow), "registration preflight workflow must fail fast when the live public-data secret is missing");
 assert(/repository secret is required for registration evidence/.test(registrationWorkflow), "registration preflight workflow must explain the missing secret clearly");
-assert(/Verify registration public-data key/.test(registrationWorkflow), "registration preflight workflow must validate the live public-data key before dependency install");
+assert(/Verify registration public-data config/.test(registrationWorkflow), "registration preflight workflow must validate live public-data config before dependency install");
 assert(/node scripts\/require-registration-env\.mjs/.test(registrationWorkflow), "registration preflight workflow must run the shared registration env validator before npm ci");
 assert(/npm run preflight:registration/.test(registrationWorkflow), "registration preflight workflow must run npm run preflight:registration");
 assert(/tee registration-preflight\.log/.test(registrationWorkflow), "registration preflight workflow must capture preflight output for evidence extraction");
@@ -168,7 +198,10 @@ assert(/GITHUB_SHA/.test(registrationWorkflow), "registration preflight summary 
 assert(/SAFE_GITHUB_REF_NAME="\$\(sanitize_summary_value "\$\{GITHUB_REF_NAME\}"\)"/.test(registrationWorkflow), "registration preflight summary must sanitize the submitted ref name");
 assert(/Branch\/ref: \\`\$\{SAFE_GITHUB_REF_NAME\}\\`/.test(registrationWorkflow), "registration preflight summary must render the sanitized ref name");
 assert(/GITHUB_RUN_ID/.test(registrationWorkflow), "registration preflight summary must include the workflow run URL");
+assert(/GitHub public-data secret: configured \(value not printed\)/.test(registrationWorkflow), "registration preflight summary must report configured secret status without printing the value");
+assert(/GitHub public-data secret: missing/.test(registrationWorkflow), "registration preflight summary must report missing secret status");
 assert(/Live public-data smoke: required by registration preflight/.test(registrationWorkflow), "registration preflight summary must state live public-data evidence is required");
+assert(/Required housing coverage: \$\{PUBLIC_DATA_SMOKE_HOUSING_TYPES\}/.test(registrationWorkflow), "registration preflight summary must publish required housing coverage");
 assert(/Demo smoke region/.test(registrationWorkflow), "registration preflight summary must include the demo smoke region");
 assert(/Demo smoke LAWD_CD/.test(registrationWorkflow), "registration preflight summary must include the demo smoke LAWD_CD");
 assert(/Demo smoke deal month/.test(registrationWorkflow), "registration preflight summary must include the demo smoke deal month");
@@ -188,7 +221,7 @@ assertIncludesInOrder(registrationWorkflow, [
   "Verify live public-data secret",
   "Checkout",
   "Setup Node.js",
-  "Verify registration public-data key",
+  "Verify registration public-data config",
   "Install dependencies",
   "Run registration preflight",
   "Publish registration evidence summary"
@@ -204,6 +237,10 @@ const readme = readFileSync("README.md", "utf8");
 const security = readFileSync("SECURITY.md", "utf8");
 assert(/Dependabot monitors npm packages, GitHub Actions, and Docker base images weekly/.test(operations), "operations runbook must describe all Dependabot ecosystems");
 assert(/Dependabot ignores semver-major version updates before registration/.test(operations), "operations runbook must document major dependency update policy");
+assert(/npm run check:github-secret/.test(operations), "operations runbook must include the non-revealing GitHub secret verification script");
+assert(/gh secret list --repo hjongc\/lease-safe-mcp/.test(operations), "operations runbook must include a non-revealing GitHub secret verification command");
+assert(/shows `DATA_GO_KR_SERVICE_KEY`/.test(operations), "operations runbook must tell operators to verify the public-data secret exists without exposing its value");
+assert(/do not treat a green CI run as registration evidence/.test(operations), "operations runbook must warn that CI success is insufficient when live public-data smoke is skipped");
 assert(!/submission branch/i.test(readme), "README must not tell operators to register a vague submission branch");
 assert(!/npm install/.test(readme), "README must use npm ci for lockfile-reproducible local setup");
 assert(/Use Node\.js 20 or newer with npm 10 or newer\.[\s\S]*engine-strict=true[\s\S]*ignore-scripts=true[\s\S]*npm ci --ignore-scripts/.test(readme), "README local setup must state engine-strict and ignore-scripts npm ci behavior");
@@ -263,6 +300,7 @@ for (const required of [
   "job summary",
   "official source registry access",
   "root route minimality smoke coverage",
+  "MCP request-id smoke coverage",
   "Docker runtime smoke",
   "Docker `HEALTHCHECK`",
   "external deployment host",
@@ -277,9 +315,15 @@ for (const required of [
 assert(/sanitized and length-limited/.test(operations), "operations runbook must document sanitized registration summary inputs");
 assert(/non-root runtime evidence/.test(operations), "operations runbook must document non-root runtime summary evidence");
 assert(/scriptless npm install evidence/.test(operations), "operations runbook must document scriptless npm install summary evidence");
-assert(/Latest GitHub Actions `CI` run is green and its summary shows working-tree\/staged\/committed whitespace diff checks, root route minimality smoke evidence, Docker runtime smoke evidence, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines/.test(operations), "operations runbook must document all CI summary evidence fields");
-assert(/CI also runs the live public-data smoke[\s\S]*publishes the extracted live public-data evidence lines/.test(readme), "README must document CI live-smoke evidence line summary");
-assert(/CI also runs the live public-data smoke[\s\S]*publishes the extracted live public-data evidence lines/.test(submission), "submission pack must document CI live-smoke evidence line summary");
+assert(/GitHub public-data secret status without printing the value/.test(operations), "operations runbook must document secret status in registration summary without printing the value");
+assert(/GitHub public-data secret status without printing the value/.test(submission), "submission pack must document secret status in registration summary without printing the value");
+assert(/required housing coverage/.test(operations), "operations runbook must document required housing coverage in registration evidence");
+assert(/Latest GitHub Actions `CI` run is green and its summary shows required housing coverage, working-tree\/staged\/committed whitespace diff checks, root route minimality smoke evidence, MCP request-id smoke evidence, Docker runtime smoke evidence, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines/.test(operations), "operations runbook must document all CI summary evidence fields");
+assert(/CI also runs the live public-data smoke[\s\S]*publishes the required housing coverage plus the extracted live public-data evidence lines/.test(readme), "README must document CI live-smoke evidence line summary");
+assert(/CI also runs the live public-data smoke[\s\S]*publishes the required housing coverage plus the extracted live public-data evidence lines/.test(submission), "submission pack must document CI live-smoke evidence line summary");
+assert(/Run `npm run check:github-secret`/.test(readme), "README submission checklist must include the GitHub secret readiness check");
+assert(/run `npm run check:github-secret`/.test(submission), "submission pack must include the GitHub secret readiness check");
+assert(/reads only GitHub secret names and metadata, not the secret value/.test(submission), "submission pack must state that secret readiness checks do not read secret values");
 assert(/flagship assessment for every selected housing type/.test(operations), "operations runbook must document per-housing-type flagship live smoke coverage");
 assert(/extractable registration evidence lines/.test(operations), "operations runbook must document registration preflight evidence extraction validation");
 assert(/legal_dong=ok/.test(operations), "operations runbook must document legal-dong live smoke evidence");
@@ -293,7 +337,7 @@ assert(/flagship one-shot assessment for every selected housing type/.test(readm
 assert(/lease_assessment\[\.\.\.\]/.test(readme), "README must document flagship assessment live smoke evidence lines");
 assert(/working-tree, staged, and committed whitespace diff checks/.test(submission), "submission pack must document all registration preflight whitespace checks");
 assert(/sanitized, length-limited demo smoke input values/.test(submission), "submission pack must document sanitized registration evidence inputs");
-assert(/root route minimality smoke coverage, Docker runtime smoke coverage, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines/.test(submission), "submission pack must document the full registration evidence summary");
+assert(/required housing coverage, sanitized, length-limited demo smoke input values, root route minimality smoke coverage, MCP request-id smoke coverage, Docker runtime smoke coverage, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines/.test(submission), "submission pack must document the full registration evidence summary");
 assert(/rent, sale, and flagship assessment API paths must return positive sample counts/.test(submission), "submission pack must document flagship live smoke sample evidence");
 assert(/captured output must produce extractable registration evidence lines/.test(submission), "submission pack must document extracted registration evidence validation");
 assert(/legal_dong=ok/.test(submission), "submission pack must document legal-dong live smoke evidence");
@@ -305,6 +349,7 @@ const server = readFileSync("src/server.ts", "utf8");
 const domain = readFileSync("src/domain.ts", "utf8");
 const sources = readFileSync("src/sources.ts", "utf8");
 const healthzRoute = server.match(/app\.get\("\/healthz"[\s\S]*?\n  \}\);/)?.[0] ?? "";
+const toolDescriptions = [...server.matchAll(/description:\s*\n\s*"([^"]*)"/g)].map(match => match[1]);
 assert(/MCP_ALLOWED_HOSTS/.test(server), "server must support MCP_ALLOWED_HOSTS");
 assert(/plain hostnames, not URLs, ports/.test(server), "server must reject unsafe MCP_ALLOWED_HOSTS entries");
 assert(/userinfo, query strings, fragments/.test(server), "server must reject URL userinfo/query/fragment host allowlist entries");
@@ -314,10 +359,16 @@ assert(/isValidAllowedHost/.test(server), "server must validate MCP_ALLOWED_HOST
 assert(/isValidIpv4Host/.test(server), "server must allow validated IPv4 host allowlist entries");
 assert(/isValidDnsHost/.test(server), "server must allow validated DNS host allowlist entries");
 assert(/DATA_GO_KR_SERVICE_KEY is required in production/.test(server), "server must fail fast without DATA_GO_KR_SERVICE_KEY in production");
+assert(/DATA_GO_KR_SERVICE_KEY must not contain whitespace/.test(domain), "domain must reject whitespace in public-data keys before official API calls");
+assert(toolDescriptions.some(description => description.includes("공식 공공데이터 API 키가 런타임에 필요합니다.")), "API-backed tool descriptions must explain runtime public-data key requirements without env names");
+assert(toolDescriptions.every(description => !/DATA_GO_KR_SERVICE_KEY|MCP_AUTH_TOKEN|MCP_ALLOWED_HOSTS|PUBLIC_DATA_TIMEOUT_MS/.test(description)), "public tool descriptions must not expose runtime configuration names");
 assert(/timingSafeEqual/.test(server), "server must compare bearer tokens with timingSafeEqual");
 assert(/MCP_AUTH_TOKEN must be at least/.test(server), "server must reject weak MCP_AUTH_TOKEN values");
 assert(/MAX_MCP_AUTH_TOKEN_LENGTH/.test(server), "server must bound MCP_AUTH_TOKEN length");
 assert(/suppliedToken\.length > MAX_MCP_AUTH_TOKEN_LENGTH/.test(server), "server must reject oversized supplied bearer tokens before timing-safe comparison");
+assert(/MCP_AUTH_TOKEN_PATTERN/.test(server), "server must enforce visible-ASCII bearer tokens");
+assert(/MCP_AUTH_TOKEN must not contain whitespace/.test(server), "server must reject whitespace in configured bearer tokens");
+assert(/MCP_AUTH_TOKEN must contain only visible ASCII characters/.test(server), "server must reject non-ASCII configured bearer tokens");
 assert(/MCP_AUTH_TOKEN_PLACEHOLDERS/.test(server), "server must reject placeholder MCP_AUTH_TOKEN values");
 assert(/MCP_AUTH_TOKEN must be a real bearer token, not a placeholder/.test(server), "server must fail clearly on placeholder MCP_AUTH_TOKEN values");
 assert(/WWW-Authenticate/.test(server), "server must advertise bearer authentication on unauthorized MCP requests");
@@ -384,6 +435,7 @@ assert(/dealYmdSchema[\s\S]*\.refine\(value => !isFutureDealYmd\(value\)/.test(s
 assert(/PUBLIC_DATA_TIMEOUT_MS/.test(domain), "domain must support a bounded public-data timeout");
 assert(/parsePlainInteger/.test(domain), "domain must parse public-data timeout as a plain integer");
 assert(/MAX_PUBLIC_DATA_RESPONSE_BYTES/.test(domain), "domain must bound official public-data response sizes");
+assert(/region must not include control characters, line breaks, tabs, or Markdown backticks for legal-dong lookup/.test(domain), "legal-dong lookup must reject markdown/control characters before official API calls");
 assert(/Unknown official source id/.test(sources), "source renderer must fail fast on unknown official source ids");
 assert(/Duplicate official source id/.test(sources), "source renderer must fail fast on duplicate source ids");
 assert(/publicDataTimeoutMs/.test(server), "server must validate the public-data timeout at startup");
@@ -488,6 +540,19 @@ assert(/MCP_AUTH_TOKEN/.test(smoke), "smoke must support bearer-token MCP endpoi
 assert(/offlineToolSmokeCases/.test(smoke), "smoke must cover offline MCP tool output quality");
 assert(/assertToolOutputQuality/.test(smoke), "smoke must verify MCP tool output quality");
 assert(/tool_output_chars/.test(smoke), "smoke must report validated tool output size");
+assert(/apiBackedToolNames/.test(smoke), "smoke must identify API-backed tools for metadata checks");
+const apiBackedToolNames = quotedValues(smoke.match(/const apiBackedToolNames = new Set\(\[([^\]]+)\]\);/)?.[1] ?? "");
+const readmeApiBackedTools = backtickValues(readme.match(/`DATA_GO_KR_SERVICE_KEY` is required for API-backed tools: ([^.]+)\./)?.[1] ?? "");
+assert(apiBackedToolNames.length > 0, "smoke API-backed metadata checks must parse at least one tool");
+assert(readmeApiBackedTools.length > 0, "README API-backed tool list must parse at least one tool");
+assertSameValues(apiBackedToolNames, readmeApiBackedTools, "README and smoke must list the same API-backed tools");
+for (const apiBackedTool of readmeApiBackedTools) {
+  assert(smoke.includes(apiBackedTool), `smoke API-backed metadata checks must include ${apiBackedTool}`);
+}
+assert(/description must not expose runtime configuration names/.test(smoke), "smoke must reject public tool descriptions that expose runtime env names");
+assert(/description must explain the runtime public-data key requirement/.test(smoke), "smoke must require public-data key wording for API-backed tool descriptions");
+assert(/annotation title must match the public tool title/.test(smoke), "smoke must verify tool annotation titles match public titles");
+assert(/read-only, non-destructive, closed-world, idempotent contract/.test(smoke), "smoke must verify strict read-only tool annotation values");
 for (const offlineTool of [
   "check_lease_red_flags",
   "build_move_in_protection_plan",
@@ -516,6 +581,9 @@ for (const requiredBoundary of ["method rejection", "invalid JSON rejection", "a
   assert(httpSmoke.includes(requiredBoundary), `HTTP smoke must verify security headers on ${requiredBoundary}`);
 }
 assert(/request_id=ok/.test(httpSmoke), "HTTP smoke must verify request ID propagation");
+assert(/mcp_request_id=ok/.test(httpSmoke), "HTTP smoke must verify MCP request ID propagation");
+assert(/MCP response did not preserve the supplied safe X-Request-Id/.test(httpSmoke), "HTTP smoke must verify safe request IDs propagate on MCP responses");
+assert(/MCP response must not echo an unsafe X-Request-Id/.test(httpSmoke), "HTTP smoke must verify unsafe MCP request IDs are regenerated");
 assert(/safe X-Request-Id/.test(httpSmoke), "HTTP smoke must verify safe request IDs on boundary responses");
 assert(/must not echo an unsafe X-Request-Id/.test(httpSmoke), "HTTP smoke must verify unsafe inbound request IDs are regenerated");
 assert(/unknown_route=ok/.test(httpSmoke), "HTTP smoke must verify unknown-route rejection");
@@ -563,6 +631,9 @@ for (const requiredBoundary of ["Docker method rejection", "docker invalid JSON 
   assert(dockerSmoke.includes(requiredBoundary), `Docker smoke must verify security headers on ${requiredBoundary}`);
 }
 assert(/docker_request_id=ok/.test(dockerSmoke), "Docker smoke must verify request ID propagation");
+assert(/docker_mcp_request_id=ok/.test(dockerSmoke), "Docker smoke must verify MCP request ID propagation");
+assert(/Docker MCP response did not preserve the supplied safe X-Request-Id/.test(dockerSmoke), "Docker smoke must verify safe request IDs propagate on MCP responses");
+assert(/Docker MCP response must not echo an unsafe X-Request-Id/.test(dockerSmoke), "Docker smoke must verify unsafe MCP request IDs are regenerated");
 assert(/verifyHealthcheckWithExternalAllowedHost/.test(dockerSmoke), "Docker smoke must verify Docker HEALTHCHECK with an external-only allowed host");
 assert(/docker_healthcheck_external_host=ok/.test(dockerSmoke), "Docker smoke must report external-host healthcheck evidence");
 assert(/safe X-Request-Id/.test(dockerSmoke), "Docker smoke must verify safe request IDs on boundary responses");
@@ -673,6 +744,10 @@ assert(/extractLivePublicDataEvidenceLines/.test(releasePreflight), "release pre
 assert(/captureOutput:\s*true/.test(releasePreflight), "release preflight must capture live public-data smoke output for evidence validation");
 assert(/Live public-data evidence extraction: ok/.test(releasePreflight), "release preflight must report successful live evidence extraction");
 assert(/REQUIRE_LIVE_PUBLIC_DATA/.test(registrationPreflight), "registration preflight must require live public-data smoke");
+assert(/MCP request-id smoke: executed in local HTTP and Docker runtime smoke/.test(ci), "CI summary must expose MCP request-id smoke evidence");
+assert(/MCP request-id smoke: included in local HTTP and Docker runtime smoke/.test(registrationWorkflow), "registration preflight summary must expose MCP request-id smoke evidence");
+assert(/MCP request-id smoke coverage/.test(operations), "operations runbook must require MCP request-id smoke evidence");
+assert(/MCP request-id smoke coverage/.test(submission), "submission pack must require MCP request-id smoke evidence");
 
 for (const required of [
   "Secret Setup",

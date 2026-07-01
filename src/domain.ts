@@ -108,7 +108,7 @@ function cleanText(value: string | undefined, fallback = "미확인"): string {
     .replace(/<\/?[A-Za-z][^>\r\n]{0,200}>/g, "")
     .replace(/[<>]/g, "")
     .replace(/\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b/g, "[이메일 생략]")
-    .replace(/\b\d{6}[\s.-]?[1-4]\d{6}\b/g, "[민감번호 생략]")
+    .replace(/\b\d{6}[\s.-]?[0-9]\d{6}\b/g, "[민감번호 생략]")
     .replace(/((?:계약금\s*)?(?:계좌(?:번호)?|입금\s*계좌|송금\s*계좌)\s*(?:은|는|:)?\s*)\d{2,6}[\s-]\d{2,6}[\s-]\d{2,8}/g, "$1[계좌번호 생략]")
     .replace(/\b01[016789][\s.-]?\d{3,4}[\s.-]?\d{4}\b/g, "[연락처 생략]")
     .replace(/\b0(?:2|[3-6][1-5]|70|80)[\s.-]?\d{3,4}[\s.-]?\d{4}\b/g, "[연락처 생략]")
@@ -210,9 +210,12 @@ export function explainDataAvailability(): string {
 }
 
 export function dataGoKrServiceKey(): string {
-  const rawServiceKey = process.env.DATA_GO_KR_SERVICE_KEY?.trim();
-  if (!rawServiceKey) {
+  const rawServiceKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  if (rawServiceKey === undefined || rawServiceKey === "") {
     throw new Error("DATA_GO_KR_SERVICE_KEY is required for live public-data lookup. 샘플 데이터로 대체하지 않습니다.");
+  }
+  if (rawServiceKey !== rawServiceKey.trim() || /\s/.test(rawServiceKey)) {
+    throw new Error("DATA_GO_KR_SERVICE_KEY must not contain whitespace.");
   }
 
   if (DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS.has(rawServiceKey.toLowerCase())) {
@@ -228,6 +231,9 @@ export function dataGoKrServiceKey(): string {
 
   if (DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS.has(serviceKey.toLowerCase())) {
     throw new Error("DATA_GO_KR_SERVICE_KEY must be a real data.go.kr service key, not a placeholder.");
+  }
+  if (serviceKey !== serviceKey.trim() || /\s/.test(serviceKey)) {
+    throw new Error("DATA_GO_KR_SERVICE_KEY must not contain whitespace.");
   }
   if (serviceKey.length < MIN_DATA_GO_KR_SERVICE_KEY_LENGTH || !/^[A-Za-z0-9+/]+={0,2}$/.test(serviceKey)) {
     throw new Error("DATA_GO_KR_SERVICE_KEY must look like a real data.go.kr service key.");
@@ -518,6 +524,9 @@ function parseLegalDongRows(payload: unknown): LegalDongRecord[] {
 }
 
 function legalDongRegionQuery(region: string | undefined): string {
+  if (region !== undefined && /[\u0000-\u001F\u007F`]/.test(region)) {
+    throw new Error("region must not include control characters, line breaks, tabs, or Markdown backticks for legal-dong lookup.");
+  }
   const cleaned = cleanText(region);
   if (cleaned === "미확인" || cleaned.length < 2) {
     throw new Error("region must include at least 2 meaningful characters for legal-dong lookup.");

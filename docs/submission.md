@@ -22,12 +22,12 @@ Lease Safe(전월세안전내비) is a Korean lease-safety MCP server for people
 
 Required:
 
-- `DATA_GO_KR_SERVICE_KEY`: data.go.kr service key for legal-dong, rent, and sale transaction APIs
+- `DATA_GO_KR_SERVICE_KEY`: data.go.kr service key for legal-dong, rent, and sale transaction APIs; encoded and decoded keys are accepted, but whitespace is rejected
 - `MCP_ALLOWED_HOSTS`: PlayMCP host or deployment domain for DNS rebinding protection, using unique plain hostnames only; URL schemes, ports, paths, userinfo, query strings, fragments, wildcards, backslashes, whitespace, blank comma-separated entries, underscores, empty labels, and labels that start or end with `-` are rejected
 
 Optional:
 
-- `MCP_AUTH_TOKEN`: real bearer token of at least 16 characters for direct deployments that need private access control; placeholders are rejected
+- `MCP_AUTH_TOKEN`: real bearer token of at least 16 visible ASCII characters without whitespace for direct deployments that need private access control; placeholders are rejected
 - `MCP_MAX_BODY_BYTES`: MCP POST request body limit, default `262144`
 - `MCP_RATE_LIMIT_PER_MINUTE`: MCP POST rate limit per client, default `120`, set `0` to disable
 - `PUBLIC_DATA_TIMEOUT_MS`: official public-data API timeout, default `8000`, maximum `60000`
@@ -91,9 +91,11 @@ Before registration:
 DATA_GO_KR_SERVICE_KEY=... npm run preflight:registration
 ```
 
-Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_KEY` is configured as a GitHub repository secret, CI also runs the live public-data smoke in registration mode and publishes the extracted live public-data evidence lines in the job summary.
+Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_KEY` is configured as a GitHub repository secret, CI also runs the live public-data smoke in registration mode and publishes the required housing coverage plus the extracted live public-data evidence lines in the job summary.
 
-For shareable registration evidence, trigger the manual GitHub Actions **Registration Preflight** workflow on the submitted commit. This workflow runs `npm run preflight:registration`, includes working-tree, staged, and committed whitespace diff checks, fails when `DATA_GO_KR_SERVICE_KEY` is missing instead of treating live public-data smoke as optional, and publishes a GitHub Actions job summary with the commit, workflow run URL, required command, live public-data requirement, sanitized, length-limited demo smoke input values, root route minimality smoke coverage, Docker runtime smoke coverage, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines.
+Before trusting CI live-smoke evidence, run `npm run check:github-secret` and confirm the GitHub repository secret exists. This check reads only GitHub secret names and metadata, not the secret value.
+
+For shareable registration evidence, trigger the manual GitHub Actions **Registration Preflight** workflow on the submitted commit. This workflow runs `npm run preflight:registration`, includes working-tree, staged, and committed whitespace diff checks, fails when `DATA_GO_KR_SERVICE_KEY` is missing instead of treating live public-data smoke as optional, and publishes a GitHub Actions job summary with the commit, workflow run URL, required command, GitHub public-data secret status without printing the value, live public-data requirement, required housing coverage, sanitized, length-limited demo smoke input values, root route minimality smoke coverage, MCP request-id smoke coverage, Docker runtime smoke coverage, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines.
 
 CI also runs `npm run smoke:docker` after building the image, so registration should use a commit whose Docker image has been proven to boot and answer MCP requests before the optional live API smoke.
 
