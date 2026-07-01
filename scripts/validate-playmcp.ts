@@ -59,7 +59,7 @@ for (const expected of [
 }
 
 for (const spec of Object.values(RENT_API_SPECS)) {
-  assert(spec.endpoint.includes("rt.molit.go.kr"), `rent endpoint must use official MOLIT host: ${spec.housingType}`);
+  assert(spec.endpoint.includes("apis.data.go.kr/1613000/"), `rent endpoint must use official data.go.kr gateway: ${spec.housingType}`);
   assert(spec.portalUrl.includes("data.go.kr"), `rent portal must use data.go.kr: ${spec.housingType}`);
 }
 

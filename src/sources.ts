@@ -147,7 +147,7 @@ export const RENT_API_SPECS: Record<HousingType, RentApiSpec> = {
     housingType: "apartment",
     label: "아파트",
     portalUrl: "https://www.data.go.kr/data/15126474/openapi.do",
-    endpoint: "https://rt.molit.go.kr/oasis/service/public/getRTMSDataSvcAptRent",
+    endpoint: "https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent",
     operationId: "getRTMSDataSvcAptRent",
     nameField: "aptNm"
   },
@@ -155,7 +155,7 @@ export const RENT_API_SPECS: Record<HousingType, RentApiSpec> = {
     housingType: "rowhouse",
     label: "연립다세대",
     portalUrl: "https://www.data.go.kr/data/15126473/openapi.do",
-    endpoint: "https://rt.molit.go.kr/oasis/service/public/getRTMSDataSvcRHRent",
+    endpoint: "https://apis.data.go.kr/1613000/RTMSDataSvcRHRent/getRTMSDataSvcRHRent",
     operationId: "getRTMSDataSvcRHRent",
     nameField: "mhouseNm"
   },
@@ -163,14 +163,14 @@ export const RENT_API_SPECS: Record<HousingType, RentApiSpec> = {
     housingType: "single_multi",
     label: "단독/다가구",
     portalUrl: "https://www.data.go.kr/data/15126472/openapi.do",
-    endpoint: "https://rt.molit.go.kr/oasis/service/public/getRTMSDataSvcSHRent",
+    endpoint: "https://apis.data.go.kr/1613000/RTMSDataSvcSHRent/getRTMSDataSvcSHRent",
     operationId: "getRTMSDataSvcSHRent"
   },
   officetel: {
     housingType: "officetel",
     label: "오피스텔",
     portalUrl: "https://www.data.go.kr/data/15126475/openapi.do",
-    endpoint: "https://rt.molit.go.kr/oasis/service/public/getRTMSDataSvcOffiRent",
+    endpoint: "https://apis.data.go.kr/1613000/RTMSDataSvcOffiRent/getRTMSDataSvcOffiRent",
     operationId: "getRTMSDataSvcOffiRent",
     nameField: "offiNm"
   }
