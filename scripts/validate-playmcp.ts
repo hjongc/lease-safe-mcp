@@ -273,17 +273,32 @@ for (const expected of [
   assert(SOURCES.some(source => source.id === expected), `source missing: ${expected}`);
 }
 
+const sourceIds = new Set<string>();
+for (const source of SOURCES) {
+  assert(!sourceIds.has(source.id), `duplicate source id: ${source.id}`);
+  sourceIds.add(source.id);
+  assert(/^https:\/\//.test(source.url), `source must use HTTPS: ${source.id}`);
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(source.reviewedAt), `source reviewedAt must use YYYY-MM-DD: ${source.id}`);
+}
+
+function molitSourceId(housingType: string, transactionType: "rent" | "sale"): string {
+  return `molit-${housingType === "single_multi" ? "single" : housingType}-${transactionType}`;
+}
+
 assert(LEGAL_DONG_API.endpoint.startsWith("https://apis.data.go.kr/1741000/"), "legal-dong endpoint must use the official HTTPS data.go.kr gateway");
 assert(LEGAL_DONG_API.portalUrl.includes("data.go.kr"), "legal-dong portal must use data.go.kr");
+assert(SOURCES.some(source => source.id === "mois-legal-dong-code" && source.url === LEGAL_DONG_API.portalUrl), "legal-dong source registry URL must match the API portal URL");
 
 for (const spec of Object.values(RENT_API_SPECS)) {
   assert(spec.endpoint.includes("apis.data.go.kr/1613000/"), `rent endpoint must use official data.go.kr gateway: ${spec.housingType}`);
   assert(spec.portalUrl.includes("data.go.kr"), `rent portal must use data.go.kr: ${spec.housingType}`);
+  assert(SOURCES.some(source => source.id === molitSourceId(spec.housingType, "rent") && source.url === spec.portalUrl), `rent source registry URL must match the API portal URL: ${spec.housingType}`);
 }
 
 for (const spec of Object.values(SALE_API_SPECS)) {
   assert(spec.endpoint.includes("apis.data.go.kr/1613000/"), `sale endpoint must use official data.go.kr gateway: ${spec.housingType}`);
   assert(spec.portalUrl.includes("data.go.kr"), `sale portal must use data.go.kr: ${spec.housingType}`);
+  assert(SOURCES.some(source => source.id === molitSourceId(spec.housingType, "sale") && source.url === spec.portalUrl), `sale source registry URL must match the API portal URL: ${spec.housingType}`);
 }
 
 const smoke = readFileSync("scripts/smoke.ts", "utf8");
