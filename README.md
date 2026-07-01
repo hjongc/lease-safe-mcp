@@ -4,8 +4,10 @@
 
 It uses official public data and reviewed official guidance to help users:
 
+- run a one-shot lease safety assessment that combines rent market, sale market, red flags, and next actions
 - convert a region name into official legal-dong codes through the official legal-dong API
 - compare nearby reported rent deposits when a data.go.kr API key is configured
+- compare a deposit against nearby sale prices to estimate sale-price-to-deposit risk
 - detect contract red flags without making legal conclusions
 - plan move-in protection steps such as move-in report, fixed date, and lease report
 - prepare questions for landlords, agents, and official institutions
@@ -16,11 +18,12 @@ It uses official public data and reviewed official guidance to help users:
 
 - Streamable HTTP transport: `POST /mcp`
 - Stateless server
-- Tool count: 8
+- Tool count: 10
 - No `kakao` string in server or tool names
 - Required tool annotations included
 - Compact Korean markdown outputs
 - Dockerfile included for PlayMCP in KC Git source build
+- GitHub Actions CI runs tests, PlayMCP validation, production dependency audit, and Docker build
 
 ## Data Sources
 
@@ -28,6 +31,7 @@ Automatic data:
 
 - 행정안전부 행정표준코드 법정동코드 OpenAPI
 - 국토교통부 아파트, 연립다세대, 단독/다가구, 오피스텔 전월세 실거래가 OpenAPI
+- 국토교통부 아파트, 연립다세대, 단독/다가구, 오피스텔 매매 실거래가 OpenAPI
 
 Reviewed official guidance:
 
@@ -39,7 +43,17 @@ Reviewed official guidance:
 - 한국부동산원·LH 임대차분쟁조정위원회
 - HUG 주택도시보증공사
 
-`DATA_GO_KR_SERVICE_KEY` is required for API-backed tools: `resolve_legal_dong_code` and `compare_rent_market`. If it is missing or rejected by data.go.kr, those tools fail clearly instead of using fake sample data.
+`DATA_GO_KR_SERVICE_KEY` is required for API-backed tools: `assess_lease_safety`, `resolve_legal_dong_code`, `compare_rent_market`, and `compare_deposit_to_sale_market`. Encoded and decoded data.go.kr keys are both accepted. If the key is missing or rejected by data.go.kr, those tools fail clearly instead of using fake sample data.
+
+## Flagship Tool
+
+`assess_lease_safety` is the primary tool to show in a demo. It takes `housingType`, `lawdCd`, `dealYmd`, `depositManwon`, and optional situation details, then returns:
+
+- nearby rent-market median and sample transactions
+- nearby sale-market median and deposit-to-sale ratio
+- contract red flags from the user's situation
+- immediate official next actions for registry, move-in report, fixed date, lease report, and HUG checks
+- official source links used for the assessment
 
 ## Production Configuration
 
@@ -77,17 +91,54 @@ Smoke:
 MCP_ENDPOINT=http://127.0.0.1:3000/mcp npm run smoke
 ```
 
+Release preflight:
+
+```bash
+npm run preflight
+```
+
+`npm run preflight` runs unit tests, PlayMCP validation, production dependency audit, Docker build, and live public-data smoke when `DATA_GO_KR_SERVICE_KEY` is set.
+
 Live public-data smoke before production rollout:
 
 ```bash
 DATA_GO_KR_SERVICE_KEY=... npm run smoke:public-data
 ```
 
+By default, the live public-data smoke checks legal-dong lookup, rent-market APIs for all four housing types, sale-market APIs for all four housing types, and the flagship one-shot assessment.
+
 Optional overrides:
 
 ```bash
 PUBLIC_DATA_SMOKE_REGION="서울 관악구" PUBLIC_DATA_SMOKE_LAWD_CD=11620 PUBLIC_DATA_SMOKE_DEAL_YMD=202605 DATA_GO_KR_SERVICE_KEY=... npm run smoke:public-data
 ```
+
+To narrow the live smoke while debugging one source:
+
+```bash
+PUBLIC_DATA_SMOKE_HOUSING_TYPES=apartment,rowhouse DATA_GO_KR_SERVICE_KEY=... npm run smoke:public-data
+```
+
+## CI Gate
+
+The repository includes `.github/workflows/ci.yml` for the submission branch. It runs:
+
+- `npm test`
+- `npm run validate:playmcp`
+- `npm audit --omit=dev`
+- `docker build -t lease-safe-mcp-ci .`
+
+If the GitHub repository has a `DATA_GO_KR_SERVICE_KEY` secret, CI also runs the live public-data smoke against all supported housing types. Without that secret, the live API smoke is skipped and local pre-submission smoke should be run with the key.
+
+## Submission Checklist
+
+Before registering in PlayMCP:
+
+- Run `npm run preflight` locally with `DATA_GO_KR_SERVICE_KEY` set
+- Confirm the latest GitHub Actions CI run is green
+- Configure the same `DATA_GO_KR_SERVICE_KEY` as a PlayMCP runtime environment variable
+- Set `MCP_ALLOWED_HOSTS` to the PlayMCP host or deployment domain
+- Use `assess_lease_safety` as the demo entry tool
 
 PlayMCP in KC Git-source build:
 

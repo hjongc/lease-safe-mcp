@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      DATA_GO_KR_SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Validate PlayMCP readiness
+        run: npm run validate:playmcp
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
+
+      - name: Build Docker image
+        run: docker build -t lease-safe-mcp-ci .
+
+      - name: Live public-data smoke
+        if: ${{ env.DATA_GO_KR_SERVICE_KEY != '' }}
+        run: npm run smoke:public-data

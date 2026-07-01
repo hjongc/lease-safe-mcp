@@ -2,6 +2,8 @@
 
 ## Automatic Public APIs
 
+The flagship `assess_lease_safety` tool calls both the rent and sale APIs for the same `housingType`, `LAWD_CD`, and `DEAL_YMD`, then combines the market signals with official checklist guidance. It does not replace failed API calls with sample values.
+
 1. 행정안전부_행정표준코드_법정동코드
    - Portal: https://www.data.go.kr/data/15077871/openapi.do
    - Endpoint: http://apis.data.go.kr/1741000/StanReginCd/getStanReginCdList
@@ -16,6 +18,14 @@
    - Officetel: https://www.data.go.kr/data/15126475/openapi.do
    - Required query: `LAWD_CD`, `DEAL_YMD`, `serviceKey`.
    - Key fields: `deposit`, `monthlyRent`, `dealYear`, `dealMonth`, `dealDay`, `excluUseAr`, `contractTerm`, `contractType`.
+
+3. 국토교통부 매매 실거래가 APIs
+   - Apartment: https://www.data.go.kr/data/15126469/openapi.do
+   - Row house/multifamily: https://www.data.go.kr/data/15126467/openapi.do
+   - Single/multifamily detached: https://www.data.go.kr/data/15126465/openapi.do
+   - Officetel: https://www.data.go.kr/data/15126464/openapi.do
+   - Required query: `LAWD_CD`, `DEAL_YMD`, `serviceKey`.
+   - Key fields: `dealAmount`, `dealYear`, `dealMonth`, `dealDay`, `excluUseAr`, `totalArea`.
 
 ## Curated Official Guidance
 

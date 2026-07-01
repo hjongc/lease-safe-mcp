@@ -4,7 +4,9 @@ import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js
 import type { Request, Response } from "express";
 import * as z from "zod/v4";
 import {
+  assessLeaseSafety,
   buildMoveInProtectionPlan,
+  compareDepositToSaleMarket,
   checkLeaseRedFlags,
   compareRentMarket,
   explainDataAvailability,
@@ -103,6 +105,30 @@ export function createServer(): McpServer {
   );
 
   server.registerTool(
+    "assess_lease_safety",
+    {
+      title: "전월세 안전 종합 진단",
+      description:
+        "전월세안전내비의 대표 진단 도구입니다. 국토교통부 전월세·매매 실거래가를 함께 조회해 보증금의 주변 시세 위치, 매매가 대비 비율, 계약 위험 신호, 입주 보호 행동을 한 번에 정리합니다. DATA_GO_KR_SERVICE_KEY가 필요합니다.",
+      inputSchema: {
+        housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("진단할 주택 유형입니다."),
+        lawdCd: z.string().regex(/^\d{5}$/).describe("법정동 코드 10자리 중 앞 5자리인 시군구 코드입니다. 예: 서울 관악구 11620."),
+        dealYmd: z.string().regex(/^\d{6}$/).describe("조회할 계약년월 6자리입니다. 예: 202605."),
+        depositManwon: z.number().nonnegative().describe("보증금을 만원 단위 숫자로 적어주세요. 예: 30000은 3억원입니다."),
+        monthlyRentManwon: monthlyRentSchema,
+        situation: situationSchema,
+        region: regionSchema,
+        contractType: contractTypeSchema,
+        moveInDate: moveInDateSchema,
+        contractDate: contractDateSchema,
+        concerns: concernsSchema
+      },
+      annotations: readOnlyAnnotations("전월세 안전 종합 진단")
+    },
+    async input => textResult(await assessLeaseSafety(input))
+  );
+
+  server.registerTool(
     "explain_data_availability",
     {
       title: "데이터 조달 가능성 설명",
@@ -144,6 +170,23 @@ export function createServer(): McpServer {
       annotations: readOnlyAnnotations("전월세 실거래 비교")
     },
     async input => textResult(await compareRentMarket(input))
+  );
+
+  server.registerTool(
+    "compare_deposit_to_sale_market",
+    {
+      title: "매매가 대비 보증금 점검",
+      description:
+        "전월세안전내비가 국토교통부 매매 실거래가 OpenAPI를 호출해 입력 보증금이 주변 매매가 중앙값 대비 어느 정도인지 전세가율 관점으로 점검합니다. DATA_GO_KR_SERVICE_KEY가 필요합니다.",
+      inputSchema: {
+        housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("매매 실거래가를 조회할 주택 유형입니다."),
+        lawdCd: z.string().regex(/^\d{5}$/).describe("법정동 코드 10자리 중 앞 5자리인 시군구 코드입니다. 예: 서울 관악구 11620."),
+        dealYmd: z.string().regex(/^\d{6}$/).describe("계약년월 6자리입니다. 예: 202605."),
+        depositManwon: z.number().nonnegative().describe("비교할 보증금을 만원 단위 숫자로 적어주세요. 예: 30000은 3억원입니다.")
+      },
+      annotations: readOnlyAnnotations("매매가 대비 보증금 점검")
+    },
+    async input => textResult(await compareDepositToSaleMarket(input))
   );
 
   server.registerTool(

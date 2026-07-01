@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  assessLeaseSafety,
   buildMoveInProtectionPlan,
   checkLeaseRedFlags,
+  compareDepositToSaleMarket,
   compareRentMarket,
   explainDataAvailability,
   prepareContractQuestions,
@@ -22,11 +24,12 @@ test("legal dong helper calls official API and exposes LAWD code", async () => {
   const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
   const previousFetch = globalThis.fetch;
   try {
-    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env.DATA_GO_KR_SERVICE_KEY = "test%2Fkey%3D%3D";
     globalThis.fetch = async input => {
       const url = new URL(String(input));
       assert.equal(url.searchParams.get("locatadd_nm"), "관악구");
       assert.equal(url.searchParams.get("type"), "json");
+      assert.equal(url.searchParams.get("ServiceKey"), "test/key==");
       return new Response(JSON.stringify({
         StanReginCd: [
           {
@@ -143,6 +146,140 @@ test("rent market comparison surfaces public-data error payloads", async () => {
       compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" }),
       /returned error: 30 SERVICE KEY IS NOT REGISTERED ERROR/
     );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
+test("deposit-to-sale comparison parses sale XML and flags high ratio", async () => {
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    globalThis.fetch = async input => {
+      const url = new URL(String(input));
+      assert.match(url.href, /RTMSDataSvcAptTrade/);
+      assert.equal(url.searchParams.get("LAWD_CD"), "11620");
+      assert.equal(url.searchParams.get("DEAL_YMD"), "202605");
+      return new Response(`
+        <response>
+          <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
+          <body><items>
+            <item>
+              <aptNm>관악매매1</aptNm>
+              <umdNm>봉천동</umdNm>
+              <dealAmount>40,000</dealAmount>
+              <dealYear>2026</dealYear>
+              <dealMonth>5</dealMonth>
+              <dealDay>10</dealDay>
+              <excluUseAr>59.9</excluUseAr>
+              <floor>7</floor>
+            </item>
+            <item>
+              <aptNm>관악매매2</aptNm>
+              <umdNm>봉천동</umdNm>
+              <dealAmount>50,000</dealAmount>
+              <dealYear>2026</dealYear>
+              <dealMonth>5</dealMonth>
+              <dealDay>20</dealDay>
+              <excluUseAr>59.9</excluUseAr>
+              <floor>9</floor>
+            </item>
+          </items></body>
+        </response>
+      `);
+    };
+
+    const text = await compareDepositToSaleMarket({
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605",
+      depositManwon: 42000
+    });
+
+    assert.match(text, /매매 표본 수: 2/);
+    assert.match(text, /매매가 대비 보증금 비율: 93.3%/);
+    assert.match(text, /90% 이상/);
+    assert.match(text, /특정 매물의 안전성/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
+test("one-shot lease assessment combines rent, sale, red flags, and actions", async () => {
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    globalThis.fetch = async input => {
+      const url = new URL(String(input));
+      assert.equal(url.searchParams.get("LAWD_CD"), "11620");
+      assert.equal(url.searchParams.get("DEAL_YMD"), "202605");
+      if (url.href.includes("AptRent")) {
+        return new Response(`
+          <response>
+            <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+            <body><items>
+              <item>
+                <aptNm>관악전세1</aptNm>
+                <umdNm>봉천동</umdNm>
+                <deposit>30,000</deposit>
+                <monthlyRent>0</monthlyRent>
+                <dealYear>2026</dealYear>
+                <dealMonth>5</dealMonth>
+                <dealDay>10</dealDay>
+              </item>
+            </items></body>
+          </response>
+        `);
+      }
+      if (url.href.includes("AptTrade")) {
+        return new Response(`
+          <response>
+            <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
+            <body><items>
+              <item>
+                <aptNm>관악매매1</aptNm>
+                <umdNm>봉천동</umdNm>
+                <dealAmount>40,000</dealAmount>
+                <dealYear>2026</dealYear>
+                <dealMonth>5</dealMonth>
+                <dealDay>10</dealDay>
+              </item>
+            </items></body>
+          </response>
+        `);
+      }
+      throw new Error(`unexpected endpoint ${url.href}`);
+    };
+
+    const text = await assessLeaseSafety({
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605",
+      region: "서울 관악구",
+      contractType: "jeonse",
+      depositManwon: 38000,
+      concerns: "대리계약이고 계약금을 빨리 보내라고 합니다"
+    });
+
+    assert.match(text, /전월세 안전 종합 진단/);
+    assert.match(text, /전월세 신고 표본 1건/);
+    assert.match(text, /매매 신고 표본 1건/);
+    assert.match(text, /매매가 대비 보증금 비율 95%/);
+    assert.match(text, /대리계약/);
+    assert.match(text, /계약금 송금을 보류/);
+    assert.match(text, /공식 출처/);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
