@@ -269,6 +269,20 @@ function rejectOversizedMcpRequest(maxBodyBytes: number) {
   };
 }
 
+function requireMcpJsonContentType(req: Request, res: Response, next: NextFunction): void {
+  if (req.method !== "POST") {
+    next();
+    return;
+  }
+
+  if (req.is(["application/json", "application/*+json"])) {
+    next();
+    return;
+  }
+
+  jsonRpcError(res, 415, -32600, "MCP POST requests must use application/json.");
+}
+
 function handleMcpExpressError(error: unknown, _req: Request, res: Response, next: NextFunction): void {
   const expressError = error as { status?: number; type?: string; message?: string };
   if (res.headersSent) {
@@ -570,6 +584,7 @@ export function createApp() {
 
   app.use("/mcp", rateLimitMcpRequests(rateLimitPerMinute));
   app.use("/mcp", rejectOversizedMcpRequest(maxBodyBytes));
+  app.use("/mcp", requireMcpJsonContentType);
 
   app.post("/mcp", async (req: Request, res: Response) => {
     if (!requireBearerToken(req, res, authToken)) return;

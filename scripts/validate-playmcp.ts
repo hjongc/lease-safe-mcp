@@ -89,6 +89,8 @@ assert(/parsePlainInteger/.test(server), "server must parse runtime numeric sett
 assert(/MCP_MAX_BODY_BYTES/.test(server), "server must support a bounded MCP request body size");
 assert(/express\.json\(\{ limit: `\$\{maxBodyBytes\}b` \}\)/.test(server), "server JSON parser limit must match MCP_MAX_BODY_BYTES");
 assert(/MCP_RATE_LIMIT_PER_MINUTE/.test(server), "server must support MCP request rate limiting");
+assert(/requireMcpJsonContentType/.test(server), "server must reject non-JSON MCP POST requests before transport handling");
+assert(/MCP POST requests must use application\/json/.test(server), "server must return a clear non-JSON MCP POST error");
 assert(/MCP_TEXT_LIMITS/.test(server), "server must define explicit MCP text input limits");
 assert(/regionSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.region\)/.test(server), "server must bound MCP region text inputs");
 assert(/situationSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.situation\)/.test(server), "server must bound MCP situation text inputs");
@@ -190,6 +192,8 @@ assert(/"PUT"/.test(httpSmoke), "HTTP smoke must verify a catch-all unsupported 
 assert(/Allow:\s*POST/.test(httpSmoke), "HTTP smoke must verify unsupported MCP methods advertise Allow: POST");
 assert(/invalid_json_rejection/.test(httpSmoke), "HTTP smoke must verify invalid JSON rejection");
 assert(/-32700/.test(httpSmoke), "HTTP smoke must verify invalid JSON returns the JSON-RPC parse error code");
+assert(/content_type_rejection/.test(httpSmoke), "HTTP smoke must verify unsupported content-type rejection");
+assert(/415/.test(httpSmoke), "HTTP smoke must verify unsupported content-type returns 415");
 assert(/rateLimitPerMinute/.test(httpSmoke), "HTTP smoke must verify rate limit health metadata");
 assert(/oversized_request/.test(httpSmoke), "HTTP smoke must verify oversized MCP request rejection");
 assert(/dist\/scripts\/smoke\.js/.test(httpSmoke), "HTTP smoke must run the MCP client smoke");
@@ -205,6 +209,8 @@ assert(/"PUT"/.test(dockerSmoke), "Docker smoke must verify a catch-all unsuppor
 assert(/Allow:\s*POST/.test(dockerSmoke), "Docker smoke must verify unsupported MCP methods advertise Allow: POST");
 assert(/docker_invalid_json_rejection/.test(dockerSmoke), "Docker smoke must verify invalid JSON rejection");
 assert(/-32700/.test(dockerSmoke), "Docker smoke must verify invalid JSON returns the JSON-RPC parse error code");
+assert(/docker_content_type_rejection/.test(dockerSmoke), "Docker smoke must verify unsupported content-type rejection");
+assert(/415/.test(dockerSmoke), "Docker smoke must verify unsupported content-type returns 415");
 assert(/rateLimitPerMinute/.test(dockerSmoke), "Docker smoke must verify rate limit health metadata");
 assert(/docker_oversized_request/.test(dockerSmoke), "Docker smoke must verify oversized MCP request rejection");
 assert(/dist\/scripts\/smoke\.js/.test(dockerSmoke), "Docker smoke must run the MCP client smoke");

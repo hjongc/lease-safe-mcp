@@ -185,6 +185,31 @@ async function verifyInvalidJsonRequest(endpoint: string, authToken: string): Pr
   }
 }
 
+async function verifyUnsupportedContentTypeRequest(endpoint: string, authToken: string): Promise<void> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${authToken}`,
+      "content-type": "text/plain"
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "docker-unsupported-content-type-smoke",
+      method: "tools/list"
+    })
+  });
+
+  if (response.status !== 415) {
+    const text = await response.text();
+    throw new Error(`Expected unsupported content-type Docker MCP request to return 415, got ${response.status}: ${text}`);
+  }
+
+  const body = await response.json() as { error?: { code?: unknown; message?: unknown } };
+  if (body.error?.code !== -32600 || body.error?.message !== "MCP POST requests must use application/json.") {
+    throw new Error("Unsupported content-type Docker MCP request did not return the expected JSON-RPC invalid request error.");
+  }
+}
+
 async function verifyUnauthorizedRequest(endpoint: string): Promise<void> {
   const response = await fetch(endpoint, {
     method: "POST",
@@ -254,6 +279,8 @@ async function main() {
     console.log("docker_method_rejection=ok");
     await verifyInvalidJsonRequest(endpoint, authToken);
     console.log("docker_invalid_json_rejection=ok");
+    await verifyUnsupportedContentTypeRequest(endpoint, authToken);
+    console.log("docker_content_type_rejection=ok");
     await verifyUnauthorizedRequest(endpoint);
     console.log("docker_auth_rejection=ok");
     await verifyOversizedRequest(endpoint, maxBodyBytes);
