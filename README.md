@@ -4,6 +4,7 @@
 
 It uses official public data and reviewed official guidance to help users:
 
+- run a one-shot lease safety assessment that combines rent market, sale market, red flags, and next actions
 - convert a region name into official legal-dong codes through the official legal-dong API
 - compare nearby reported rent deposits when a data.go.kr API key is configured
 - compare a deposit against nearby sale prices to estimate sale-price-to-deposit risk
@@ -17,7 +18,7 @@ It uses official public data and reviewed official guidance to help users:
 
 - Streamable HTTP transport: `POST /mcp`
 - Stateless server
-- Tool count: 9
+- Tool count: 10
 - No `kakao` string in server or tool names
 - Required tool annotations included
 - Compact Korean markdown outputs
@@ -41,7 +42,17 @@ Reviewed official guidance:
 - 한국부동산원·LH 임대차분쟁조정위원회
 - HUG 주택도시보증공사
 
-`DATA_GO_KR_SERVICE_KEY` is required for API-backed tools: `resolve_legal_dong_code`, `compare_rent_market`, and `compare_deposit_to_sale_market`. Encoded and decoded data.go.kr keys are both accepted. If the key is missing or rejected by data.go.kr, those tools fail clearly instead of using fake sample data.
+`DATA_GO_KR_SERVICE_KEY` is required for API-backed tools: `assess_lease_safety`, `resolve_legal_dong_code`, `compare_rent_market`, and `compare_deposit_to_sale_market`. Encoded and decoded data.go.kr keys are both accepted. If the key is missing or rejected by data.go.kr, those tools fail clearly instead of using fake sample data.
+
+## Flagship Tool
+
+`assess_lease_safety` is the primary tool to show in a demo. It takes `housingType`, `lawdCd`, `dealYmd`, `depositManwon`, and optional situation details, then returns:
+
+- nearby rent-market median and sample transactions
+- nearby sale-market median and deposit-to-sale ratio
+- contract red flags from the user's situation
+- immediate official next actions for registry, move-in report, fixed date, lease report, and HUG checks
+- official source links used for the assessment
 
 ## Production Configuration
 

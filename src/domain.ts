@@ -32,6 +32,34 @@ export interface SaleRecord {
   floor?: string;
 }
 
+interface RentMarketSnapshot {
+  label: string;
+  lawdCd: string;
+  dealYmd: string;
+  sampleCount: number;
+  median?: number;
+  max?: number;
+  userDeposit?: number;
+  userMonthlyRent?: number;
+  position: string;
+  records: RentRecord[];
+  sourceId: string;
+}
+
+interface SaleMarketSnapshot {
+  label: string;
+  lawdCd: string;
+  dealYmd: string;
+  sampleCount: number;
+  median?: number;
+  max?: number;
+  userDeposit: number;
+  ratio?: number;
+  signal: string;
+  records: SaleRecord[];
+  sourceId: string;
+}
+
 interface LegalDongRecord {
   regionName: string;
   regionCode: string;
@@ -54,6 +82,18 @@ function cleanText(value: string | undefined, fallback = "미확인"): string {
 function money(value: number | undefined): string {
   if (!Number.isFinite(value)) return "미입력";
   return `${Math.round(value as number).toLocaleString("ko-KR")}만원`;
+}
+
+function median(values: number[]): number | undefined {
+  if (values.length === 0) return undefined;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[middle];
+  return Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+}
+
+function sourceIdFor(kind: "rent" | "sale", housingType: HousingType): string {
+  return `molit-${housingType === "single_multi" ? "single" : housingType}-${kind}`;
 }
 
 function officialNotice(): string {
@@ -258,13 +298,13 @@ function extractSaleItems(xml: string, specNameField?: string): SaleRecord[] {
     .filter(item => item.dealAmountManwon > 0);
 }
 
-export async function compareRentMarket(input: {
+async function fetchRentMarketSnapshot(input: {
   housingType: HousingType;
   lawdCd: string;
   dealYmd: string;
   depositManwon?: number;
   monthlyRentManwon?: number;
-}): Promise<string> {
+}): Promise<RentMarketSnapshot> {
   const serviceKey = dataGoKrServiceKey();
 
   const spec = RENT_API_SPECS[input.housingType];
@@ -272,6 +312,8 @@ export async function compareRentMarket(input: {
   url.searchParams.set("LAWD_CD", input.lawdCd);
   url.searchParams.set("DEAL_YMD", input.dealYmd);
   url.searchParams.set("serviceKey", serviceKey);
+  url.searchParams.set("pageNo", "1");
+  url.searchParams.set("numOfRows", "30");
 
   const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
   const xml = await response.text();
@@ -284,38 +326,64 @@ export async function compareRentMarket(input: {
   }
 
   const records = extractItems(xml, spec.nameField);
-  const deposits = records.map(record => record.depositManwon).sort((a, b) => a - b);
+  const deposits = records.map(record => record.depositManwon).filter(value => value > 0);
   const sampleCount = deposits.length;
-  const median = sampleCount > 0 ? deposits[Math.floor(sampleCount / 2)] : undefined;
-  const max = sampleCount > 0 ? deposits[sampleCount - 1] : undefined;
+  const medianDeposit = median(deposits);
+  const max = sampleCount > 0 ? Math.max(...deposits) : undefined;
   const userDeposit = input.depositManwon;
   const position =
-    userDeposit && median
-      ? userDeposit > median * 1.25
+    userDeposit && medianDeposit
+      ? userDeposit > medianDeposit * 1.25
         ? "입력한 보증금이 조회 표본 중앙값보다 25% 이상 높습니다. 등기부 선순위 권리와 보증보험 가능 여부를 먼저 확인하세요."
-        : userDeposit < median * 0.75
+        : userDeposit < medianDeposit * 0.75
           ? "입력한 보증금이 조회 표본 중앙값보다 낮습니다. 월세, 관리비, 특약, 하자 조건을 함께 확인하세요."
           : "입력한 보증금은 조회 표본 중앙값 주변입니다. 그래도 개별 등기부와 특약 확인은 별도입니다."
       : "입력 보증금이나 표본 중앙값이 부족해 상대 위치를 계산하지 않았습니다.";
 
+  return {
+    label: spec.label,
+    lawdCd: input.lawdCd,
+    dealYmd: input.dealYmd,
+    sampleCount,
+    median: medianDeposit,
+    max,
+    userDeposit,
+    userMonthlyRent: input.monthlyRentManwon,
+    position,
+    records,
+    sourceId: sourceIdFor("rent", input.housingType)
+  };
+}
+
+function renderRentMarketSnapshot(snapshot: RentMarketSnapshot): string {
   return [
     "## 전월세 실거래 비교",
-    `주택유형: ${spec.label}`,
-    `조회 기준: LAWD_CD ${input.lawdCd}, 계약월 ${input.dealYmd}`,
-    `표본 수: ${sampleCount}`,
-    sampleCount > 0 ? `보증금 중앙값: ${money(median)} / 최대값: ${money(max)}` : "조회된 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
-    `입력 보증금: ${money(userDeposit)} / 입력 월세: ${money(input.monthlyRentManwon)}`,
+    `주택유형: ${snapshot.label}`,
+    `조회 기준: LAWD_CD ${snapshot.lawdCd}, 계약월 ${snapshot.dealYmd}`,
+    `표본 수: ${snapshot.sampleCount}`,
+    snapshot.sampleCount > 0 ? `보증금 중앙값: ${money(snapshot.median)} / 최대값: ${money(snapshot.max)}` : "조회된 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
+    `입력 보증금: ${money(snapshot.userDeposit)} / 입력 월세: ${money(snapshot.userMonthlyRent)}`,
     "",
     "## 해석",
-    position,
+    snapshot.position,
     "",
-    records.slice(0, 5).length > 0
-      ? ["## 최근 표본 일부", ...records.slice(0, 5).map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 보증금 ${money(record.depositManwon)} 월세 ${money(record.monthlyRentManwon)}`)].join("\n")
+    snapshot.records.slice(0, 5).length > 0
+      ? ["## 최근 표본 일부", ...snapshot.records.slice(0, 5).map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 보증금 ${money(record.depositManwon)} 월세 ${money(record.monthlyRentManwon)}`)].join("\n")
       : "",
     "",
     "## 공식 출처",
-    renderSources([`molit-${input.housingType === "single_multi" ? "single" : input.housingType}-rent`])
+    renderSources([snapshot.sourceId])
   ].join("\n");
+}
+
+export async function compareRentMarket(input: {
+  housingType: HousingType;
+  lawdCd: string;
+  dealYmd: string;
+  depositManwon?: number;
+  monthlyRentManwon?: number;
+}): Promise<string> {
+  return renderRentMarketSnapshot(await fetchRentMarketSnapshot(input));
 }
 
 function saleRatioSignal(ratio: number | undefined): string {
@@ -334,18 +402,20 @@ function saleRatioSignal(ratio: number | undefined): string {
   return "입력 보증금은 주변 매매가 중앙값 대비 70% 미만입니다. 그래도 개별 등기부, 선순위 보증금, 특약 확인은 별도입니다.";
 }
 
-export async function compareDepositToSaleMarket(input: {
+async function fetchSaleMarketSnapshot(input: {
   housingType: HousingType;
   lawdCd: string;
   dealYmd: string;
   depositManwon: number;
-}): Promise<string> {
+}): Promise<SaleMarketSnapshot> {
   const serviceKey = dataGoKrServiceKey();
   const spec = SALE_API_SPECS[input.housingType];
   const url = new URL(spec.endpoint);
   url.searchParams.set("LAWD_CD", input.lawdCd);
   url.searchParams.set("DEAL_YMD", input.dealYmd);
   url.searchParams.set("serviceKey", serviceKey);
+  url.searchParams.set("pageNo", "1");
+  url.searchParams.set("numOfRows", "30");
 
   const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
   const xml = await response.text();
@@ -358,33 +428,129 @@ export async function compareDepositToSaleMarket(input: {
   }
 
   const records = extractSaleItems(xml, spec.nameField);
-  const saleAmounts = records.map(record => record.dealAmountManwon).sort((a, b) => a - b);
+  const saleAmounts = records.map(record => record.dealAmountManwon).filter(value => value > 0);
   const sampleCount = saleAmounts.length;
-  const median = sampleCount > 0 ? saleAmounts[Math.floor(sampleCount / 2)] : undefined;
-  const max = sampleCount > 0 ? saleAmounts[sampleCount - 1] : undefined;
-  const ratio = median ? Math.round((input.depositManwon / median) * 1000) / 10 : undefined;
+  const medianSale = median(saleAmounts);
+  const max = sampleCount > 0 ? Math.max(...saleAmounts) : undefined;
+  const ratio = medianSale ? Math.round((input.depositManwon / medianSale) * 1000) / 10 : undefined;
+  const signal = saleRatioSignal(ratio);
 
+  return {
+    label: spec.label,
+    lawdCd: input.lawdCd,
+    dealYmd: input.dealYmd,
+    sampleCount,
+    median: medianSale,
+    max,
+    userDeposit: input.depositManwon,
+    ratio,
+    signal,
+    records,
+    sourceId: sourceIdFor("sale", input.housingType)
+  };
+}
+
+function renderSaleMarketSnapshot(snapshot: SaleMarketSnapshot): string {
   return [
     "## 매매가 대비 보증금 점검",
-    `주택유형: ${spec.label}`,
-    `조회 기준: LAWD_CD ${input.lawdCd}, 계약월 ${input.dealYmd}`,
-    `매매 표본 수: ${sampleCount}`,
-    sampleCount > 0 ? `매매가 중앙값: ${money(median)} / 최대값: ${money(max)}` : "조회된 매매 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
-    `입력 보증금: ${money(input.depositManwon)}`,
-    ratio ? `매매가 대비 보증금 비율: ${ratio.toLocaleString("ko-KR")}%` : "매매가 대비 보증금 비율: 계산 불가",
+    `주택유형: ${snapshot.label}`,
+    `조회 기준: LAWD_CD ${snapshot.lawdCd}, 계약월 ${snapshot.dealYmd}`,
+    `매매 표본 수: ${snapshot.sampleCount}`,
+    snapshot.sampleCount > 0 ? `매매가 중앙값: ${money(snapshot.median)} / 최대값: ${money(snapshot.max)}` : "조회된 매매 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
+    `입력 보증금: ${money(snapshot.userDeposit)}`,
+    snapshot.ratio ? `매매가 대비 보증금 비율: ${snapshot.ratio.toLocaleString("ko-KR")}%` : "매매가 대비 보증금 비율: 계산 불가",
     "",
     "## 해석",
-    saleRatioSignal(ratio),
+    snapshot.signal,
     "",
-    records.slice(0, 5).length > 0
-      ? ["## 매매 표본 일부", ...records.slice(0, 5).map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 매매가 ${money(record.dealAmountManwon)}`)].join("\n")
+    snapshot.records.slice(0, 5).length > 0
+      ? ["## 매매 표본 일부", ...snapshot.records.slice(0, 5).map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 매매가 ${money(record.dealAmountManwon)}`)].join("\n")
       : "",
     "",
     "## 확인 필요",
     "이 비율은 주변 신고 표본을 이용한 참고 지표입니다. 특정 매물의 안전성, 선순위 권리, 보증보험 가입 가능 여부를 확정하지 않습니다.",
     "",
     "## 공식 출처",
-    renderSources([`molit-${input.housingType === "single_multi" ? "single" : input.housingType}-sale`])
+    renderSources([snapshot.sourceId])
+  ].join("\n");
+}
+
+export async function compareDepositToSaleMarket(input: {
+  housingType: HousingType;
+  lawdCd: string;
+  dealYmd: string;
+  depositManwon: number;
+}): Promise<string> {
+  return renderSaleMarketSnapshot(await fetchSaleMarketSnapshot(input));
+}
+
+export async function assessLeaseSafety(input: LeaseProfileInput & {
+  housingType: HousingType;
+  lawdCd: string;
+  dealYmd: string;
+  depositManwon: number;
+}): Promise<string> {
+  const [rentMarket, saleMarket] = await Promise.all([
+    fetchRentMarketSnapshot(input),
+    fetchSaleMarketSnapshot(input)
+  ]);
+  const redFlags = inferRiskSignals(input);
+  const ratioLine = saleMarket.ratio
+    ? `${saleMarket.ratio.toLocaleString("ko-KR")}%`
+    : "계산 불가";
+  const immediateActions = [
+    "잔금 전 등기부등본을 다시 발급해 소유자, 근저당, 압류, 가압류, 신탁, 경매 표시를 확인",
+    "계약 상대방이 등기부 소유자와 다르면 위임장, 인감증명, 본인 통화로 대리권 확인",
+    "전입신고, 확정일자, 임대차신고, 보증보험 가능 여부를 같은 날 공식 경로로 확인",
+    "특약에 잔금 전 추가 근저당 금지, 등기 변동 시 해제·반환 조건, 하자·수리 책임을 문서화"
+  ];
+
+  if (saleMarket.ratio && saleMarket.ratio >= 80) {
+    immediateActions.unshift("매매가 대비 보증금 비율이 높으므로 보증보험 가능 여부와 선순위 권리 확인 전 계약금 송금을 보류");
+  }
+
+  return [
+    "## 전월세 안전 종합 진단",
+    `지역: ${cleanText(input.region, `LAWD_CD ${input.lawdCd}`)}`,
+    `주택유형: ${rentMarket.label}`,
+    `계약월: ${input.dealYmd}`,
+    `입력 조건: 보증금 ${money(input.depositManwon)} / 월세 ${money(input.monthlyRentManwon)}`,
+    "",
+    "## 핵심 판단",
+    lineItems([
+      `전월세 신고 표본 ${rentMarket.sampleCount}건, 보증금 중앙값 ${money(rentMarket.median)}`,
+      `매매 신고 표본 ${saleMarket.sampleCount}건, 매매가 중앙값 ${money(saleMarket.median)}`,
+      `매매가 대비 보증금 비율 ${ratioLine}: ${saleMarket.signal}`,
+      rentMarket.position
+    ]),
+    "",
+    "## 입력에서 감지한 위험 신호",
+    lineItems(redFlags),
+    "",
+    "## 바로 할 일",
+    lineItems(immediateActions),
+    "",
+    "## 실거래 근거",
+    rentMarket.records.slice(0, 3).length > 0
+      ? ["전월세 표본", ...rentMarket.records.slice(0, 3).map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 보증금 ${money(record.depositManwon)} 월세 ${money(record.monthlyRentManwon)}`)].join("\n")
+      : "전월세 표본: 조회된 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
+    "",
+    saleMarket.records.slice(0, 3).length > 0
+      ? ["매매 표본", ...saleMarket.records.slice(0, 3).map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 매매가 ${money(record.dealAmountManwon)}`)].join("\n")
+      : "매매 표본: 조회된 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
+    "",
+    "## 공식 출처",
+    renderSources([
+      rentMarket.sourceId,
+      saleMarket.sourceId,
+      "iros-fixed-date",
+      "rtms-lease-report",
+      "gov24",
+      "hug-deposit-guarantee",
+      "easylaw-lease"
+    ]),
+    "",
+    officialNotice()
   ].join("\n");
 }
 

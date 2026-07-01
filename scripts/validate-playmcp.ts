@@ -36,6 +36,7 @@ assert(/sessionIdGenerator:\s*undefined/.test(server), "server must be stateless
 
 const registeredTools = [...server.matchAll(/server\.registerTool\(\s*"([^"]+)"/g)].map(match => match[1]);
 assert(registeredTools.length >= 3 && registeredTools.length <= 10, `tool count must be 3-10, got ${registeredTools.length}`);
+assert(registeredTools.includes("assess_lease_safety"), "flagship assess_lease_safety tool is required");
 for (const tool of registeredTools) {
   assert(/^[A-Za-z0-9_-]{1,128}$/.test(tool), `invalid tool name: ${tool}`);
   assert(!/kakao/i.test(tool), `tool name must not include kakao: ${tool}`);

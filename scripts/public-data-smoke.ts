@@ -1,4 +1,4 @@
-import { compareDepositToSaleMarket, compareRentMarket, resolveLegalDongCode } from "../src/domain.js";
+import { assessLeaseSafety, compareDepositToSaleMarket, compareRentMarket, resolveLegalDongCode } from "../src/domain.js";
 
 async function main() {
   if (!process.env.DATA_GO_KR_SERVICE_KEY?.trim()) {
@@ -35,6 +35,19 @@ async function main() {
     throw new Error("Sale-market smoke did not return a deposit-to-sale ratio.");
   }
   console.log("sale_market=ok");
+
+  const assessment = await assessLeaseSafety({
+    housingType: "apartment",
+    lawdCd,
+    dealYmd,
+    region,
+    depositManwon: Number(process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON ?? 30000),
+    concerns: "공공데이터 실 API 스모크"
+  });
+  if (!assessment.includes("전월세 안전 종합 진단") || !assessment.includes("매매가 대비 보증금 비율")) {
+    throw new Error("One-shot assessment smoke did not return the expected summary.");
+  }
+  console.log("lease_assessment=ok");
 }
 
 main().catch(error => {

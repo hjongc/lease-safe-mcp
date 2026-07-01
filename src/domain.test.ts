@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  assessLeaseSafety,
   buildMoveInProtectionPlan,
   checkLeaseRedFlags,
   compareDepositToSaleMarket,
@@ -202,9 +203,83 @@ test("deposit-to-sale comparison parses sale XML and flags high ratio", async ()
     });
 
     assert.match(text, /매매 표본 수: 2/);
-    assert.match(text, /매매가 대비 보증금 비율: 84%/);
-    assert.match(text, /80% 이상/);
+    assert.match(text, /매매가 대비 보증금 비율: 93.3%/);
+    assert.match(text, /90% 이상/);
     assert.match(text, /특정 매물의 안전성/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
+test("one-shot lease assessment combines rent, sale, red flags, and actions", async () => {
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    globalThis.fetch = async input => {
+      const url = new URL(String(input));
+      assert.equal(url.searchParams.get("LAWD_CD"), "11620");
+      assert.equal(url.searchParams.get("DEAL_YMD"), "202605");
+      if (url.href.includes("AptRent")) {
+        return new Response(`
+          <response>
+            <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+            <body><items>
+              <item>
+                <aptNm>관악전세1</aptNm>
+                <umdNm>봉천동</umdNm>
+                <deposit>30,000</deposit>
+                <monthlyRent>0</monthlyRent>
+                <dealYear>2026</dealYear>
+                <dealMonth>5</dealMonth>
+                <dealDay>10</dealDay>
+              </item>
+            </items></body>
+          </response>
+        `);
+      }
+      if (url.href.includes("AptTrade")) {
+        return new Response(`
+          <response>
+            <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
+            <body><items>
+              <item>
+                <aptNm>관악매매1</aptNm>
+                <umdNm>봉천동</umdNm>
+                <dealAmount>40,000</dealAmount>
+                <dealYear>2026</dealYear>
+                <dealMonth>5</dealMonth>
+                <dealDay>10</dealDay>
+              </item>
+            </items></body>
+          </response>
+        `);
+      }
+      throw new Error(`unexpected endpoint ${url.href}`);
+    };
+
+    const text = await assessLeaseSafety({
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605",
+      region: "서울 관악구",
+      contractType: "jeonse",
+      depositManwon: 38000,
+      concerns: "대리계약이고 계약금을 빨리 보내라고 합니다"
+    });
+
+    assert.match(text, /전월세 안전 종합 진단/);
+    assert.match(text, /전월세 신고 표본 1건/);
+    assert.match(text, /매매 신고 표본 1건/);
+    assert.match(text, /매매가 대비 보증금 비율 95%/);
+    assert.match(text, /대리계약/);
+    assert.match(text, /계약금 송금을 보류/);
+    assert.match(text, /공식 출처/);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
