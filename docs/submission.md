@@ -57,8 +57,8 @@ Use `assess_lease_safety` first.
 Expected value shown in one response:
 
 - overall risk level and explicit reasons
-- nearby rent-market sample count and deposit median
-- nearby sale-market sample count and deposit-to-sale ratio
+- nearby positive rent-market sample count and deposit median
+- nearby positive sale-market sample count and deposit-to-sale ratio
 - red flags such as proxy contract, mortgage, or rushed deposit pressure
 - immediate next actions for registry, move-in report, fixed date, lease report, and HUG checks
 - official source links
@@ -91,5 +91,7 @@ DATA_GO_KR_SERVICE_KEY=... npm run preflight:registration
 Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_KEY` is configured as a GitHub repository secret, CI also runs the live public-data smoke.
 
 CI also runs `npm run smoke:docker` after building the image, so registration should use a commit whose Docker image has been proven to boot and answer MCP requests before the optional live API smoke.
+
+The live public-data smoke is intentionally stricter than a connectivity check: rent and sale APIs must return positive sample counts for the configured demo region/month. A zero-sample official response means the demo input is not registration-ready yet.
 
 Use `docs/operations.md` as the final registration runbook. Registration is not evidence-complete until `npm run preflight:registration` and the GitHub Actions live public-data smoke are passed, not skipped.

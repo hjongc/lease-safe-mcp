@@ -13,6 +13,7 @@ import {
   routeOfficialHelp
 } from "./domain.js";
 import { createApp, mcpMaxBodyBytes, mcpRateLimitPerMinute } from "./server.js";
+import { positiveSampleCount } from "../scripts/public-data-smoke.js";
 import { scanLine } from "../scripts/secret-scan.js";
 
 test("data availability names automatic APIs and no fake fallback", () => {
@@ -38,6 +39,18 @@ test("secret scan allows exact placeholders but rejects hidden values beside the
   assert.equal(
     scanLine("README.md", dataKeyName + "=... " + "AAAABBBBCCCCDDDDEEEEFFFF" + "%2F" + "GGGGHHHHIIIIJJJJKKKKLLLL" + "%3D%3D", 1).length,
     1
+  );
+});
+
+test("public-data smoke requires positive live sample counts", () => {
+  assert.equal(positiveSampleCount("신고 표본 수: 1,234", "rent", /신고 표본 수:\s*([\d,]+)/), 1234);
+  assert.throws(
+    () => positiveSampleCount("매매 표본 수: 0", "sale", /매매 표본 수:\s*([\d,]+)/),
+    /returned 0 samples/
+  );
+  assert.throws(
+    () => positiveSampleCount("매매가 대비 보증금 비율: 계산 불가", "sale", /매매 표본 수:\s*([\d,]+)/),
+    /parseable sample count/
   );
 });
 

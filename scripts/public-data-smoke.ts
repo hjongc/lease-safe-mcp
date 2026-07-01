@@ -3,7 +3,21 @@ import type { HousingType } from "../src/sources.js";
 
 const HOUSING_TYPES = ["apartment", "rowhouse", "single_multi", "officetel"] as const satisfies readonly HousingType[];
 
-function publicDataSmokeHousingTypes(): HousingType[] {
+export function positiveSampleCount(text: string, label: string, pattern: RegExp): number {
+  const match = text.match(pattern);
+  if (!match?.[1]) {
+    throw new Error(`${label} smoke did not return a parseable sample count.`);
+  }
+
+  const count = Number(match[1].replace(/,/g, ""));
+  if (!Number.isSafeInteger(count) || count <= 0) {
+    throw new Error(`${label} smoke returned ${count} samples. Configure a region/month with live samples before registration.`);
+  }
+
+  return count;
+}
+
+export function publicDataSmokeHousingTypes(): HousingType[] {
   const raw = process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES?.trim();
   if (!raw) return [...HOUSING_TYPES];
 
@@ -47,10 +61,8 @@ async function main() {
       lawdCd,
       dealYmd
     });
-    if (!rentMarket.includes("표본 수:")) {
-      throw new Error(`Rent-market smoke did not return a sample count: ${housingType}`);
-    }
-    console.log(`rent_market[${housingType}]=ok`);
+    const rentSampleCount = positiveSampleCount(rentMarket, `Rent-market[${housingType}]`, /신고 표본 수:\s*([\d,]+)/);
+    console.log(`rent_market[${housingType}]=ok samples=${rentSampleCount}`);
 
     const saleMarket = await compareDepositToSaleMarket({
       housingType,
@@ -58,10 +70,11 @@ async function main() {
       dealYmd,
       depositManwon: deposit
     });
+    const saleSampleCount = positiveSampleCount(saleMarket, `Sale-market[${housingType}]`, /매매 표본 수:\s*([\d,]+)/);
     if (!saleMarket.includes("매매가 대비 보증금 비율:")) {
       throw new Error(`Sale-market smoke did not return a deposit-to-sale ratio: ${housingType}`);
     }
-    console.log(`sale_market[${housingType}]=ok`);
+    console.log(`sale_market[${housingType}]=ok samples=${saleSampleCount}`);
   }
 
   const assessment = await assessLeaseSafety({
@@ -75,10 +88,14 @@ async function main() {
   if (!assessment.includes("전월세 안전 종합 진단") || !assessment.includes("매매가 대비 보증금 비율")) {
     throw new Error("One-shot assessment smoke did not return the expected summary.");
   }
-  console.log("lease_assessment=ok");
+  const assessmentRentCount = positiveSampleCount(assessment, "Lease-assessment rent", /전월세 신고 표본\s*([\d,]+)건/);
+  const assessmentSaleCount = positiveSampleCount(assessment, "Lease-assessment sale", /매매 신고 표본\s*([\d,]+)건/);
+  console.log(`lease_assessment=ok rent_samples=${assessmentRentCount} sale_samples=${assessmentSaleCount}`);
 }
 
-main().catch(error => {
-  console.error(error);
-  process.exit(1);
-});
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch(error => {
+    console.error(error);
+    process.exit(1);
+  });
+}
