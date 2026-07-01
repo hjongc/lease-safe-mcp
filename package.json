@@ -1,0 +1,30 @@
+{
+  "name": "lease-safe-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PlayMCP-compatible MCP server for Korean lease and moving safety guidance.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/src/server.js",
+    "test": "npm run build && node --test dist/src/**/*.test.js",
+    "smoke": "npm run build && node dist/scripts/smoke.js",
+    "smoke:public-data": "npm run build && node dist/scripts/public-data-smoke.js",
+    "validate:playmcp": "npm run build && node dist/scripts/validate-playmcp.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "express": "5.1.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.3",
+    "@types/node": "24.0.4",
+    "tsx": "4.20.3",
+    "typescript": "5.8.3"
+  }
+}

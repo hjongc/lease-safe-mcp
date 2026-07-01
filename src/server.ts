@@ -1,0 +1,357 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
+import type { Request, Response } from "express";
+import * as z from "zod/v4";
+import {
+  buildMoveInProtectionPlan,
+  checkLeaseRedFlags,
+  compareRentMarket,
+  explainDataAvailability,
+  explainDisputePrevention,
+  prepareContractQuestions,
+  resolveLegalDongCode,
+  routeOfficialHelp,
+  sourceRegistry
+} from "./domain.js";
+
+const SERVICE_NAME = "Lease Safe(전월세안전내비)";
+const VERSION = "0.1.0";
+
+type ToolAnnotations = {
+  title: string;
+  readOnlyHint: boolean;
+  destructiveHint: boolean;
+  openWorldHint: boolean;
+  idempotentHint: boolean;
+};
+
+const regionSchema = z.string().optional().describe("시·군·구 또는 법정동처럼 계약 주택이 있는 지역을 적어주세요. 정확한 주소나 호수는 넣지 않습니다.");
+const situationSchema = z.string().optional().describe("전월세 계약, 이사, 보증금, 임대인, 중개사, 등기부 관련 걱정을 자연어로 적어주세요. 민감정보는 넣지 않습니다.");
+const housingTypeSchema = z
+  .enum(["apartment", "rowhouse", "single_multi", "officetel", "unknown"])
+  .optional()
+  .describe("주택 유형입니다. apartment=아파트, rowhouse=연립다세대, single_multi=단독/다가구, officetel=오피스텔, unknown=미확인.");
+const contractTypeSchema = z.enum(["jeonse", "monthly_rent", "unknown"]).optional().describe("계약 유형입니다. jeonse=전세, monthly_rent=월세, unknown=미확인.");
+const depositSchema = z.number().nonnegative().optional().describe("보증금을 만원 단위 숫자로 적어주세요. 예: 30000은 3억원입니다.");
+const monthlyRentSchema = z.number().nonnegative().optional().describe("월세를 만원 단위 숫자로 적어주세요. 예: 80은 월세 80만원입니다.");
+const moveInDateSchema = z.string().optional().describe("이사 예정일 또는 입주일을 YYYY-MM-DD 형식이나 자연어로 적어주세요.");
+const contractDateSchema = z.string().optional().describe("계약일을 YYYY-MM-DD 형식이나 자연어로 적어주세요.");
+const concernsSchema = z.string().optional().describe("가장 걱정되는 점을 짧게 적어주세요. 예: 근저당, 대리계약, 보증보험, 전입신고, 확정일자.");
+
+function readOnlyAnnotations(title: string): ToolAnnotations {
+  return {
+    title,
+    readOnlyHint: true,
+    destructiveHint: false,
+    openWorldHint: false,
+    idempotentHint: true
+  };
+}
+
+function textResult(text: string) {
+  return {
+    content: [{ type: "text" as const, text: text.replace(/\n{3,}/g, "\n\n").trim() }]
+  };
+}
+
+function allowedHostsFromEnv(): string[] | undefined {
+  const hosts = process.env.MCP_ALLOWED_HOSTS?.split(",").map(host => host.trim()).filter(Boolean);
+  return hosts && hosts.length > 0 ? hosts : undefined;
+}
+
+function requiredAllowedHosts(): string[] {
+  const allowedHosts = allowedHostsFromEnv();
+  if (allowedHosts) return allowedHosts;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("MCP_ALLOWED_HOSTS is required in production to enable DNS rebinding protection.");
+  }
+  return ["127.0.0.1", "localhost"];
+}
+
+function requireBearerToken(req: Request, res: Response): boolean {
+  const expectedToken = process.env.MCP_AUTH_TOKEN?.trim();
+  if (!expectedToken) return true;
+
+  const authorization = req.header("authorization");
+  if (authorization !== `Bearer ${expectedToken}`) {
+    res.status(401).json({
+      jsonrpc: "2.0",
+      error: {
+        code: -32001,
+        message: "Unauthorized"
+      },
+      id: null
+    });
+    return false;
+  }
+  return true;
+}
+
+export function createServer(): McpServer {
+  const server = new McpServer(
+    {
+      name: "lease-safe",
+      version: VERSION
+    },
+    {
+      capabilities: {
+        tools: {},
+        resources: {}
+      }
+    }
+  );
+
+  server.registerTool(
+    "explain_data_availability",
+    {
+      title: "데이터 조달 가능성 설명",
+      description:
+        "전월세안전내비가 법정동코드, 전월세 실거래가, 전입신고, 확정일자, 임대차신고, 분쟁조정 데이터를 실제로 어디서 가져오는지 공식 출처 기준으로 설명합니다.",
+      inputSchema: {},
+      annotations: readOnlyAnnotations("데이터 조달 가능성 설명")
+    },
+    async () => textResult(explainDataAvailability())
+  );
+
+  server.registerTool(
+    "resolve_legal_dong_code",
+    {
+      title: "법정동 코드 확인",
+      description:
+        "전월세안전내비가 지역명을 실거래가 조회용 법정동 코드 확인 절차로 연결하고, 내장 검토 목록에 있는 주요 지역은 LAWD_CD 후보를 보여줍니다.",
+      inputSchema: {
+        region: z.string().min(2).describe("확인할 지역명입니다. 예: 서울 관악구, 성남시 분당구, 부산 해운대구.")
+      },
+      annotations: readOnlyAnnotations("법정동 코드 확인")
+    },
+    async input => textResult(await resolveLegalDongCode(input))
+  );
+
+  server.registerTool(
+    "compare_rent_market",
+    {
+      title: "전월세 실거래 비교",
+      description:
+        "전월세안전내비가 국토교통부 전월세 실거래가 OpenAPI를 호출해 지역·계약월·주택유형 기준 보증금 표본과 사용자의 계약조건을 비교합니다. DATA_GO_KR_SERVICE_KEY가 필요합니다.",
+      inputSchema: {
+        housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("실거래가를 조회할 주택 유형입니다."),
+        lawdCd: z.string().regex(/^\d{5}$/).describe("법정동 코드 10자리 중 앞 5자리인 시군구 코드입니다. 예: 서울 관악구 11620."),
+        dealYmd: z.string().regex(/^\d{6}$/).describe("계약년월 6자리입니다. 예: 202605."),
+        depositManwon: depositSchema,
+        monthlyRentManwon: monthlyRentSchema
+      },
+      annotations: readOnlyAnnotations("전월세 실거래 비교")
+    },
+    async input => textResult(await compareRentMarket(input))
+  );
+
+  server.registerTool(
+    "check_lease_red_flags",
+    {
+      title: "계약 위험 신호 점검",
+      description:
+        "전월세안전내비가 대리계약, 근저당, 선순위 권리, 보증금 규모, 가계약 압박 같은 전월세 계약 위험 신호와 공식 확인 순서를 정리합니다.",
+      inputSchema: {
+        situation: situationSchema,
+        region: regionSchema,
+        housingType: housingTypeSchema,
+        contractType: contractTypeSchema,
+        depositManwon: depositSchema,
+        monthlyRentManwon: monthlyRentSchema,
+        concerns: concernsSchema
+      },
+      annotations: readOnlyAnnotations("계약 위험 신호 점검")
+    },
+    async input => textResult(checkLeaseRedFlags(input))
+  );
+
+  server.registerTool(
+    "build_move_in_protection_plan",
+    {
+      title: "이사 보호 절차 계획",
+      description:
+        "전월세안전내비가 계약 전, 잔금·입주 당일, 입주 후에 확인할 전입신고, 확정일자, 임대차신고, 등기부 재확인 절차를 체크리스트로 정리합니다.",
+      inputSchema: {
+        situation: situationSchema,
+        region: regionSchema,
+        contractType: contractTypeSchema,
+        depositManwon: depositSchema,
+        monthlyRentManwon: monthlyRentSchema,
+        moveInDate: moveInDateSchema,
+        contractDate: contractDateSchema,
+        concerns: concernsSchema
+      },
+      annotations: readOnlyAnnotations("이사 보호 절차 계획")
+    },
+    async input => textResult(buildMoveInProtectionPlan(input))
+  );
+
+  server.registerTool(
+    "prepare_contract_questions",
+    {
+      title: "계약 전 질문 준비",
+      description:
+        "전월세안전내비가 공인중개사나 임대인에게 물어볼 등기부, 대리권, 임대차신고, 확정일자, 보증보험, 특약 질문을 준비합니다.",
+      inputSchema: {
+        situation: situationSchema,
+        region: regionSchema,
+        housingType: housingTypeSchema,
+        contractType: contractTypeSchema,
+        depositManwon: depositSchema,
+        monthlyRentManwon: monthlyRentSchema,
+        concerns: concernsSchema
+      },
+      annotations: readOnlyAnnotations("계약 전 질문 준비")
+    },
+    async input => textResult(prepareContractQuestions(input))
+  );
+
+  server.registerTool(
+    "route_official_help",
+    {
+      title: "공식 문의처 연결",
+      description:
+        "전월세안전내비가 전입신고, 확정일자, 임대차신고, 보증보험, 등기부, 분쟁 상황을 정부24, RTMS, 인터넷등기소, HUG, 임대차분쟁조정위로 라우팅합니다.",
+      inputSchema: {
+        situation: situationSchema,
+        issueType: z
+          .enum(["move_in", "fixed_date", "lease_report", "deposit_guarantee", "dispute", "registry", "unknown"])
+          .optional()
+          .describe("문의 유형입니다. move_in=전입신고, fixed_date=확정일자, lease_report=임대차신고, deposit_guarantee=보증보험, dispute=분쟁, registry=등기부, unknown=미확인."),
+        region: regionSchema,
+        concerns: concernsSchema
+      },
+      annotations: readOnlyAnnotations("공식 문의처 연결")
+    },
+    async input => textResult(routeOfficialHelp(input))
+  );
+
+  server.registerTool(
+    "explain_dispute_prevention",
+    {
+      title: "분쟁 예방 설명",
+      description:
+        "전월세안전내비가 보증금 반환, 수선, 원상복구, 계약갱신, 차임 증액 같은 임대차 분쟁을 예방하기 위해 남길 증거와 공식 조정 경로를 설명합니다.",
+      inputSchema: {
+        situation: situationSchema,
+        disputeType: z
+          .enum(["deposit_return", "repair", "restoration", "renewal", "rent_increase", "unknown"])
+          .optional()
+          .describe("분쟁 유형입니다. deposit_return=보증금 반환, repair=수선, restoration=원상복구, renewal=계약갱신, rent_increase=차임·보증금 증액, unknown=미확인."),
+        region: regionSchema,
+        concerns: concernsSchema
+      },
+      annotations: readOnlyAnnotations("분쟁 예방 설명")
+    },
+    async input => textResult(explainDisputePrevention(input))
+  );
+
+  server.registerResource(
+    "official-source-registry",
+    "lease-safe://sources/official",
+    {
+      title: "전월세안전내비 공식 출처 목록",
+      description: "전월세안전내비가 사용하는 공식 API와 공공기관 안내 출처 목록입니다.",
+      mimeType: "application/json"
+    },
+    async uri => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "application/json",
+          text: sourceRegistry()
+        }
+      ]
+    })
+  );
+
+  return server;
+}
+
+export function createApp() {
+  const allowedHosts = requiredAllowedHosts();
+  const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts });
+
+  app.get("/", (_req: Request, res: Response) => {
+    res.type("text/plain").send(`${SERVICE_NAME} MCP server is running. Use POST /mcp for Streamable HTTP.`);
+  });
+
+  app.get("/healthz", (_req: Request, res: Response) => {
+    res.json({
+      ok: true,
+      service: "lease-safe",
+      version: VERSION,
+      transport: "streamable-http",
+      stateless: true
+    });
+  });
+
+  app.post("/mcp", async (req: Request, res: Response) => {
+    if (!requireBearerToken(req, res)) return;
+
+    const server = createServer();
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined
+    });
+
+    res.on("close", () => {
+      transport.close();
+      server.close();
+    });
+
+    try {
+      await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+    } catch (error) {
+      console.error("Error handling MCP request", error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: "2.0",
+          error: {
+            code: -32603,
+            message: "Internal server error"
+          },
+          id: null
+        });
+      }
+    }
+  });
+
+  app.get("/mcp", (_req: Request, res: Response) => {
+    res.status(405).json({
+      jsonrpc: "2.0",
+      error: {
+        code: -32000,
+        message: "Method not allowed. Use POST /mcp for Streamable HTTP requests."
+      },
+      id: null
+    });
+  });
+
+  app.delete("/mcp", (_req: Request, res: Response) => {
+    res.status(405).json({
+      jsonrpc: "2.0",
+      error: {
+        code: -32000,
+        message: "Method not allowed for stateless server."
+      },
+      id: null
+    });
+  });
+
+  return app;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const port = Number(process.env.PORT || 3000);
+  const app = createApp();
+
+  app.listen(port, "0.0.0.0", error => {
+    if (error) {
+      console.error("Failed to start server", error);
+      process.exit(1);
+    }
+    console.log(`${SERVICE_NAME} listening on port ${port}`);
+  });
+}
