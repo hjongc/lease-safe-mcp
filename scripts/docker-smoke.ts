@@ -336,7 +336,7 @@ async function main() {
     "-p",
     `127.0.0.1:${port}:3000`,
     "-e",
-    `MCP_ALLOWED_HOSTS=127.0.0.1:${port},localhost`,
+    "MCP_ALLOWED_HOSTS=127.0.0.1,localhost",
     "-e",
     `${publicDataKeyEnvName}=${publicDataSmokeKey}`,
     "-e",

@@ -6,7 +6,7 @@ function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
     server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
+    server.listen(0, "0.0.0.0", () => {
       const address = server.address();
       server.close(() => {
         if (!address || typeof address === "string") {
@@ -289,7 +289,7 @@ async function main() {
   const authToken = process.env.MCP_AUTH_TOKEN ?? "smoke-token-for-preflight";
   const env = {
     ...process.env,
-    MCP_ALLOWED_HOSTS: process.env.MCP_ALLOWED_HOSTS ?? `127.0.0.1:${port},localhost`,
+    MCP_ALLOWED_HOSTS: process.env.MCP_ALLOWED_HOSTS ?? "127.0.0.1,localhost",
     MCP_AUTH_TOKEN: authToken,
     MCP_ENDPOINT: endpoint,
     PORT: String(port)

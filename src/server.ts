@@ -103,10 +103,11 @@ function allowedHostsFromEnv(): string[] | undefined {
       host.includes("@") ||
       host.includes("?") ||
       host.includes("#") ||
+      host.includes(":") ||
       /\s/.test(host) ||
       host.length > 253
     ) {
-      throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames or host:port values, not URLs, paths, wildcards, userinfo, query strings, fragments, or whitespace.");
+      throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames, not URLs, ports, paths, wildcards, userinfo, query strings, fragments, or whitespace.");
     }
 
     try {
@@ -114,7 +115,7 @@ function allowedHostsFromEnv(): string[] | undefined {
       if (!hostname) throw new Error("missing hostname");
       return hostname;
     } catch {
-      throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames or host:port values, not URLs, paths, wildcards, userinfo, query strings, fragments, or whitespace.");
+      throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames, not URLs, ports, paths, wildcards, userinfo, query strings, fragments, or whitespace.");
     }
   });
   return hosts && hosts.length > 0 ? hosts : undefined;

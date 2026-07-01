@@ -2585,12 +2585,12 @@ test("production app rejects unsafe host allowlist entries", () => {
     process.env.NODE_ENV = "production";
     process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
 
-    for (const value of ["*", "https://example.com", "example.com/path", "bad host.example", "example.com:not-a-port", "user@example.com", "example.com?debug=true", "example.com#fragment", "example.com\\path"]) {
+    for (const value of ["*", "https://example.com", "example.com/path", "bad host.example", "example.com:443", "example.com:not-a-port", "user@example.com", "example.com?debug=true", "example.com#fragment", "example.com\\path"]) {
       process.env.MCP_ALLOWED_HOSTS = value;
-      assert.throws(() => createApp(), /plain hostnames or host:port values/);
+      assert.throws(() => createApp(), /plain hostnames/);
     }
 
-    process.env.MCP_ALLOWED_HOSTS = "lease-safe.example.com,127.0.0.1:3000";
+    process.env.MCP_ALLOWED_HOSTS = "lease-safe.example.com,127.0.0.1";
     assert.doesNotThrow(() => createApp());
   } finally {
     if (previousNodeEnv === undefined) {
