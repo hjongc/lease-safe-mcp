@@ -210,6 +210,19 @@ function validateMarketQuery(lawdCd: string, dealYmd: string): void {
   }
 }
 
+function assertOptionalNonNegativeManwon(label: string, value: unknown): asserts value is number | undefined {
+  if (value === undefined) return;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be a finite non-negative number of manwon.`);
+  }
+}
+
+function assertRequiredNonNegativeManwon(label: string, value: unknown): asserts value is number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be a finite non-negative number of manwon.`);
+  }
+}
+
 function assertSupportedHousingType(housingType: string): asserts housingType is HousingType {
   if (!["apartment", "rowhouse", "single_multi", "officetel"].includes(housingType)) {
     throw new Error("housingType must be one of apartment, rowhouse, single_multi, or officetel.");
@@ -443,6 +456,8 @@ async function fetchRentMarketSnapshot(input: {
 }): Promise<RentMarketSnapshot> {
   assertSupportedHousingType(input.housingType);
   validateMarketQuery(input.lawdCd, input.dealYmd);
+  assertOptionalNonNegativeManwon("depositManwon", input.depositManwon);
+  assertOptionalNonNegativeManwon("monthlyRentManwon", input.monthlyRentManwon);
   const serviceKey = dataGoKrServiceKey();
 
   const spec = RENT_API_SPECS[input.housingType];
@@ -608,6 +623,7 @@ async function fetchSaleMarketSnapshot(input: {
 }): Promise<SaleMarketSnapshot> {
   assertSupportedHousingType(input.housingType);
   validateMarketQuery(input.lawdCd, input.dealYmd);
+  assertRequiredNonNegativeManwon("depositManwon", input.depositManwon);
   const serviceKey = dataGoKrServiceKey();
   const spec = SALE_API_SPECS[input.housingType];
   const url = new URL(spec.endpoint);
@@ -687,6 +703,8 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
   dealYmd: string;
   depositManwon: number;
 }): Promise<string> {
+  assertRequiredNonNegativeManwon("depositManwon", input.depositManwon);
+  assertOptionalNonNegativeManwon("monthlyRentManwon", input.monthlyRentManwon);
   const [rentMarket, saleMarket] = await Promise.all([
     fetchRentMarketSnapshot(input),
     fetchSaleMarketSnapshot(input)

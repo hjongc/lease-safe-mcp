@@ -329,6 +329,57 @@ test("market API helpers fail fast on unsupported housing types", async () => {
   }
 });
 
+test("market API helpers fail fast on invalid money inputs", async () => {
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => {
+      throw new Error("fetch should not be called for invalid money inputs");
+    };
+
+    await assert.rejects(
+      compareRentMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: Number.NaN
+      }),
+      /depositManwon must be a finite non-negative number/
+    );
+
+    await assert.rejects(
+      compareRentMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        monthlyRentManwon: -1
+      }),
+      /monthlyRentManwon must be a finite non-negative number/
+    );
+
+    await assert.rejects(
+      compareDepositToSaleMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: Number.POSITIVE_INFINITY
+      }),
+      /depositManwon must be a finite non-negative number/
+    );
+
+    await assert.rejects(
+      assessLeaseSafety({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: -1
+      }),
+      /depositManwon must be a finite non-negative number/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("rent market comparison parses live XML records", async () => {
   const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
   const previousFetch = globalThis.fetch;
