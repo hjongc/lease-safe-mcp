@@ -126,7 +126,8 @@ assert(/concernsSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.concerns\)/.test(server), "
 assert(/region:\s*z\.string\(\)\.min\(2\)\.max\(MCP_TEXT_LIMITS\.region\)/.test(server), "resolve_legal_dong_code must bound region text input");
 assert(/MONEY_INPUT_LIMITS/.test(domain), "domain must define explicit money input limits");
 assert(/assertRequiredPositiveManwon/.test(domain), "flagship assessment must require a positive deposit");
-assert(/positive integer number of manwon for lease safety assessment/.test(domain), "flagship assessment must fail clearly on zero deposit");
+assert(/context = "for lease safety assessment"/.test(domain), "flagship assessment must fail clearly on zero deposit");
+assert(/assertRequiredPositiveManwon\("depositManwon",\s*input\.depositManwon,\s*"for deposit-to-sale comparison"\)/.test(domain), "deposit-to-sale comparison must fail clearly on zero deposit");
 assert(/sampleReliability/.test(domain), "market outputs must disclose sample reliability");
 assert(/전후월, 인접동, 같은 면적대 실거래/.test(domain), "low-sample market outputs must tell users how to strengthen evidence");
 assert(/계약금·가계약금 송금을 보류/.test(domain), "flagship assessment must prioritize rushed deposit-payment pressure");
@@ -154,8 +155,9 @@ assert(/invalid all-zero rent money fields/.test(domain), "domain must reject al
 assert(/invalid zero sale amount field/.test(domain), "domain must reject zero official sale amount fields");
 assert(/depositSchema[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "server must bound optional MCP deposit inputs");
 assert(/assessmentDepositSchema[\s\S]*\.positive\(\)[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "flagship MCP schema must require a positive deposit");
+assert(/saleComparisonDepositSchema[\s\S]*\.positive\(\)[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "deposit-to-sale MCP schema must require a positive deposit");
 assert(/monthlyRentSchema[\s\S]*\.max\(MONEY_INPUT_LIMITS\.monthlyRentManwon\)/.test(server), "server must bound optional MCP monthly-rent inputs");
-assert(/depositManwon:[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "server must bound required MCP deposit inputs");
+assert(/depositManwon:\s*(assessmentDepositSchema|saleComparisonDepositSchema)/.test(server), "server must bound required MCP deposit inputs");
 assert(/isAllZeroLawdCd/.test(domain), "domain must reject all-zero public-data LAWD_CD values");
 assert(/isAllZeroLawdCd\(lawdCd\)/.test(domain), "legal-dong parser must reject all-zero official row LAWD_CD values");
 assert(/lawdCdSchema[\s\S]*\.refine\(value => !isAllZeroLawdCd\(value\)/.test(server), "server must reject all-zero MCP LAWD_CD values");

@@ -1980,43 +1980,24 @@ test("deposit-to-sale comparison parses Korean public-data XML fields", async ()
   }
 });
 
-test("deposit-to-sale comparison renders zero percent as a calculated ratio", async () => {
-  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+test("deposit-to-sale comparison requires a positive deposit before official API calls", async () => {
   const previousFetch = globalThis.fetch;
   try {
-    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
-    globalThis.fetch = async () => new Response(`
-      <response>
-        <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
-        <body><items>
-          <item>
-            <aptNm>관악매매</aptNm>
-            <umdNm>봉천동</umdNm>
-            <dealAmount>40,000</dealAmount>
-            <dealYear>2026</dealYear>
-            <dealMonth>5</dealMonth>
-            <dealDay>10</dealDay>
-          </item>
-        </items></body>
-      </response>
-    `);
+    globalThis.fetch = async () => {
+      throw new Error("fetch should not be called for zero-deposit sale comparison");
+    };
 
-    const text = await compareDepositToSaleMarket({
-      housingType: "apartment",
-      lawdCd: "11620",
-      dealYmd: "202605",
-      depositManwon: 0
-    });
-
-    assert.match(text, /매매가 대비 보증금 비율: 0%/);
-    assert.doesNotMatch(text, /매매가 대비 보증금 비율: 계산 불가/);
+    await assert.rejects(
+      compareDepositToSaleMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: 0
+      }),
+      /depositManwon must be a positive integer number of manwon for deposit-to-sale comparison/
+    );
   } finally {
     globalThis.fetch = previousFetch;
-    if (previousKey === undefined) {
-      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
-    } else {
-      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
-    }
   }
 });
 
@@ -2888,6 +2869,20 @@ test("MCP tool input schemas bound free-text fields", () => {
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, depositManwon: 0 }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, depositManwon: MONEY_INPUT_LIMITS.depositManwon + 1 }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, monthlyRentManwon: MONEY_INPUT_LIMITS.monthlyRentManwon + 1 }).success, false);
+
+  const saleComparisonSchema = registeredToolSchema("compare_deposit_to_sale_market");
+  assert.equal(saleComparisonSchema.safeParse({
+    housingType: "apartment",
+    lawdCd: "11620",
+    dealYmd: "202605",
+    depositManwon: 30000
+  }).success, true);
+  assert.equal(saleComparisonSchema.safeParse({
+    housingType: "apartment",
+    lawdCd: "11620",
+    dealYmd: "202605",
+    depositManwon: 0
+  }).success, false);
 
   const legalDongSchema = registeredToolSchema("resolve_legal_dong_code");
   assert.equal(legalDongSchema.safeParse({ region: "서울 관악구" }).success, true);

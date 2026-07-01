@@ -304,10 +304,10 @@ function assertRequiredNonNegativeManwon(label: keyof typeof MONEY_INPUT_LIMITS,
   }
 }
 
-function assertRequiredPositiveManwon(label: keyof typeof MONEY_INPUT_LIMITS, value: unknown): asserts value is number {
+function assertRequiredPositiveManwon(label: keyof typeof MONEY_INPUT_LIMITS, value: unknown, context = "for lease safety assessment"): asserts value is number {
   assertRequiredNonNegativeManwon(label, value);
   if (value <= 0) {
-    throw new Error(`${label} must be a positive integer number of manwon for lease safety assessment.`);
+    throw new Error(`${label} must be a positive integer number of manwon ${context}.`);
   }
 }
 
@@ -900,7 +900,7 @@ async function fetchSaleMarketSnapshot(input: {
 }): Promise<SaleMarketSnapshot> {
   assertSupportedHousingType(input.housingType);
   validateMarketQuery(input.lawdCd, input.dealYmd);
-  assertRequiredNonNegativeManwon("depositManwon", input.depositManwon);
+  assertRequiredPositiveManwon("depositManwon", input.depositManwon, "for deposit-to-sale comparison");
   const serviceKey = dataGoKrServiceKey();
   const spec = SALE_API_SPECS[input.housingType];
   const url = new URL(spec.endpoint);
