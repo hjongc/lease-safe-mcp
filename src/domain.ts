@@ -556,11 +556,13 @@ function isRealCalendarDate(year: number, month: number, day: number): boolean {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
-function contractDateFromTags(xml: string): string {
-  const year = extractFirstTag(xml, ["dealYear", "년"]);
-  const month = extractFirstTag(xml, ["dealMonth", "월"]);
-  const day = extractFirstTag(xml, ["dealDay", "일"]);
-  if (!year || !month || !day) return "날짜 미확인";
+function contractDateFromTags(xml: string, label: string): string {
+  const year = extractFirstPresentTag(xml, ["dealYear", "년"]);
+  const month = extractFirstPresentTag(xml, ["dealMonth", "월"]);
+  const day = extractFirstPresentTag(xml, ["dealDay", "일"]);
+  if (year === undefined || month === undefined || day === undefined) {
+    throw new Error(`${label} missing required date field: dealYear/년, dealMonth/월, or dealDay/일`);
+  }
 
   const parsedYear = parsePublicDataInteger(year.trim());
   const parsedMonth = parsePublicDataInteger(month.trim());
@@ -576,7 +578,7 @@ function contractDateFromTags(xml: string): string {
     parsedDay > 31 ||
     !isRealCalendarDate(parsedYear, parsedMonth, parsedDay)
   ) {
-    return "날짜 미확인";
+    throw new Error(`${label} returned invalid date field: ${year}-${month}-${day}`);
   }
 
   return `${parsedYear}-${String(parsedMonth).padStart(2, "0")}-${String(parsedDay).padStart(2, "0")}`;
@@ -594,7 +596,7 @@ function extractItems(xml: string, specNameField?: string): RentRecord[] {
         area: publicDataNumberFromOptionalTag(item, ["excluUseAr", "totalFloorAr", "전용면적", "계약면적"], "국토교통부 전월세 실거래 API"),
         depositManwon: deposit,
         monthlyRentManwon: monthlyRent,
-        contractDate: contractDateFromTags(item),
+        contractDate: contractDateFromTags(item, "국토교통부 전월세 실거래 API"),
         floor: publicDataTextFromOptionalTag(item, ["floor", "층"], "국토교통부 전월세 실거래 API"),
         contractType: publicDataTextFromOptionalTag(item, ["contractType", "전월세구분"], "국토교통부 전월세 실거래 API")
       };
@@ -612,7 +614,7 @@ function extractSaleItems(xml: string, specNameField?: string): SaleRecord[] {
         legalDong: publicDataTextFromOptionalTag(item, ["umdNm", "법정동"], "국토교통부 매매 실거래 API"),
         area: publicDataNumberFromOptionalTag(item, ["excluUseAr", "totalArea", "전용면적", "대지면적"], "국토교통부 매매 실거래 API"),
         dealAmountManwon: dealAmount,
-        contractDate: contractDateFromTags(item),
+        contractDate: contractDateFromTags(item, "국토교통부 매매 실거래 API"),
         floor: publicDataTextFromOptionalTag(item, ["floor", "층"], "국토교통부 매매 실거래 API")
       };
     })

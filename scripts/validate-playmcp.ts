@@ -98,6 +98,7 @@ assert(/publicDataTextFromOptionalTag/.test(domain), "domain must normalize offi
 assert(/parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data money fields");
 assert(/parsePublicDataDecimal/.test(domain), "domain must reject exponent-style official public-data decimal fields");
 assert(/parsedYear = parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data date fields");
+assert(/missing required date field/.test(domain), "domain must fail fast when official public-data date fields are missing");
 assert(/depositSchema[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "server must bound optional MCP deposit inputs");
 assert(/monthlyRentSchema[\s\S]*\.max\(MONEY_INPUT_LIMITS\.monthlyRentManwon\)/.test(server), "server must bound optional MCP monthly-rent inputs");
 assert(/depositManwon:[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "server must bound required MCP deposit inputs");

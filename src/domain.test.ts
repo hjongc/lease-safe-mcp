@@ -992,7 +992,7 @@ test("rent market comparison separates reported records from deposit median samp
   }
 });
 
-test("rent market comparison does not render fake dates when date tags are missing", async () => {
+test("rent market comparison rejects missing official date fields", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
@@ -1011,14 +1011,14 @@ test("rent market comparison does not render fake dates when date tags are missi
       </response>
     `);
 
-    const text = await compareRentMarket({
-      housingType: "apartment",
-      lawdCd: "11620",
-      dealYmd: "202605"
-    });
-
-    assert.match(text, /날짜 미확인/);
-    assert.doesNotMatch(text, /--/);
+    await assert.rejects(
+      compareRentMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605"
+      }),
+      /국토교통부 전월세 실거래 API missing required date field/
+    );
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
@@ -1029,7 +1029,7 @@ test("rent market comparison does not render fake dates when date tags are missi
   }
 });
 
-test("rent market comparison does not render impossible calendar dates", async () => {
+test("rent market comparison rejects impossible calendar dates", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
@@ -1051,14 +1051,14 @@ test("rent market comparison does not render impossible calendar dates", async (
       </response>
     `);
 
-    const text = await compareRentMarket({
-      housingType: "apartment",
-      lawdCd: "11620",
-      dealYmd: "202602"
-    });
-
-    assert.match(text, /날짜 미확인/);
-    assert.doesNotMatch(text, /2026-02-31/);
+    await assert.rejects(
+      compareRentMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202602"
+      }),
+      /국토교통부 전월세 실거래 API returned invalid date field/
+    );
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
@@ -1069,7 +1069,7 @@ test("rent market comparison does not render impossible calendar dates", async (
   }
 });
 
-test("rent market comparison does not coerce malformed date fields", async () => {
+test("rent market comparison rejects malformed date fields", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
@@ -1091,14 +1091,14 @@ test("rent market comparison does not coerce malformed date fields", async () =>
       </response>
     `);
 
-    const text = await compareRentMarket({
-      housingType: "apartment",
-      lawdCd: "11620",
-      dealYmd: "202605"
-    });
-
-    assert.match(text, /날짜 미확인/);
-    assert.doesNotMatch(text, /2000-05-10/);
+    await assert.rejects(
+      compareRentMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605"
+      }),
+      /국토교통부 전월세 실거래 API returned invalid date field/
+    );
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
@@ -1765,7 +1765,44 @@ test("deposit-to-sale comparison renders zero percent as a calculated ratio", as
   }
 });
 
-test("deposit-to-sale comparison does not coerce malformed date fields", async () => {
+test("deposit-to-sale comparison rejects missing official date fields", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악날짜누락매매</aptNm>
+            <umdNm>봉천동</umdNm>
+            <dealAmount>40,000</dealAmount>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    await assert.rejects(
+      compareDepositToSaleMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: 30000
+      }),
+      /국토교통부 매매 실거래 API missing required date field/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
+test("deposit-to-sale comparison rejects malformed date fields", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
   try {
@@ -1786,15 +1823,15 @@ test("deposit-to-sale comparison does not coerce malformed date fields", async (
       </response>
     `);
 
-    const text = await compareDepositToSaleMarket({
-      housingType: "apartment",
-      lawdCd: "11620",
-      dealYmd: "202605",
-      depositManwon: 30000
-    });
-
-    assert.match(text, /날짜 미확인/);
-    assert.doesNotMatch(text, /2000-05-10/);
+    await assert.rejects(
+      compareDepositToSaleMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: 30000
+      }),
+      /국토교통부 매매 실거래 API returned invalid date field/
+    );
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) {
