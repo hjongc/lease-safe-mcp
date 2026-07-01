@@ -522,8 +522,8 @@ function legalDongRegionQuery(region: string | undefined): string {
   if (cleaned === "미확인" || cleaned.length < 2) {
     throw new Error("region must include at least 2 meaningful characters for legal-dong lookup.");
   }
-  if (cleaned.includes("[민감번호 생략]") || cleaned.includes("[연락처 생략]") || cleaned.includes("[이메일 생략]") || cleaned.includes("[계좌번호 생략]")) {
-    throw new Error("region must not include personal identifiers, email addresses, phone numbers, or payment account details for legal-dong lookup.");
+  if (cleaned.includes("[민감번호 생략]") || cleaned.includes("[연락처 생략]") || cleaned.includes("[이메일 생략]") || cleaned.includes("[계좌번호 생략]") || cleaned.includes("[동호수 생략]")) {
+    throw new Error("region must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details for legal-dong lookup.");
   }
   if (cleaned.length > MAX_LEGAL_DONG_REGION_LENGTH) {
     throw new Error(`region must be ${MAX_LEGAL_DONG_REGION_LENGTH} characters or fewer for legal-dong lookup.`);

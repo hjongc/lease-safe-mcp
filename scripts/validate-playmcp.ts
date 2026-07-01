@@ -146,6 +146,7 @@ assert(/compactPublicDataFieldValue/.test(domain), "domain must bound and redact
 assert(/request failed before receiving a response: \$\{redactDataGoKrServiceKeys\(message\)\}/.test(domain), "domain must redact public-data network error messages");
 assert(!/request failed before receiving a response:[\s\S]*\{\s*cause:\s*error\s*\}/.test(domain), "domain must not attach raw public-data network error causes");
 assert(/동호수 생략/.test(domain), "domain must redact household unit details from user-rendered text");
+assert(/household unit details for legal-dong lookup/.test(domain), "legal-dong lookup must reject household unit details before API calls");
 assert(/계좌번호 생략/.test(domain), "domain must redact account-number-like payment details from user-rendered text");
 assert(/\.replace\(\/!\\\[/.test(domain) && /\.replace\(\/<\\\/\?\[A-Za-z\]/.test(domain), "domain must strip user-provided markdown media and HTML tags before rendering");
 assert(/parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data money fields");
@@ -293,6 +294,7 @@ assert(/assessLeaseSafety/.test(publicDataSmoke), "public-data smoke must verify
 assert(/MONEY_INPUT_LIMITS\.depositManwon/.test(publicDataSmoke), "public-data smoke must reuse the bounded deposit input limit");
 assert(/plain positive integer/.test(publicDataSmoke), "public-data smoke must require a plain integer deposit value");
 assert(/payment account details/.test(publicDataSmoke), "public-data smoke must reject account-number-like region inputs");
+assert(/household unit details/.test(publicDataSmoke), "public-data smoke must reject household-unit region inputs");
 assert(/isAllZeroLawdCd/.test(publicDataSmoke), "public-data smoke must reject all-zero LAWD_CD values before API calls");
 assert(/isFutureDealYmd/.test(publicDataSmoke), "public-data smoke must reject future deal months before API calls");
 assert(/REQUIRE_LIVE_PUBLIC_DATA/.test(publicDataSmoke), "public-data smoke must know when registration preflight requires live evidence");
