@@ -1,4 +1,4 @@
-import { MONEY_INPUT_LIMITS, assessLeaseSafety, compareDepositToSaleMarket, compareRentMarket, isFutureDealYmd, resolveLegalDongCode } from "../src/domain.js";
+import { MONEY_INPUT_LIMITS, assessLeaseSafety, compareDepositToSaleMarket, compareRentMarket, isAllZeroLawdCd, isFutureDealYmd, resolveLegalDongCode } from "../src/domain.js";
 import type { HousingType } from "../src/sources.js";
 
 const HOUSING_TYPES = ["apartment", "rowhouse", "single_multi", "officetel"] as const satisfies readonly HousingType[];
@@ -75,6 +75,9 @@ export function publicDataSmokeLawdCd(): string {
   if (!/^\d{5}$/.test(lawdCd)) {
     throw new Error("PUBLIC_DATA_SMOKE_LAWD_CD must be exactly 5 digits.");
   }
+  if (isAllZeroLawdCd(lawdCd)) {
+    throw new Error("PUBLIC_DATA_SMOKE_LAWD_CD must not be 00000.");
+  }
   return lawdCd;
 }
 
@@ -92,6 +95,9 @@ export function publicDataSmokeDealYmd(): string {
 export function assertLegalDongSmokeMatchesLawdCd(text: string, lawdCd: string): void {
   if (!/^\d{5}$/.test(lawdCd)) {
     throw new Error("PUBLIC_DATA_SMOKE_LAWD_CD must be exactly 5 digits.");
+  }
+  if (isAllZeroLawdCd(lawdCd)) {
+    throw new Error("PUBLIC_DATA_SMOKE_LAWD_CD must not be 00000.");
   }
   if (!text.includes(`LAWD_CD ${lawdCd}`)) {
     throw new Error(`Legal-dong smoke did not return the configured LAWD_CD ${lawdCd}.`);

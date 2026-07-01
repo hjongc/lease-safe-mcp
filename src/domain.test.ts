@@ -8,6 +8,7 @@ import {
   compareRentMarket,
   dataGoKrServiceKey,
   explainDataAvailability,
+  isAllZeroLawdCd,
   isFutureDealYmd,
   prepareContractQuestions,
   MONEY_INPUT_LIMITS,
@@ -157,6 +158,9 @@ test("public-data smoke validates configured region query parameters before API 
     process.env.PUBLIC_DATA_SMOKE_LAWD_CD = "1111";
     assert.throws(() => publicDataSmokeLawdCd(), /PUBLIC_DATA_SMOKE_LAWD_CD must be exactly 5 digits/);
 
+    process.env.PUBLIC_DATA_SMOKE_LAWD_CD = "00000";
+    assert.throws(() => publicDataSmokeLawdCd(), /must not be 00000/);
+
     process.env.PUBLIC_DATA_SMOKE_LAWD_CD = "11110";
     process.env.PUBLIC_DATA_SMOKE_DEAL_YMD = "202613";
     assert.throws(() => publicDataSmokeDealYmd(), /PUBLIC_DATA_SMOKE_DEAL_YMD must use YYYYMM format/);
@@ -209,6 +213,11 @@ test("deal month helper identifies future official-data lookups", () => {
   assert.equal(isFutureDealYmd("202613", new Date("2026-07-01T00:00:00Z")), false);
 });
 
+test("LAWD_CD helper identifies all-zero official-data lookup codes", () => {
+  assert.equal(isAllZeroLawdCd("00000"), true);
+  assert.equal(isAllZeroLawdCd("11620"), false);
+});
+
 test("public-data smoke requires legal-dong proof for configured LAWD code", () => {
   const legalDongText = [
     "## 법정동 코드 확인",
@@ -223,6 +232,10 @@ test("public-data smoke requires legal-dong proof for configured LAWD code", () 
   assert.throws(
     () => assertLegalDongSmokeMatchesLawdCd(legalDongText, "1162"),
     /PUBLIC_DATA_SMOKE_LAWD_CD must be exactly 5 digits/
+  );
+  assert.throws(
+    () => assertLegalDongSmokeMatchesLawdCd(legalDongText, "00000"),
+    /PUBLIC_DATA_SMOKE_LAWD_CD must not be 00000/
   );
 });
 
@@ -532,6 +545,11 @@ test("market API helpers fail fast on invalid public-data query parameters", asy
     await assert.rejects(
       compareRentMarket({ housingType: "apartment", lawdCd: "1162", dealYmd: "202605" }),
       /LAWD_CD must be exactly 5 digits/
+    );
+
+    await assert.rejects(
+      compareRentMarket({ housingType: "apartment", lawdCd: "00000", dealYmd: "202605" }),
+      /LAWD_CD must not be 00000/
     );
 
     await assert.rejects(
@@ -2062,6 +2080,7 @@ test("MCP tool input schemas bound free-text fields", () => {
   const assessmentSchema = registeredToolSchema("assess_lease_safety");
 
   assert.equal(assessmentSchema.safeParse(validAssessmentInput).success, true);
+  assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, lawdCd: "00000" }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, region: "가".repeat(MCP_TEXT_LIMITS.region + 1) }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, situation: "가".repeat(MCP_TEXT_LIMITS.situation + 1) }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, moveInDate: "가".repeat(MCP_TEXT_LIMITS.dateText + 1) }).success, false);

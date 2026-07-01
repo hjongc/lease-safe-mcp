@@ -15,6 +15,7 @@ import {
   dataGoKrServiceKey,
   explainDataAvailability,
   explainDisputePrevention,
+  isAllZeroLawdCd,
   isFutureDealYmd,
   MONEY_INPUT_LIMITS,
   prepareContractQuestions,
@@ -57,7 +58,11 @@ const monthlyRentSchema = z.number().int().nonnegative().max(MONEY_INPUT_LIMITS.
 const moveInDateSchema = z.string().max(MCP_TEXT_LIMITS.dateText).optional().describe(`이사 예정일 또는 입주일을 YYYY-MM-DD 형식이나 ${MCP_TEXT_LIMITS.dateText}자 이내 자연어로 적어주세요.`);
 const contractDateSchema = z.string().max(MCP_TEXT_LIMITS.dateText).optional().describe(`계약일을 YYYY-MM-DD 형식이나 ${MCP_TEXT_LIMITS.dateText}자 이내 자연어로 적어주세요.`);
 const concernsSchema = z.string().max(MCP_TEXT_LIMITS.concerns).optional().describe(`가장 걱정되는 점을 ${MCP_TEXT_LIMITS.concerns}자 이내로 짧게 적어주세요. 예: 근저당, 대리계약, 보증보험, 전입신고, 확정일자.`);
-const lawdCdSchema = z.string().regex(/^\d{5}$/).describe("법정동 코드 10자리 중 앞 5자리인 시군구 코드입니다. 예: 서울 관악구 11620.");
+const lawdCdSchema = z
+  .string()
+  .regex(/^\d{5}$/)
+  .refine(value => !isAllZeroLawdCd(value), { message: "LAWD_CD must not be 00000." })
+  .describe("법정동 코드 10자리 중 앞 5자리인 시군구 코드입니다. 00000은 넣지 않습니다. 예: 서울 관악구 11620.");
 const dealYmdSchema = z
   .string()
   .regex(/^\d{4}(0[1-9]|1[0-2])$/)

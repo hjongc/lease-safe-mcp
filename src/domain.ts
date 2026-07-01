@@ -222,9 +222,16 @@ export function isFutureDealYmd(dealYmd: string, now = new Date()): boolean {
   return dealYear > currentYear || (dealYear === currentYear && dealMonth > currentMonth);
 }
 
+export function isAllZeroLawdCd(lawdCd: string): boolean {
+  return lawdCd === "00000";
+}
+
 function validateMarketQuery(lawdCd: string, dealYmd: string): void {
   if (!/^\d{5}$/.test(lawdCd)) {
     throw new Error("LAWD_CD must be exactly 5 digits.");
+  }
+  if (isAllZeroLawdCd(lawdCd)) {
+    throw new Error("LAWD_CD must not be 00000.");
   }
   if (!/^\d{4}(0[1-9]|1[0-2])$/.test(dealYmd)) {
     throw new Error("DEAL_YMD must use YYYYMM format with a month from 01 to 12.");
