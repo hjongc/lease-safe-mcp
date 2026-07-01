@@ -1,7 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
-import type { Request, Response } from "express";
+import { hostHeaderValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
+import { timingSafeEqual } from "node:crypto";
+import type { Server } from "node:http";
+import type { NextFunction, Request, Response } from "express";
+import express from "express";
 import * as z from "zod/v4";
 import {
   assessLeaseSafety,
@@ -12,6 +15,7 @@ import {
   explainDataAvailability,
   explainDisputePrevention,
   prepareContractQuestions,
+  publicDataTimeoutMs,
   resolveLegalDongCode,
   routeOfficialHelp,
   sourceRegistry
@@ -19,6 +23,9 @@ import {
 
 const SERVICE_NAME = "Lease Safe(전월세안전내비)";
 const VERSION = "0.1.0";
+const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
+const DEFAULT_MCP_RATE_LIMIT_PER_MINUTE = 120;
+const MIN_MCP_AUTH_TOKEN_LENGTH = 16;
 
 type ToolAnnotations = {
   title: string;
@@ -58,7 +65,25 @@ function textResult(text: string) {
 }
 
 function allowedHostsFromEnv(): string[] | undefined {
-  const hosts = process.env.MCP_ALLOWED_HOSTS?.split(",").map(host => host.trim()).filter(Boolean);
+  const hosts = process.env.MCP_ALLOWED_HOSTS?.split(",").map(host => host.trim()).filter(Boolean).map(host => {
+    if (
+      host === "*" ||
+      host.includes("://") ||
+      host.includes("/") ||
+      /\s/.test(host) ||
+      host.length > 253
+    ) {
+      throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames or host:port values, not URLs, paths, wildcards, or whitespace.");
+    }
+
+    try {
+      const hostname = new URL(`http://${host}`).hostname;
+      if (!hostname) throw new Error("missing hostname");
+      return hostname;
+    } catch {
+      throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames or host:port values, not URLs, paths, wildcards, or whitespace.");
+    }
+  });
   return hosts && hosts.length > 0 ? hosts : undefined;
 }
 
@@ -71,12 +96,152 @@ function requiredAllowedHosts(): string[] {
   return ["127.0.0.1", "localhost"];
 }
 
-function requireBearerToken(req: Request, res: Response): boolean {
-  const expectedToken = process.env.MCP_AUTH_TOKEN?.trim();
+function requireProductionDataKey(): void {
+  if (process.env.NODE_ENV !== "production") return;
+  if (process.env.DATA_GO_KR_SERVICE_KEY?.trim()) return;
+  throw new Error("DATA_GO_KR_SERVICE_KEY is required in production for official public-data tools.");
+}
+
+function mcpAuthToken(): string | undefined {
+  const token = process.env.MCP_AUTH_TOKEN?.trim();
+  if (!token) return undefined;
+  if (token.length < MIN_MCP_AUTH_TOKEN_LENGTH) {
+    throw new Error(`MCP_AUTH_TOKEN must be at least ${MIN_MCP_AUTH_TOKEN_LENGTH} characters when set.`);
+  }
+  return token;
+}
+
+export function mcpMaxBodyBytes(): number {
+  const rawLimit = process.env.MCP_MAX_BODY_BYTES?.trim();
+  if (!rawLimit) return DEFAULT_MCP_MAX_BODY_BYTES;
+
+  const parsed = Number(rawLimit);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error("MCP_MAX_BODY_BYTES must be a positive integer.");
+  }
+  return parsed;
+}
+
+export function mcpRateLimitPerMinute(): number {
+  const rawLimit = process.env.MCP_RATE_LIMIT_PER_MINUTE?.trim();
+  if (!rawLimit) return DEFAULT_MCP_RATE_LIMIT_PER_MINUTE;
+
+  const parsed = Number(rawLimit);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error("MCP_RATE_LIMIT_PER_MINUTE must be a non-negative integer.");
+  }
+  return parsed;
+}
+
+function jsonRpcError(res: Response, httpStatus: number, code: number, message: string): void {
+  res.status(httpStatus).json({
+    jsonrpc: "2.0",
+    error: {
+      code,
+      message
+    },
+    id: null
+  });
+}
+
+function clientKey(req: Request): string {
+  return req.ip || req.socket.remoteAddress || "unknown";
+}
+
+function rateLimitMcpRequests(limitPerMinute: number) {
+  const windows = new Map<string, { count: number; resetAt: number }>();
+  const windowMs = 60_000;
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== "POST" || limitPerMinute === 0) {
+      next();
+      return;
+    }
+
+    const now = Date.now();
+    const key = clientKey(req);
+    const current = windows.get(key);
+    const window = current && current.resetAt > now ? current : { count: 0, resetAt: now + windowMs };
+    window.count += 1;
+    windows.set(key, window);
+
+    if (window.count > limitPerMinute) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((window.resetAt - now) / 1000));
+      res.setHeader("Retry-After", String(retryAfterSeconds));
+      jsonRpcError(res, 429, -32002, "Too many MCP requests. Try again later.");
+      return;
+    }
+
+    if (windows.size > 1000) {
+      for (const [entryKey, entryWindow] of windows) {
+        if (entryWindow.resetAt <= now) windows.delete(entryKey);
+      }
+    }
+
+    next();
+  };
+}
+
+function rejectOversizedMcpRequest(maxBodyBytes: number) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== "POST") {
+      next();
+      return;
+    }
+
+    const contentLength = req.header("content-length");
+    if (!contentLength) {
+      next();
+      return;
+    }
+
+    if (!/^\d+$/.test(contentLength)) {
+      jsonRpcError(res, 400, -32600, "Invalid Content-Length header.");
+      return;
+    }
+
+    if (Number(contentLength) > maxBodyBytes) {
+      jsonRpcError(res, 413, -32600, `MCP request body exceeds ${maxBodyBytes} bytes.`);
+      return;
+    }
+
+    next();
+  };
+}
+
+function handleMcpExpressError(error: unknown, _req: Request, res: Response, next: NextFunction): void {
+  const expressError = error as { status?: number; type?: string; message?: string };
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
+
+  if (expressError.status === 413 || expressError.type === "entity.too.large") {
+    jsonRpcError(res, 413, -32600, "MCP request body is too large.");
+    return;
+  }
+
+  if (expressError instanceof SyntaxError || expressError.type === "entity.parse.failed") {
+    jsonRpcError(res, 400, -32700, "Invalid JSON request body.");
+    return;
+  }
+
+  next(error);
+}
+
+function bearerTokenMatches(authorization: string | undefined, expectedToken: string): boolean {
+  if (!authorization?.startsWith("Bearer ")) return false;
+  const suppliedToken = authorization.slice("Bearer ".length);
+  const supplied = Buffer.from(suppliedToken);
+  const expected = Buffer.from(expectedToken);
+  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+}
+
+function requireBearerToken(req: Request, res: Response, expectedToken: string | undefined): boolean {
   if (!expectedToken) return true;
 
   const authorization = req.header("authorization");
-  if (authorization !== `Bearer ${expectedToken}`) {
+  if (!bearerTokenMatches(authorization, expectedToken)) {
     res.status(401).json({
       jsonrpc: "2.0",
       error: {
@@ -314,7 +479,16 @@ export function createServer(): McpServer {
 
 export function createApp() {
   const allowedHosts = requiredAllowedHosts();
-  const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts });
+  requireProductionDataKey();
+  const maxBodyBytes = mcpMaxBodyBytes();
+  const rateLimitPerMinute = mcpRateLimitPerMinute();
+  const publicDataTimeout = publicDataTimeoutMs();
+  const authToken = mcpAuthToken();
+  const app = express();
+
+  app.disable("x-powered-by");
+  app.use(hostHeaderValidation(allowedHosts));
+  app.use(express.json({ limit: `${maxBodyBytes}b` }));
 
   app.get("/", (_req: Request, res: Response) => {
     res.type("text/plain").send(`${SERVICE_NAME} MCP server is running. Use POST /mcp for Streamable HTTP.`);
@@ -326,12 +500,18 @@ export function createApp() {
       service: "lease-safe",
       version: VERSION,
       transport: "streamable-http",
-      stateless: true
+      stateless: true,
+      maxBodyBytes,
+      rateLimitPerMinute,
+      publicDataTimeoutMs: publicDataTimeout
     });
   });
 
+  app.use("/mcp", rateLimitMcpRequests(rateLimitPerMinute));
+  app.use("/mcp", rejectOversizedMcpRequest(maxBodyBytes));
+
   app.post("/mcp", async (req: Request, res: Response) => {
-    if (!requireBearerToken(req, res)) return;
+    if (!requireBearerToken(req, res, authToken)) return;
 
     const server = createServer();
     const transport = new StreamableHTTPServerTransport({
@@ -383,18 +563,45 @@ export function createApp() {
     });
   });
 
+  app.use("/mcp", handleMcpExpressError);
+
   return app;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const port = Number(process.env.PORT || 3000);
+export function startHttpServer(port = Number(process.env.PORT || 3000)): Server {
   const app = createApp();
-
-  app.listen(port, "0.0.0.0", error => {
+  const httpServer = app.listen(port, "0.0.0.0", error => {
     if (error) {
       console.error("Failed to start server", error);
       process.exit(1);
     }
     console.log(`${SERVICE_NAME} listening on port ${port}`);
   });
+
+  function shutdown(signal: NodeJS.Signals) {
+    console.log(`Received ${signal}; shutting down ${SERVICE_NAME}`);
+    const forceExit = setTimeout(() => {
+      console.error("Graceful shutdown timed out.");
+      process.exit(1);
+    }, 5000);
+    forceExit.unref();
+
+    httpServer.close(error => {
+      clearTimeout(forceExit);
+      if (error) {
+        console.error("Failed to close server", error);
+        process.exit(1);
+      }
+      process.exit(0);
+    });
+  }
+
+  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", shutdown);
+
+  return httpServer;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  startHttpServer();
 }

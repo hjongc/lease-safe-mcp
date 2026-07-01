@@ -1,5 +1,8 @@
 import { LEGAL_DONG_API, RENT_API_SPECS, SALE_API_SPECS, renderSources, SOURCES, type HousingType } from "./sources.js";
 
+const DEFAULT_PUBLIC_DATA_TIMEOUT_MS = 8000;
+const MAX_PUBLIC_DATA_TIMEOUT_MS = 60000;
+
 export interface LeaseProfileInput {
   situation?: string;
   region?: string;
@@ -58,6 +61,12 @@ interface SaleMarketSnapshot {
   signal: string;
   records: SaleRecord[];
   sourceId: string;
+}
+
+interface AssessmentRiskSummary {
+  level: "매우 높음" | "높음" | "주의" | "보통";
+  score: number;
+  reasons: string[];
 }
 
 interface LegalDongRecord {
@@ -163,6 +172,41 @@ function dataGoKrServiceKey(): string {
   }
 }
 
+export function publicDataTimeoutMs(): number {
+  const rawTimeout = process.env.PUBLIC_DATA_TIMEOUT_MS?.trim();
+  if (!rawTimeout) return DEFAULT_PUBLIC_DATA_TIMEOUT_MS;
+
+  const parsed = Number(rawTimeout);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > MAX_PUBLIC_DATA_TIMEOUT_MS) {
+    throw new Error(`PUBLIC_DATA_TIMEOUT_MS must be a positive integer no greater than ${MAX_PUBLIC_DATA_TIMEOUT_MS}.`);
+  }
+  return parsed;
+}
+
+function isAbortLikeError(error: unknown): boolean {
+  const name = (error as { name?: unknown })?.name;
+  return name === "AbortError" || name === "TimeoutError";
+}
+
+async function fetchPublicDataText(label: string, url: URL): Promise<string> {
+  const timeoutMs = publicDataTimeoutMs();
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  } catch (error) {
+    if (isAbortLikeError(error)) {
+      throw new Error(`${label} request timed out after ${timeoutMs}ms.`);
+    }
+    throw error;
+  }
+
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`${label} request failed: ${response.status}`);
+  }
+  return body;
+}
+
 function publicDataErrorMessage(body: string): string | undefined {
   const xmlErrorCode = extractTag(body, "returnReasonCode") ?? extractTag(body, "resultCode");
   const xmlErrorMessage = extractTag(body, "returnAuthMsg") ?? extractTag(body, "returnReasonMsg") ?? extractTag(body, "resultMsg");
@@ -219,11 +263,7 @@ export async function resolveLegalDongCode(input: { region: string }): Promise<s
   url.searchParams.set("type", "json");
   url.searchParams.set("locatadd_nm", region);
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-  const body = await response.text();
-  if (!response.ok) {
-    throw new Error(`행정표준코드 법정동코드 API request failed: ${response.status}`);
-  }
+  const body = await fetchPublicDataText("행정표준코드 법정동코드 API", url);
   const publicDataError = publicDataErrorMessage(body);
   if (publicDataError) {
     throw new Error(`행정표준코드 법정동코드 API returned error: ${publicDataError}`);
@@ -315,11 +355,7 @@ async function fetchRentMarketSnapshot(input: {
   url.searchParams.set("pageNo", "1");
   url.searchParams.set("numOfRows", "30");
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-  const xml = await response.text();
-  if (!response.ok) {
-    throw new Error(`국토교통부 실거래 API request failed: ${response.status}`);
-  }
+  const xml = await fetchPublicDataText("국토교통부 전월세 실거래 API", url);
   const publicDataError = publicDataErrorMessage(xml);
   if (publicDataError) {
     throw new Error(`국토교통부 실거래 API returned error: ${publicDataError}`);
@@ -402,6 +438,59 @@ function saleRatioSignal(ratio: number | undefined): string {
   return "입력 보증금은 주변 매매가 중앙값 대비 70% 미만입니다. 그래도 개별 등기부, 선순위 보증금, 특약 확인은 별도입니다.";
 }
 
+function assessmentRiskSummary(
+  input: LeaseProfileInput & { depositManwon: number },
+  rentMarket: RentMarketSnapshot,
+  saleMarket: SaleMarketSnapshot,
+  redFlags: string[]
+): AssessmentRiskSummary {
+  let score = 0;
+  const reasons: string[] = [];
+
+  if (!Number.isFinite(saleMarket.ratio)) {
+    score += 25;
+    reasons.push("매매 표본이 부족해 보증금-매매가 비율을 계산하지 못했습니다.");
+  } else if ((saleMarket.ratio as number) >= 90) {
+    score += 70;
+    reasons.push("보증금이 주변 매매가 중앙값의 90% 이상입니다.");
+  } else if ((saleMarket.ratio as number) >= 80) {
+    score += 55;
+    reasons.push("보증금이 주변 매매가 중앙값의 80% 이상입니다.");
+  } else if ((saleMarket.ratio as number) >= 70) {
+    score += 35;
+    reasons.push("보증금이 주변 매매가 중앙값의 70% 이상입니다.");
+  }
+
+  if (!rentMarket.median || rentMarket.sampleCount === 0) {
+    score += 15;
+    reasons.push("전월세 표본이 부족해 주변 임대 시세 위치가 약합니다.");
+  } else if (input.depositManwon > rentMarket.median * 1.25) {
+    score += 20;
+    reasons.push("입력 보증금이 전월세 신고 표본 중앙값보다 25% 이상 높습니다.");
+  }
+
+  const joinedFlags = redFlags.join(" ");
+  if (/대리|위임|명의|소유자|집주인/.test(joinedFlags)) {
+    score += 15;
+    reasons.push("대리계약 또는 소유자 확인 신호가 있습니다.");
+  }
+  if (/근저당|압류|가압류|경매|채권/.test(joinedFlags)) {
+    score += 20;
+    reasons.push("근저당, 압류, 경매 등 선순위 권리 확인 신호가 있습니다.");
+  }
+  if (/송금|가계약|계약금|압박/.test(joinedFlags)) {
+    score += 15;
+    reasons.push("계약금 또는 가계약금 송금을 서두르는 신호가 있습니다.");
+  }
+
+  const level = score >= 85 ? "매우 높음" : score >= 60 ? "높음" : score >= 30 ? "주의" : "보통";
+  return {
+    level,
+    score: Math.min(score, 100),
+    reasons: reasons.length > 0 ? reasons : ["현재 공식 시세 신호와 입력 위험 신호만으로는 높은 위험도를 단정할 근거가 부족합니다."]
+  };
+}
+
 async function fetchSaleMarketSnapshot(input: {
   housingType: HousingType;
   lawdCd: string;
@@ -417,11 +506,7 @@ async function fetchSaleMarketSnapshot(input: {
   url.searchParams.set("pageNo", "1");
   url.searchParams.set("numOfRows", "30");
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-  const xml = await response.text();
-  if (!response.ok) {
-    throw new Error(`국토교통부 매매 실거래 API request failed: ${response.status}`);
-  }
+  const xml = await fetchPublicDataText("국토교통부 매매 실거래 API", url);
   const publicDataError = publicDataErrorMessage(xml);
   if (publicDataError) {
     throw new Error(`국토교통부 매매 실거래 API returned error: ${publicDataError}`);
@@ -495,6 +580,7 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
     fetchSaleMarketSnapshot(input)
   ]);
   const redFlags = inferRiskSignals(input);
+  const riskSummary = assessmentRiskSummary(input, rentMarket, saleMarket, redFlags);
   const ratioLine = saleMarket.ratio
     ? `${saleMarket.ratio.toLocaleString("ko-KR")}%`
     : "계산 불가";
@@ -515,9 +601,11 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
     `주택유형: ${rentMarket.label}`,
     `계약월: ${input.dealYmd}`,
     `입력 조건: 보증금 ${money(input.depositManwon)} / 월세 ${money(input.monthlyRentManwon)}`,
+    `종합 위험도: ${riskSummary.level} (${riskSummary.score}/100)`,
     "",
     "## 핵심 판단",
     lineItems([
+      `위험도 근거: ${riskSummary.reasons.join(" / ")}`,
       `전월세 신고 표본 ${rentMarket.sampleCount}건, 보증금 중앙값 ${money(rentMarket.median)}`,
       `매매 신고 표본 ${saleMarket.sampleCount}건, 매매가 중앙값 ${money(saleMarket.median)}`,
       `매매가 대비 보증금 비율 ${ratioLine}: ${saleMarket.signal}`,

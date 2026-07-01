@@ -36,17 +36,31 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Scan for committed secrets
+        run: npm run scan:secrets
+
       - name: Test
         run: npm test
 
       - name: Validate PlayMCP readiness
         run: npm run validate:playmcp
 
+      - name: Smoke local MCP HTTP server
+        run: npm run smoke:http
+
+      - name: Smoke MCP rate limit
+        run: npm run smoke:rate-limit
+
       - name: Audit production dependencies
         run: npm audit --omit=dev
 
       - name: Build Docker image
         run: docker build -t lease-safe-mcp-ci .
+
+      - name: Smoke Docker runtime
+        run: npm run smoke:docker
+        env:
+          DOCKER_SMOKE_IMAGE: lease-safe-mcp-ci
 
       - name: Live public-data smoke
         if: ${{ env.DATA_GO_KR_SERVICE_KEY != '' }}
