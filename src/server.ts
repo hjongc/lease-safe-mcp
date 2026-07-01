@@ -610,6 +610,10 @@ export function createApp() {
     methodNotAllowedForMcp(res, "Method not allowed for stateless server.");
   });
 
+  app.all("/mcp", (_req: Request, res: Response) => {
+    methodNotAllowedForMcp(res, "Method not allowed. Use POST /mcp for Streamable HTTP requests.");
+  });
+
   app.use("/mcp", handleMcpExpressError);
 
   return app;

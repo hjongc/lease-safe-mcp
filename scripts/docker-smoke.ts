@@ -145,7 +145,7 @@ async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): P
   }
 }
 
-async function verifyMethodNotAllowed(endpoint: string, method: "GET" | "DELETE", expectedMessage: string): Promise<void> {
+async function verifyMethodNotAllowed(endpoint: string, method: "GET" | "DELETE" | "PUT", expectedMessage: string): Promise<void> {
   const response = await fetch(endpoint, { method });
 
   if (response.status !== 405) {
@@ -250,6 +250,7 @@ async function main() {
     console.log("docker_healthz=ok");
     await verifyMethodNotAllowed(endpoint, "GET", "Method not allowed. Use POST /mcp for Streamable HTTP requests.");
     await verifyMethodNotAllowed(endpoint, "DELETE", "Method not allowed for stateless server.");
+    await verifyMethodNotAllowed(endpoint, "PUT", "Method not allowed. Use POST /mcp for Streamable HTTP requests.");
     console.log("docker_method_rejection=ok");
     await verifyInvalidJsonRequest(endpoint, authToken);
     console.log("docker_invalid_json_rejection=ok");
