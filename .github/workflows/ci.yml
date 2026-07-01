@@ -73,3 +73,5 @@ jobs:
       - name: Live public-data smoke
         if: ${{ env.DATA_GO_KR_SERVICE_KEY != '' }}
         run: npm run smoke:public-data
+        env:
+          REQUIRE_LIVE_PUBLIC_DATA: "1"

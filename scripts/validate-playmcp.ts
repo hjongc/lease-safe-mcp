@@ -11,7 +11,7 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   dependencies?: Record<string, string>;
 };
 
-for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/registration-preflight.ts", "scripts/rate-limit-smoke.ts"]) {
+for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", ".github/workflows/registration-preflight.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/registration-preflight.ts", "scripts/rate-limit-smoke.ts"]) {
   readFileSync(file, "utf8");
 }
 
@@ -42,6 +42,7 @@ for (const pattern of [".git", ".env", ".env.*", "node_modules", "dist"]) {
 }
 
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+const registrationWorkflow = readFileSync(".github/workflows/registration-preflight.yml", "utf8");
 const dependabot = readFileSync(".github/dependabot.yml", "utf8");
 assert(/actions\/checkout@v5/.test(ci), "CI must use actions/checkout@v5");
 assert(/actions\/setup-node@v5/.test(ci), "CI must use actions/setup-node@v5");
@@ -49,6 +50,10 @@ for (const command of ["npm ci", "npm run scan:secrets", "npm test", "npm run va
   assert(ci.includes(command), `CI must run ${command}`);
 }
 assert(/DATA_GO_KR_SERVICE_KEY/.test(ci), "CI must support optional live public-data smoke through DATA_GO_KR_SERVICE_KEY");
+assert(/REQUIRE_LIVE_PUBLIC_DATA:\s*"1"/.test(ci), "CI live public-data smoke must use registration-mode coverage rules when a key is configured");
+assert(/workflow_dispatch/.test(registrationWorkflow), "registration preflight workflow must be manually dispatchable");
+assert(/DATA_GO_KR_SERVICE_KEY/.test(registrationWorkflow), "registration preflight workflow must inject DATA_GO_KR_SERVICE_KEY from secrets");
+assert(/npm run preflight:registration/.test(registrationWorkflow), "registration preflight workflow must run npm run preflight:registration");
 assert(/package-ecosystem:\s*npm/.test(dependabot), "Dependabot must monitor npm dependencies");
 assert(/package-ecosystem:\s*github-actions/.test(dependabot), "Dependabot must monitor GitHub Actions");
 
@@ -73,6 +78,7 @@ for (const required of [
   "non-JSON MCP POST bodies",
   "WWW-Authenticate",
   "every supported housing type",
+  "Registration Preflight",
   "npm run preflight:registration",
   "npm run preflight"
 ]) {
@@ -85,6 +91,7 @@ for (const required of [
   "unsupported-content-type rejection",
   "WWW-Authenticate",
   "every supported housing type",
+  "Registration Preflight",
   "official source registry access",
   "Docker runtime smoke"
 ]) {
