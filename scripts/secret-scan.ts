@@ -59,13 +59,13 @@ function isAllowedPlaceholder(line: string): boolean {
   return allowedPlaceholders.includes(normalizePlaceholderLine(line));
 }
 
-function isAllowedSyntheticSecret(line: string): boolean {
-  return line.includes("LeaseSafePublicDataSmokeKey");
+function lineWithoutAllowedSyntheticSecrets(line: string): string {
+  return line.replace(/LeaseSafePublicDataSmokeKey[A-Za-z0-9+/]*={0,2}/g, "");
 }
 
 function scanStandalonePublicDataKey(line: string): boolean {
-  if (line.includes("\"integrity\"") || isAllowedSyntheticSecret(line)) return false;
-  return /(?:^|[^A-Za-z0-9+/])(?=[A-Za-z0-9+/=]{40,})(?=[A-Za-z0-9+/=]*\/)[A-Za-z0-9+/]{40,}={1,2}(?:$|[^A-Za-z0-9+/=])/.test(line);
+  if (line.includes("\"integrity\"")) return false;
+  return /(?:^|[^A-Za-z0-9+/])(?=[A-Za-z0-9+/=]{40,})(?=[A-Za-z0-9+/=]*\/)[A-Za-z0-9+/]{40,}={1,2}(?:$|[^A-Za-z0-9+/=])/.test(lineWithoutAllowedSyntheticSecrets(line));
 }
 
 export function scanLine(file: string, line: string, lineNumber: number): Finding[] {

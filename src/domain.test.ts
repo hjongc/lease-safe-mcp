@@ -92,6 +92,7 @@ test("secret scan allows exact placeholders but rejects hidden values beside the
   ].join("");
   assert.equal(scanLine("README.md", decodedPublicDataKey, 1).length, 1);
   assert.deepEqual(scanLine("src/domain.test.ts", VALID_TEST_SERVICE_KEY, 1), []);
+  assert.equal(scanLine("src/domain.test.ts", `${VALID_TEST_SERVICE_KEY} ${decodedPublicDataKey}`, 1).length, 1);
 });
 
 test("registration preflight env check rejects bad public-data keys before build", () => {
