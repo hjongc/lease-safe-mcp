@@ -11,7 +11,7 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   dependencies?: Record<string, string>;
 };
 
-for (const file of ["Dockerfile", ".github/workflows/ci.yml", "README.md", "docs/data-design.md", "docs/submission.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts"]) {
+for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", "README.md", "docs/data-design.md", "docs/submission.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts"]) {
   readFileSync(file, "utf8");
 }
 
@@ -28,6 +28,11 @@ assert(/COPY package\*\.json \.\//.test(dockerfile), "Dockerfile must copy packa
 assert(/RUN npm ci/.test(dockerfile), "Dockerfile must use npm ci");
 assert(/EXPOSE 3000/.test(dockerfile), "Dockerfile must expose port 3000");
 assert(/CMD \["node", "dist\/src\/server\.js"\]/.test(dockerfile), "Dockerfile CMD must start built server");
+
+const dockerignore = readFileSync(".dockerignore", "utf8");
+for (const pattern of [".git", ".env", ".env.*", "node_modules", "dist"]) {
+  assert(dockerignore.split(/\r?\n/).includes(pattern), `.dockerignore must exclude ${pattern}`);
+}
 
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
 assert(/actions\/checkout@v5/.test(ci), "CI must use actions/checkout@v5");
