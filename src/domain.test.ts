@@ -13,7 +13,7 @@ import {
   resolveLegalDongCode,
   routeOfficialHelp
 } from "./domain.js";
-import { createApp, httpPort, mcpMaxBodyBytes, mcpRateLimitPerMinute, pruneExpiredRateLimitWindows } from "./server.js";
+import { MCP_TEXT_LIMITS, createApp, createServer, httpPort, mcpMaxBodyBytes, mcpRateLimitPerMinute, pruneExpiredRateLimitWindows } from "./server.js";
 import { assertLegalDongSmokeMatchesLawdCd, positiveSampleCount, publicDataSmokeDealYmd, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes, publicDataSmokeLawdCd, publicDataSmokeRegion } from "../scripts/public-data-smoke.js";
 import { scanLine } from "../scripts/secret-scan.js";
 
@@ -24,6 +24,19 @@ const VALID_TEST_SERVICE_KEY = [
   "=="
 ].join("");
 const VALID_TEST_SERVICE_KEY_ENCODED = encodeURIComponent(VALID_TEST_SERVICE_KEY);
+
+type ToolInputSchema = {
+  safeParse(input: unknown): { success: boolean };
+};
+
+function registeredToolSchema(toolName: string): ToolInputSchema {
+  const server = createServer() as unknown as {
+    _registeredTools: Record<string, { inputSchema: ToolInputSchema }>;
+  };
+  const tool = server._registeredTools[toolName];
+  assert.ok(tool, `registered tool missing: ${toolName}`);
+  return tool.inputSchema;
+}
 
 test("data availability names automatic APIs and no fake fallback", () => {
   const text = explainDataAvailability();
@@ -1987,6 +2000,32 @@ test("MCP rate limiter prunes expired client windows", () => {
 
   assert.equal(windows.has("expired"), false);
   assert.equal(windows.has("active"), true);
+});
+
+test("MCP tool input schemas bound free-text fields", () => {
+  const validAssessmentInput = {
+    housingType: "apartment",
+    lawdCd: "11620",
+    dealYmd: "202605",
+    depositManwon: 30000,
+    region: "서울 관악구",
+    situation: "전세 계약 전 등기부와 보증보험을 확인하려고 합니다.",
+    moveInDate: "2026-07-15",
+    contractDate: "2026-07-01",
+    concerns: "근저당과 선순위 보증금이 걱정됩니다."
+  };
+  const assessmentSchema = registeredToolSchema("assess_lease_safety");
+
+  assert.equal(assessmentSchema.safeParse(validAssessmentInput).success, true);
+  assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, region: "가".repeat(MCP_TEXT_LIMITS.region + 1) }).success, false);
+  assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, situation: "가".repeat(MCP_TEXT_LIMITS.situation + 1) }).success, false);
+  assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, moveInDate: "가".repeat(MCP_TEXT_LIMITS.dateText + 1) }).success, false);
+  assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, contractDate: "가".repeat(MCP_TEXT_LIMITS.dateText + 1) }).success, false);
+  assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, concerns: "가".repeat(MCP_TEXT_LIMITS.concerns + 1) }).success, false);
+
+  const legalDongSchema = registeredToolSchema("resolve_legal_dong_code");
+  assert.equal(legalDongSchema.safeParse({ region: "서울 관악구" }).success, true);
+  assert.equal(legalDongSchema.safeParse({ region: "가".repeat(MCP_TEXT_LIMITS.region + 1) }).success, false);
 });
 
 test("HTTP port is explicit and fails fast on invalid configuration", () => {

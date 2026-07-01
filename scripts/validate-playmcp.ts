@@ -85,6 +85,13 @@ assert(/MCP_AUTH_TOKEN must be at least/.test(server), "server must reject weak 
 assert(/MCP_MAX_BODY_BYTES/.test(server), "server must support a bounded MCP request body size");
 assert(/express\.json\(\{ limit: `\$\{maxBodyBytes\}b` \}\)/.test(server), "server JSON parser limit must match MCP_MAX_BODY_BYTES");
 assert(/MCP_RATE_LIMIT_PER_MINUTE/.test(server), "server must support MCP request rate limiting");
+assert(/MCP_TEXT_LIMITS/.test(server), "server must define explicit MCP text input limits");
+assert(/regionSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.region\)/.test(server), "server must bound MCP region text inputs");
+assert(/situationSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.situation\)/.test(server), "server must bound MCP situation text inputs");
+assert(/moveInDateSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.dateText\)/.test(server), "server must bound MCP move-in date text inputs");
+assert(/contractDateSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.dateText\)/.test(server), "server must bound MCP contract date text inputs");
+assert(/concernsSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.concerns\)/.test(server), "server must bound MCP concerns text inputs");
+assert(/region:\s*z\.string\(\)\.min\(2\)\.max\(MCP_TEXT_LIMITS\.region\)/.test(server), "resolve_legal_dong_code must bound region text input");
 assert(/PUBLIC_DATA_TIMEOUT_MS/.test(domain), "domain must support a bounded public-data timeout");
 assert(/publicDataTimeoutMs/.test(server), "server must validate the public-data timeout at startup");
 assert(/SIGTERM/.test(server), "server must handle SIGTERM for container shutdown");
