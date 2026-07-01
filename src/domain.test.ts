@@ -2500,7 +2500,9 @@ test("one-shot lease assessment combines rent, sale, red flags, and actions", as
     assert.match(text, /위험도 근거:/);
     assert.match(text, /전월세 신고 표본 1건/);
     assert.match(text, /보증금 산출 표본 1건/);
+    assert.match(text, /전월세 표본 신뢰도: 낮음 - 계산 표본 1건뿐/);
     assert.match(text, /매매 신고 표본 1건/);
+    assert.match(text, /매매 표본 신뢰도: 낮음 - 계산 표본 1건뿐/);
     assert.match(text, /매매가 대비 보증금 비율 95%/);
     assert.match(text, /대리계약/);
     assert.match(text, /등기부·소유자·특약 확인 전에는 계약금·가계약금 송금을 보류/);

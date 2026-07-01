@@ -3,6 +3,8 @@ import { LEGAL_DONG_API, RENT_API_SPECS, SALE_API_SPECS, renderSources, SOURCES,
 const DEFAULT_PUBLIC_DATA_TIMEOUT_MS = 8000;
 const MAX_PUBLIC_DATA_TIMEOUT_MS = 60000;
 const MAX_PUBLIC_DATA_RESPONSE_BYTES = 1_000_000;
+const STRONG_SAMPLE_COUNT = 10;
+const MIN_MEDIAN_SAMPLE_COUNT = 3;
 const DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS = new Set([
   "...",
   "your-data-go-kr-service-key",
@@ -126,6 +128,22 @@ function median(values: number[]): number | undefined {
   const middle = Math.floor(sorted.length / 2);
   if (sorted.length % 2 === 1) return sorted[middle];
   return Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+}
+
+function sampleReliability(label: string, reportedCount: number, calculationCount = reportedCount): string {
+  if (reportedCount === 0) {
+    return `${label} 표본 신뢰도: 없음 - 조회된 신고 표본이 없어 이 월·지역만으로 시세 판단을 하면 안 됩니다.`;
+  }
+  if (calculationCount === 0) {
+    return `${label} 표본 신뢰도: 낮음 - 신고 표본은 있지만 중앙값 계산에 쓸 수 있는 금액 표본이 없습니다.`;
+  }
+  if (calculationCount < MIN_MEDIAN_SAMPLE_COUNT) {
+    return `${label} 표본 신뢰도: 낮음 - 계산 표본 ${calculationCount}건뿐이라 전후월, 인접동, 같은 면적대 실거래를 추가로 확인하세요.`;
+  }
+  if (calculationCount < STRONG_SAMPLE_COUNT) {
+    return `${label} 표본 신뢰도: 보통 - 계산 표본 ${calculationCount}건 기준이므로 개별 등기부와 같은 면적대 표본을 함께 확인하세요.`;
+  }
+  return `${label} 표본 신뢰도: 양호 - 계산 표본 ${calculationCount}건 기준입니다. 그래도 특정 매물의 권리관계 판단은 별도입니다.`;
 }
 
 function sourceIdFor(kind: "rent" | "sale", housingType: HousingType): string {
@@ -768,6 +786,7 @@ function renderRentMarketSnapshot(snapshot: RentMarketSnapshot): string {
       : snapshot.sampleCount > 0
         ? "조회된 신고 표본은 있지만 보증금 중앙값을 계산할 수 있는 보증금 표본이 없습니다."
         : "조회된 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
+    sampleReliability("전월세", snapshot.sampleCount, snapshot.depositSampleCount),
     `입력 보증금: ${money(snapshot.userDeposit)} / 입력 월세: ${money(snapshot.userMonthlyRent)}`,
     "",
     "## 해석",
@@ -922,6 +941,7 @@ function renderSaleMarketSnapshot(snapshot: SaleMarketSnapshot): string {
     `조회 기준: LAWD_CD ${snapshot.lawdCd}, 계약월 ${snapshot.dealYmd}`,
     `매매 표본 수: ${snapshot.sampleCount}`,
     snapshot.sampleCount > 0 ? `매매가 중앙값: ${money(snapshot.median)} / 최대값: ${money(snapshot.max)}` : "조회된 매매 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
+    sampleReliability("매매", snapshot.sampleCount),
     `입력 보증금: ${money(snapshot.userDeposit)}`,
     `매매가 대비 보증금 비율: ${formatRatio(snapshot.ratio)}`,
     "",
@@ -1000,7 +1020,9 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
     lineItems([
       `위험도 근거: ${riskSummary.reasons.join(" / ")}`,
       `전월세 신고 표본 ${rentMarket.sampleCount}건, 보증금 산출 표본 ${rentMarket.depositSampleCount}건, 보증금 중앙값 ${money(rentMarket.median)}`,
+      sampleReliability("전월세", rentMarket.sampleCount, rentMarket.depositSampleCount),
       `매매 신고 표본 ${saleMarket.sampleCount}건, 매매가 중앙값 ${money(saleMarket.median)}`,
+      sampleReliability("매매", saleMarket.sampleCount),
       `매매가 대비 보증금 비율 ${ratioLine}: ${saleMarket.signal}`,
       rentMarket.position
     ]),
