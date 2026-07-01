@@ -625,6 +625,10 @@ export function createApp() {
     }
   );
 
+  app.head("/mcp", (_req: Request, res: Response) => {
+    methodNotAllowedForMcp(res, "Method not allowed. Use POST /mcp for Streamable HTTP requests.");
+  });
+
   app.get("/mcp", (_req: Request, res: Response) => {
     methodNotAllowedForMcp(res, "Method not allowed. Use POST /mcp for Streamable HTTP requests.");
   });

@@ -145,7 +145,7 @@ async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): P
   }
 }
 
-async function verifyMethodNotAllowed(endpoint: string, method: "GET" | "DELETE" | "PUT", expectedMessage: string): Promise<void> {
+async function verifyMethodNotAllowed(endpoint: string, method: "GET" | "DELETE" | "OPTIONS" | "PUT", expectedMessage: string): Promise<void> {
   const response = await fetch(endpoint, { method });
 
   if (response.status !== 405) {
@@ -161,6 +161,19 @@ async function verifyMethodNotAllowed(endpoint: string, method: "GET" | "DELETE"
   const body = await response.json() as { error?: { code?: unknown; message?: unknown } };
   if (body.error?.code !== -32000 || body.error?.message !== expectedMessage) {
     throw new Error(`${method} Docker MCP request did not return the expected JSON-RPC method error.`);
+  }
+}
+
+async function verifyHeadMethodNotAllowed(endpoint: string): Promise<void> {
+  const response = await fetch(endpoint, { method: "HEAD" });
+
+  if (response.status !== 405) {
+    throw new Error(`Expected HEAD Docker MCP request to return 405, got ${response.status}.`);
+  }
+
+  const allow = response.headers.get("allow");
+  if (allow !== "POST") {
+    throw new Error(`Expected HEAD Docker MCP request to advertise Allow: POST, got ${allow ?? "missing"}.`);
   }
 }
 
@@ -298,8 +311,10 @@ async function main() {
   try {
     const maxBodyBytes = await waitForHealth(port, containerId);
     console.log("docker_healthz=ok");
+    await verifyHeadMethodNotAllowed(endpoint);
     await verifyMethodNotAllowed(endpoint, "GET", "Method not allowed. Use POST /mcp for Streamable HTTP requests.");
     await verifyMethodNotAllowed(endpoint, "DELETE", "Method not allowed for stateless server.");
+    await verifyMethodNotAllowed(endpoint, "OPTIONS", "Method not allowed. Use POST /mcp for Streamable HTTP requests.");
     await verifyMethodNotAllowed(endpoint, "PUT", "Method not allowed. Use POST /mcp for Streamable HTTP requests.");
     console.log("docker_method_rejection=ok");
     await verifyInvalidJsonRequest(endpoint, authToken);

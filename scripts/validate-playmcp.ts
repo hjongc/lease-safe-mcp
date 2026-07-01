@@ -143,6 +143,7 @@ assert(/StreamableHTTPServerTransport/.test(server), "server must use Streamable
 assert(/sessionIdGenerator:\s*undefined/.test(server), "server must be stateless");
 assert(/methodNotAllowedForMcp/.test(server), "server must centralize MCP method rejection responses");
 assert(/setHeader\("Allow",\s*"POST"\)/.test(server), "server must advertise Allow: POST for unsupported MCP methods");
+assert(/app\.head\("\/mcp"/.test(server), "server must explicitly reject HEAD /mcp with method-not-allowed headers");
 assert(/app\.all\("\/mcp"/.test(server), "server must reject all unsupported MCP methods consistently");
 assert(/app\.post\([\s\S]*requireMcpBearerToken\(authToken\)[\s\S]*requireMcpJsonContentType[\s\S]*express\.json/.test(server), "server must authenticate MCP POST requests before content-type validation and JSON parsing");
 
@@ -204,6 +205,8 @@ assert(/smokePortFromEnv/.test(httpSmoke), "HTTP smoke must fail fast on invalid
 assert(/auth_rejection/.test(httpSmoke), "HTTP smoke must verify bearer auth rejection");
 assert(/WWW-Authenticate:\s*Bearer/.test(httpSmoke), "HTTP smoke must verify bearer auth challenge headers");
 assert(/method_rejection/.test(httpSmoke), "HTTP smoke must verify unsupported MCP method rejection");
+assert(/verifyHeadMethodNotAllowed/.test(httpSmoke), "HTTP smoke must verify HEAD /mcp method rejection");
+assert(/"OPTIONS"/.test(httpSmoke), "HTTP smoke must verify OPTIONS /mcp method rejection");
 assert(/"PUT"/.test(httpSmoke), "HTTP smoke must verify a catch-all unsupported MCP method");
 assert(/Allow:\s*POST/.test(httpSmoke), "HTTP smoke must verify unsupported MCP methods advertise Allow: POST");
 assert(/invalid_json_rejection/.test(httpSmoke), "HTTP smoke must verify invalid JSON rejection");
@@ -222,6 +225,8 @@ assert(/smokePortFromEnv/.test(dockerSmoke), "Docker smoke must fail fast on inv
 assert(/docker_auth_rejection/.test(dockerSmoke), "Docker smoke must verify bearer auth rejection");
 assert(/WWW-Authenticate:\s*Bearer/.test(dockerSmoke), "Docker smoke must verify bearer auth challenge headers");
 assert(/docker_method_rejection/.test(dockerSmoke), "Docker smoke must verify unsupported MCP method rejection");
+assert(/verifyHeadMethodNotAllowed/.test(dockerSmoke), "Docker smoke must verify HEAD /mcp method rejection");
+assert(/"OPTIONS"/.test(dockerSmoke), "Docker smoke must verify OPTIONS /mcp method rejection");
 assert(/"PUT"/.test(dockerSmoke), "Docker smoke must verify a catch-all unsupported MCP method");
 assert(/Allow:\s*POST/.test(dockerSmoke), "Docker smoke must verify unsupported MCP methods advertise Allow: POST");
 assert(/docker_invalid_json_rejection/.test(dockerSmoke), "Docker smoke must verify invalid JSON rejection");
