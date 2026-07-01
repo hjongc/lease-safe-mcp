@@ -2471,7 +2471,7 @@ test("one-shot lease assessment combines rent, sale, red flags, and actions", as
       region: "서울 관악구",
       contractType: "jeonse",
       depositManwon: 38000,
-      concerns: "대리계약이고 계약금을 빨리 보내라고 합니다"
+      concerns: "대리계약이고 근저당도 있는데 계약금을 빨리 보내라고 합니다"
     });
 
     assert.match(text, /전월세 안전 종합 진단/);
@@ -2482,6 +2482,9 @@ test("one-shot lease assessment combines rent, sale, red flags, and actions", as
     assert.match(text, /매매 신고 표본 1건/);
     assert.match(text, /매매가 대비 보증금 비율 95%/);
     assert.match(text, /대리계약/);
+    assert.match(text, /등기부·소유자·특약 확인 전에는 계약금·가계약금 송금을 보류/);
+    assert.match(text, /위임장 원본 범위/);
+    assert.match(text, /말소 조건, 잔금 전 등기부 재발급, 보증보험 가능 여부를 특약에 명시/);
     assert.match(text, /계약금 송금을 보류/);
     assert.match(text, /공식 출처/);
   } finally {

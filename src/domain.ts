@@ -948,16 +948,29 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
   const redFlags = inferRiskSignals(input);
   const riskSummary = assessmentRiskSummary(input, rentMarket, saleMarket, redFlags);
   const ratioLine = formatRatio(saleMarket.ratio);
-  const immediateActions = [
+  const riskText = `${input.situation ?? ""} ${input.concerns ?? ""}`.toLowerCase();
+  const immediateActions: string[] = [];
+
+  if (/빨리|오늘|가계약|계약금|선입금/.test(riskText)) {
+    immediateActions.push("등기부·소유자·특약 확인 전에는 계약금·가계약금 송금을 보류하고, 송금 요구 사유와 반환 조건을 문자로 남기기");
+  }
+  if (/대리|위임|명의|소유자|집주인/.test(riskText)) {
+    immediateActions.push("대리계약이면 위임장 원본 범위, 인감증명서, 신분증, 등기부 소유자와의 직접 통화 확인 전 서명하지 않기");
+  }
+  if (/근저당|압류|가압류|경매|채권|신탁/.test(riskText)) {
+    immediateActions.push("근저당·압류·신탁 등 선순위 권리가 있으면 말소 조건, 잔금 전 등기부 재발급, 보증보험 가능 여부를 특약에 명시하기");
+  }
+
+  if (Number.isFinite(saleMarket.ratio) && (saleMarket.ratio as number) >= 80) {
+    immediateActions.push("매매가 대비 보증금 비율이 높으므로 보증보험 가능 여부와 선순위 권리 확인 전 계약금 송금을 보류");
+  }
+
+  immediateActions.push(
     "잔금 전 등기부등본을 다시 발급해 소유자, 근저당, 압류, 가압류, 신탁, 경매 표시를 확인",
     "계약 상대방이 등기부 소유자와 다르면 위임장, 인감증명, 본인 통화로 대리권 확인",
     "전입신고, 확정일자, 임대차신고, 보증보험 가능 여부를 같은 날 공식 경로로 확인",
     "특약에 잔금 전 추가 근저당 금지, 등기 변동 시 해제·반환 조건, 하자·수리 책임을 문서화"
-  ];
-
-  if (Number.isFinite(saleMarket.ratio) && (saleMarket.ratio as number) >= 80) {
-    immediateActions.unshift("매매가 대비 보증금 비율이 높으므로 보증보험 가능 여부와 선순위 권리 확인 전 계약금 송금을 보류");
-  }
+  );
 
   return [
     "## 전월세 안전 종합 진단",
