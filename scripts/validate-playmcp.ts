@@ -133,6 +133,8 @@ assert(/계약금·가계약금 송금을 보류/.test(domain), "flagship assess
 assert(/위임장 원본 범위/.test(domain), "flagship assessment must prioritize proxy-contract verification");
 assert(/말소 조건, 잔금 전 등기부 재발급/.test(domain), "flagship assessment must prioritize senior-rights verification");
 assert(/근저당\|압류\|가압류\|경매\|채권\|신탁/.test(domain), "red-flag scoring must treat trust registry language as a senior-right signal");
+assert(/체납\|미납\|국세\|지방세\|세금\|납세/.test(domain), "red-flag scoring must treat landlord tax-arrears language as a contract risk signal");
+assert(/tax_arrears/.test(server), "official help schema must expose tax_arrears routing");
 assert(/inferOfficialHelpIssueType/.test(domain), "official help router must infer routes from natural-language situations");
 assert(domain.includes("보증\\s*보험"), "official help router must infer HUG routes from natural-language guarantee questions");
 assert(/등기부\|등기/.test(domain), "official help router must infer registry routes from natural-language registry questions");
@@ -196,7 +198,9 @@ for (const expected of [
   "easylaw-lease",
   "law-lease",
   "adr-lease-dispute",
-  "hug-deposit-guarantee"
+  "hug-deposit-guarantee",
+  "nts-tax",
+  "wetax-local-tax"
 ]) {
   assert(SOURCES.some(source => source.id === expected), `source missing: ${expected}`);
 }

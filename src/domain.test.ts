@@ -2884,6 +2884,9 @@ test("MCP tool input schemas bound free-text fields", () => {
   const legalDongSchema = registeredToolSchema("resolve_legal_dong_code");
   assert.equal(legalDongSchema.safeParse({ region: "서울 관악구" }).success, true);
   assert.equal(legalDongSchema.safeParse({ region: "가".repeat(MCP_TEXT_LIMITS.region + 1) }).success, false);
+
+  const officialHelpSchema = registeredToolSchema("route_official_help");
+  assert.equal(officialHelpSchema.safeParse({ issueType: "tax_arrears", situation: "임대인 국세 체납이 걱정됩니다" }).success, true);
 });
 
 test("HTTP port is explicit and fails fast on invalid configuration", () => {
@@ -2940,17 +2943,36 @@ test("red flag checker treats trust registry language as a senior-right signal",
   assert.doesNotMatch(text, /현재 입력만으로 확정 위험/);
 });
 
+test("red flag checker surfaces landlord tax arrears concerns", () => {
+  const text = checkLeaseRedFlags({
+    region: "서울 관악구",
+    situation: "임대인 국세 체납과 지방세 미납이 걱정되고 납세증명을 확인하고 싶습니다.",
+    contractType: "jeonse",
+    depositManwon: 30000
+  });
+
+  assert.match(text, /체납/);
+  assert.match(text, /국세/);
+  assert.match(text, /지방세/);
+  assert.match(text, /납세증명/);
+  assert.match(text, /국세청/);
+  assert.match(text, /위택스/);
+  assert.doesNotMatch(text, /현재 입력만으로 확정 위험/);
+});
+
 test("move-in plan includes official protection steps", () => {
   const text = buildMoveInProtectionPlan({ moveInDate: "2026-07-20", contractDate: "2026-07-01" });
   assert.match(text, /전입신고/);
   assert.match(text, /확정일자/);
   assert.match(text, /임대차 계약 신고/);
+  assert.match(text, /납세증명/);
 });
 
 test("contract questions include HUG and lease report", () => {
   const text = prepareContractQuestions({ concerns: "전세 보증금이 큽니다" });
   assert.match(text, /전세보증금반환보증/);
   assert.match(text, /임대차신고/);
+  assert.match(text, /국세·지방세 체납/);
 });
 
 test("contract questions redact contact details from user text", () => {
@@ -3006,6 +3028,7 @@ test("official help router infers routes from natural language", () => {
     { input: { situation: "확정일자 신청을 하고 싶습니다" }, expected: /확정일자 신청/ },
     { input: { situation: "주택 임대차 계약 신고 RTMS가 궁금합니다" }, expected: /RTMS/ },
     { input: { situation: "전세보증금반환보증 가입 가능 여부를 확인하고 싶습니다" }, expected: /HUG/ },
+    { input: { situation: "임대인 국세 체납과 지방세 미납은 어디서 확인하나요?" }, expected: /국세청·위택스/ },
     { input: { situation: "등기부에 근저당과 신탁이 보입니다" }, expected: /등기부등본 발급/ },
     { input: { situation: "보증금 반환 분쟁과 수선 문제를 상담하고 싶습니다" }, expected: /분쟁 상담/ }
   ];

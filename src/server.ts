@@ -512,13 +512,13 @@ export function createServer(): McpServer {
     {
       title: "공식 문의처 연결",
       description:
-        "전월세안전내비가 전입신고, 확정일자, 임대차신고, 보증보험, 등기부, 분쟁 상황을 정부24, RTMS, 인터넷등기소, HUG, 임대차분쟁조정위로 라우팅합니다.",
+        "전월세안전내비가 전입신고, 확정일자, 임대차신고, 보증보험, 임대인 세금 체납, 등기부, 분쟁 상황을 정부24, RTMS, 인터넷등기소, HUG, 국세청·위택스, 임대차분쟁조정위로 라우팅합니다.",
       inputSchema: {
         situation: situationSchema,
         issueType: z
-          .enum(["move_in", "fixed_date", "lease_report", "deposit_guarantee", "dispute", "registry", "unknown"])
+          .enum(["move_in", "fixed_date", "lease_report", "deposit_guarantee", "tax_arrears", "dispute", "registry", "unknown"])
           .optional()
-          .describe("문의 유형입니다. move_in=전입신고, fixed_date=확정일자, lease_report=임대차신고, deposit_guarantee=보증보험, dispute=분쟁, registry=등기부, unknown=미확인."),
+          .describe("문의 유형입니다. move_in=전입신고, fixed_date=확정일자, lease_report=임대차신고, deposit_guarantee=보증보험, tax_arrears=임대인 국세·지방세 체납 확인, dispute=분쟁, registry=등기부, unknown=미확인."),
         region: regionSchema,
         concerns: concernsSchema
       },

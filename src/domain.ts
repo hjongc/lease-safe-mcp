@@ -93,7 +93,7 @@ interface LegalDongRecord {
   lawdCd: string;
 }
 
-type OfficialHelpIssueType = "move_in" | "fixed_date" | "lease_report" | "deposit_guarantee" | "dispute" | "registry" | "unknown";
+type OfficialHelpIssueType = "move_in" | "fixed_date" | "lease_report" | "deposit_guarantee" | "tax_arrears" | "dispute" | "registry" | "unknown";
 
 function lineItems(items: string[]): string {
   return items.map(item => `- ${item}`).join("\n");
@@ -166,6 +166,9 @@ function inferRiskSignals(input: LeaseProfileInput): string[] {
   }
   if (/근저당|압류|가압류|경매|채권|신탁/.test(text)) {
     signals.push("근저당·압류·가압류·신탁·경매 관련 표현이 있으면 잔금 전 등기부 재확인과 전문가 상담 우선입니다.");
+  }
+  if (/체납|미납|국세|지방세|세금|납세\s*증명|납세증명/.test(text)) {
+    signals.push("임대인 체납, 국세, 지방세, 납세증명 관련 우려가 있으면 계약 전 확인 가능 서류와 공식 세무 경로를 문서로 확인하세요.");
   }
   if (/전입|확정|신고/.test(text) || input.moveInDate) {
     signals.push("전입신고, 확정일자, 임대차신고는 보증금 보호의 기본 확인 항목입니다.");
@@ -871,6 +874,10 @@ function assessmentRiskSummary(
     score += 20;
     reasons.push("근저당, 압류, 신탁, 경매 등 선순위 권리 확인 신호가 있습니다.");
   }
+  if (/체납|미납|국세|지방세|세금|납세/.test(joinedFlags)) {
+    score += 15;
+    reasons.push("임대인 체납 또는 납세증명 확인 신호가 있습니다.");
+  }
   if (/송금|가계약|계약금|압박/.test(joinedFlags)) {
     score += 15;
     reasons.push("계약금 또는 가계약금 송금을 서두르는 신호가 있습니다.");
@@ -996,6 +1003,9 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
   if (/근저당|압류|가압류|경매|채권|신탁/.test(riskText)) {
     immediateActions.push("근저당·압류·신탁 등 선순위 권리가 있으면 말소 조건, 잔금 전 등기부 재발급, 보증보험 가능 여부를 특약에 명시하기");
   }
+  if (/체납|미납|국세|지방세|세금|납세\s*증명|납세증명/.test(riskText)) {
+    immediateActions.push("임대인 체납·납세증명 우려가 있으면 계약 전 확인 가능한 서류, 세무서·국세청·위택스 확인 경로, 확인 거부 시 계약 보류 조건을 문자로 남기기");
+  }
 
   if (Number.isFinite(saleMarket.ratio) && (saleMarket.ratio as number) >= 80) {
     immediateActions.push("매매가 대비 보증금 비율이 높으므로 보증보험 가능 여부와 선순위 권리 확인 전 계약금 송금을 보류");
@@ -1004,7 +1014,7 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
   immediateActions.push(
     "잔금 전 등기부등본을 다시 발급해 소유자, 근저당, 압류, 가압류, 신탁, 경매 표시를 확인",
     "계약 상대방이 등기부 소유자와 다르면 위임장, 인감증명, 본인 통화로 대리권 확인",
-    "전입신고, 확정일자, 임대차신고, 보증보험 가능 여부를 같은 날 공식 경로로 확인",
+    "전입신고, 확정일자, 임대차신고, 보증보험 가능 여부, 임대인 납세·체납 관련 확인 가능 서류를 같은 날 공식 경로로 확인",
     "특약에 잔금 전 추가 근저당 금지, 등기 변동 시 해제·반환 조건, 하자·수리 책임을 문서화"
   );
 
@@ -1050,6 +1060,8 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
       "rtms-lease-report",
       "gov24",
       "hug-deposit-guarantee",
+      "nts-tax",
+      "wetax-local-tax",
       "easylaw-lease"
     ]),
     "",
@@ -1073,12 +1085,12 @@ export function checkLeaseRedFlags(input: LeaseProfileInput): string {
     lineItems([
       "등기부등본에서 소유자, 근저당, 압류, 가압류, 신탁, 경매 관련 표시 확인",
       "계약 상대방이 등기부 소유자와 같은지 확인하고 대리계약이면 위임 범위 확인",
-      "전입신고, 확정일자, 임대차신고, 보증보험 가능 여부를 같은 체크리스트로 확인",
+      "전입신고, 확정일자, 임대차신고, 보증보험 가능 여부, 임대인 납세·체납 관련 확인 가능 서류를 같은 체크리스트로 확인",
       "특약에 전입·확정일자 전까지 추가 근저당 설정 금지, 하자·수리, 잔금 전 등기부 재확인을 넣을지 중개사에게 질문"
     ]),
     "",
     "## 공식 출처",
-    renderSources(["iros-fixed-date", "easylaw-lease", "law-lease", "hug-deposit-guarantee"]),
+    renderSources(["iros-fixed-date", "easylaw-lease", "law-lease", "hug-deposit-guarantee", "nts-tax", "wetax-local-tax"]),
     "",
     officialNotice()
   ].join("\n");
@@ -1097,7 +1109,8 @@ export function buildMoveInProtectionPlan(input: LeaseProfileInput): string {
       "등기부등본을 직접 발급하거나 중개사 제공본의 발급 시각을 확인",
       "소유자와 계약 상대방 일치 여부 확인",
       "주택 유형, 보증금, 월세, 관리비, 특약을 계약서에 분리 기재",
-      "전세보증금반환보증 가능 여부와 필요 서류를 HUG 등 공식 경로로 확인"
+      "전세보증금반환보증 가능 여부와 필요 서류를 HUG 등 공식 경로로 확인",
+      "임대인 납세증명·체납 관련 확인 가능 서류와 국세청·위택스 확인 경로를 계약 전 질문 목록에 포함"
     ]),
     "",
     "## 잔금·입주 당일",
@@ -1116,7 +1129,7 @@ export function buildMoveInProtectionPlan(input: LeaseProfileInput): string {
     ]),
     "",
     "## 공식 출처",
-    renderSources(["gov24", "rtms-lease-report", "iros-fixed-date", "hug-deposit-guarantee", "easylaw-lease"]),
+    renderSources(["gov24", "rtms-lease-report", "iros-fixed-date", "hug-deposit-guarantee", "nts-tax", "wetax-local-tax", "easylaw-lease"]),
     "",
     officialNotice()
   ].join("\n");
@@ -1131,6 +1144,7 @@ export function prepareContractQuestions(input: LeaseProfileInput): string {
     lineItems([
       "등기부상 소유자와 계약 당사자가 같은가요? 다르면 대리권을 어떤 문서로 확인하나요?",
       "근저당, 압류, 가압류, 신탁, 임차권등기명령, 경매 관련 권리가 있나요?",
+      "임대인 납세증명, 국세·지방세 체납 관련 확인 가능한 서류를 계약 전에 확인할 수 있나요?",
       "잔금일 직전 등기부를 다시 확인하고 특약에 반영할 수 있나요?",
       "전입신고와 확정일자를 바로 진행해도 되는 주택인가요?",
       "주택 임대차 계약 신고는 누가, 언제, 어떤 방식으로 처리하나요?",
@@ -1142,7 +1156,7 @@ export function prepareContractQuestions(input: LeaseProfileInput): string {
     "계약 전 확인을 위해 등기부 권리관계, 전입·확정일자 가능 여부, 임대차신고, 보증보험 가능 여부를 문서 기준으로 확인하고 싶습니다.",
     "",
     "## 공식 출처",
-    renderSources(["rtms-lease-report", "iros-fixed-date", "adr-lease-dispute", "hug-deposit-guarantee"]),
+    renderSources(["rtms-lease-report", "iros-fixed-date", "adr-lease-dispute", "hug-deposit-guarantee", "nts-tax", "wetax-local-tax"]),
     "",
     officialNotice()
   ].join("\n");
@@ -1156,6 +1170,7 @@ function inferOfficialHelpIssueType(input: LeaseProfileInput & { issueType?: Off
   if (/확정\s*일자|확정일자/.test(text)) return "fixed_date";
   if (/전입\s*신고|전입신고/.test(text)) return "move_in";
   if (/보증\s*보험|보증보험|반환\s*보증|반환보증|hug/.test(text)) return "deposit_guarantee";
+  if (/체납|미납|국세|지방세|세금|납세\s*증명|납세증명|세무서|위택스/.test(text)) return "tax_arrears";
   if (/등기부|등기\s*확인|소유자|근저당|압류|가압류|신탁|경매/.test(text)) return "registry";
   if (/분쟁|보증금\s*반환|수선|원상복구|계약갱신|증액|조정/.test(text)) return "dispute";
   return "unknown";
@@ -1168,6 +1183,7 @@ export function routeOfficialHelp(input: LeaseProfileInput & { issueType?: Offic
     fixed_date: ["인터넷등기소", "확정일자 신청과 접수 확인"],
     lease_report: ["부동산거래관리시스템 RTMS", "주택 임대차 계약 신고"],
     deposit_guarantee: ["HUG 주택도시보증공사", "전세보증금반환보증 가입 가능 여부와 서류 확인"],
+    tax_arrears: ["국세청·위택스", "임대인 국세·지방세 체납 우려와 납세증명 확인 경로"],
     dispute: ["한국부동산원·LH 임대차분쟁조정위원회", "보증금 반환, 수선, 원상복구, 계약갱신 분쟁 상담·조정"],
     registry: ["인터넷등기소", "등기부등본 발급과 소유자·권리관계 확인"],
     unknown: ["정부24 또는 임대차분쟁조정위원회", "상황에 맞는 공식 창구 확인"]
@@ -1185,11 +1201,12 @@ export function routeOfficialHelp(input: LeaseProfileInput & { issueType?: Offic
       "확정일자·등기부 확인: 인터넷등기소",
       "주택 임대차 계약 신고: RTMS",
       "보증보험: HUG",
+      "국세·지방세 체납 확인: 국세청·위택스",
       "보증금 반환·원상복구·수선·계약갱신 분쟁: 임대차분쟁조정위원회"
     ]),
     "",
     "## 공식 출처",
-    renderSources(["gov24", "rtms-lease-report", "iros-fixed-date", "hug-deposit-guarantee", "adr-lease-dispute"]),
+    renderSources(["gov24", "rtms-lease-report", "iros-fixed-date", "hug-deposit-guarantee", "nts-tax", "wetax-local-tax", "adr-lease-dispute"]),
     "",
     officialNotice()
   ].join("\n");
