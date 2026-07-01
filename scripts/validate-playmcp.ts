@@ -20,7 +20,7 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   dependencies?: Record<string, string>;
 };
 
-for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", ".github/workflows/registration-preflight.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/docker-image-reference.ts", "scripts/registration-preflight.ts", "scripts/require-registration-env.mjs", "scripts/rate-limit-smoke.ts"]) {
+for (const file of ["Dockerfile", ".dockerignore", ".gitignore", ".github/workflows/ci.yml", ".github/workflows/registration-preflight.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/docker-image-reference.ts", "scripts/registration-preflight.ts", "scripts/require-registration-env.mjs", "scripts/rate-limit-smoke.ts"]) {
   readFileSync(file, "utf8");
 }
 
@@ -55,6 +55,11 @@ assert(/CMD \["node", "dist\/src\/server\.js"\]/.test(dockerfile), "Dockerfile C
 const dockerignore = readFileSync(".dockerignore", "utf8");
 for (const pattern of [".git", ".env", ".env.*", "node_modules", "dist"]) {
   assert(dockerignore.split(/\r?\n/).includes(pattern), `.dockerignore must exclude ${pattern}`);
+}
+
+const gitignore = readFileSync(".gitignore", "utf8");
+for (const pattern of [".env", ".env.*", "node_modules/", "dist/", "coverage/", "*.tsbuildinfo"]) {
+  assert(gitignore.split(/\r?\n/).includes(pattern), `.gitignore must exclude ${pattern}`);
 }
 
 const secretScanSource = readFileSync("scripts/secret-scan.ts", "utf8");
