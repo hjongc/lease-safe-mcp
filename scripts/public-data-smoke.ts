@@ -1,4 +1,4 @@
-import { assessLeaseSafety, compareDepositToSaleMarket, compareRentMarket, resolveLegalDongCode } from "../src/domain.js";
+import { MONEY_INPUT_LIMITS, assessLeaseSafety, compareDepositToSaleMarket, compareRentMarket, resolveLegalDongCode } from "../src/domain.js";
 import type { HousingType } from "../src/sources.js";
 
 const HOUSING_TYPES = ["apartment", "rowhouse", "single_multi", "officetel"] as const satisfies readonly HousingType[];
@@ -41,9 +41,14 @@ export function publicDataSmokeHousingTypes(): HousingType[] {
 }
 
 export function publicDataSmokeDepositManwon(): number {
-  const value = Number(process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON ?? 30000);
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error("PUBLIC_DATA_SMOKE_DEPOSIT_MANWON must be a positive integer for registration-ready deposit-to-sale evidence.");
+  const raw = process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON?.trim() ?? "30000";
+  if (!/^(0|[1-9]\d*)$/.test(raw)) {
+    throw new Error("PUBLIC_DATA_SMOKE_DEPOSIT_MANWON must be a plain positive integer in manwon.");
+  }
+
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0 || value > MONEY_INPUT_LIMITS.depositManwon) {
+    throw new Error(`PUBLIC_DATA_SMOKE_DEPOSIT_MANWON must be a positive integer no greater than ${MONEY_INPUT_LIMITS.depositManwon} manwon for registration-ready deposit-to-sale evidence.`);
   }
   return value;
 }

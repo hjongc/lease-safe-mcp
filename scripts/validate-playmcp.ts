@@ -187,6 +187,8 @@ for (const housingType of ["apartment", "rowhouse", "single_multi", "officetel"]
   assert(publicDataSmoke.includes(`"${housingType}"`), `public-data smoke must cover ${housingType}`);
 }
 assert(/assessLeaseSafety/.test(publicDataSmoke), "public-data smoke must verify the flagship assessment tool");
+assert(/MONEY_INPUT_LIMITS\.depositManwon/.test(publicDataSmoke), "public-data smoke must reuse the bounded deposit input limit");
+assert(/plain positive integer/.test(publicDataSmoke), "public-data smoke must require a plain integer deposit value");
 
 const releasePreflight = readFileSync("scripts/release-preflight.ts", "utf8");
 const registrationPreflight = readFileSync("scripts/registration-preflight.ts", "utf8");

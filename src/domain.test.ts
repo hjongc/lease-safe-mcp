@@ -94,6 +94,12 @@ test("public-data smoke requires a positive demo deposit", () => {
 
     process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON = "30000.5";
     assert.throws(() => publicDataSmokeDepositManwon(), /positive integer/);
+
+    process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON = "3e4";
+    assert.throws(() => publicDataSmokeDepositManwon(), /plain positive integer/);
+
+    process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON = `${MONEY_INPUT_LIMITS.depositManwon + 1}`;
+    assert.throws(() => publicDataSmokeDepositManwon(), /no greater than/);
   } finally {
     if (previousDeposit === undefined) {
       delete process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON;
