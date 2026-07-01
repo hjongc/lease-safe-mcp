@@ -423,7 +423,7 @@ function publicDataNumberFromRequiredTag(xml: string, tags: string[], label: str
 
   const normalized = rawValue.replace(/,/g, "").trim();
   const value = Number(normalized);
-  if (normalized === "" || !Number.isFinite(value) || value < 0) {
+  if (normalized === "" || !Number.isFinite(value) || !Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${label} returned invalid numeric field ${tags.join(" or ")}: ${rawValue}`);
   }
   return value;

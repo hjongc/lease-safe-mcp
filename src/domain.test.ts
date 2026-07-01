@@ -924,6 +924,42 @@ test("rent market comparison rejects empty required money fields", async () => {
   }
 });
 
+test("rent market comparison rejects fractional required money fields", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악소수전세</aptNm>
+            <umdNm>봉천동</umdNm>
+            <deposit>30000.5</deposit>
+            <monthlyRent>0</monthlyRent>
+            <dealYear>2026</dealYear>
+            <dealMonth>5</dealMonth>
+            <dealDay>10</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    await assert.rejects(
+      compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" }),
+      /국토교통부 전월세 실거래 API returned invalid numeric field/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
 test("public-data timeout is explicit and fails fast on invalid configuration", () => {
   const previousTimeout = process.env.PUBLIC_DATA_TIMEOUT_MS;
   try {
@@ -1256,6 +1292,46 @@ test("deposit-to-sale comparison rejects empty required sale amount fields", asy
             <aptNm>관악빈매매</aptNm>
             <umdNm>봉천동</umdNm>
             <dealAmount></dealAmount>
+            <dealYear>2026</dealYear>
+            <dealMonth>5</dealMonth>
+            <dealDay>10</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    await assert.rejects(
+      compareDepositToSaleMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: 30000
+      }),
+      /국토교통부 매매 실거래 API returned invalid numeric field/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
+test("deposit-to-sale comparison rejects fractional required sale amount fields", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악소수매매</aptNm>
+            <umdNm>봉천동</umdNm>
+            <dealAmount>40000.5</dealAmount>
             <dealYear>2026</dealYear>
             <dealMonth>5</dealMonth>
             <dealDay>10</dealDay>
