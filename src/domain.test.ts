@@ -1660,6 +1660,37 @@ test("public-data network errors identify the official source boundary", async (
   }
 });
 
+test("public-data network errors redact service keys without attaching raw causes", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY_ENCODED;
+    globalThis.fetch = async () => {
+      throw new TypeError(`fetch failed for ${VALID_TEST_SERVICE_KEY_ENCODED} and ${VALID_TEST_SERVICE_KEY}`);
+    };
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "관악구" }),
+      error => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /행정표준코드 법정동코드 API request failed before receiving a response/);
+        assert.match(error.message, /\[DATA_GO_KR_SERVICE_KEY 생략\]/);
+        assert.doesNotMatch(error.message, new RegExp(VALID_TEST_SERVICE_KEY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+        assert.doesNotMatch(error.message, new RegExp(VALID_TEST_SERVICE_KEY_ENCODED.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+        assert.equal((error as Error & { cause?: unknown }).cause, undefined);
+        return true;
+      }
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
 test("public-data HTTP errors include a bounded response excerpt", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;

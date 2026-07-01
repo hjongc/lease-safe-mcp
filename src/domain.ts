@@ -406,7 +406,7 @@ async function fetchPublicDataText(label: string, url: URL): Promise<string> {
       throw new Error(`${label} request timed out after ${timeoutMs}ms.`);
     }
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`${label} request failed before receiving a response: ${message}`, { cause: error });
+    throw new Error(`${label} request failed before receiving a response: ${redactDataGoKrServiceKeys(message)}`);
   }
 
   const body = await readPublicDataResponseText(label, response);
