@@ -2,6 +2,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { request } from "node:http";
 import { createServer } from "node:net";
 
+const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
+
 function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
@@ -37,7 +39,21 @@ function smokePortFromEnv(name: string): number | undefined {
   return port;
 }
 
-async function waitForHealth(port: number, server: ChildProcess): Promise<number> {
+function mcpMaxBodyBytesFromEnv(): number {
+  const rawLimit = process.env.MCP_MAX_BODY_BYTES?.trim();
+  if (!rawLimit) return DEFAULT_MCP_MAX_BODY_BYTES;
+  if (!/^(0|[1-9]\d*)$/.test(rawLimit)) {
+    throw new Error("MCP_MAX_BODY_BYTES must be a positive integer.");
+  }
+
+  const parsed = Number(rawLimit);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error("MCP_MAX_BODY_BYTES must be a positive integer.");
+  }
+  return parsed;
+}
+
+async function waitForHealth(port: number, server: ChildProcess): Promise<void> {
   const healthUrl = `http://127.0.0.1:${port}/healthz`;
   const startedAt = Date.now();
   let lastError: unknown;
@@ -50,14 +66,17 @@ async function waitForHealth(port: number, server: ChildProcess): Promise<number
     try {
       const response = await fetch(healthUrl);
       if (response.ok) {
-        const body = await response.json() as { ok?: unknown; service?: unknown; maxBodyBytes?: unknown; rateLimitPerMinute?: unknown };
+        assertSecurityHeaders(response, "healthz");
+        const body = await response.json() as { ok?: unknown; service?: unknown; version?: unknown; maxBodyBytes?: unknown; rateLimitPerMinute?: unknown; publicDataTimeoutMs?: unknown };
         if (
           body.ok === true &&
           body.service === "lease-safe" &&
-          Number.isSafeInteger(body.maxBodyBytes) &&
-          Number.isSafeInteger(body.rateLimitPerMinute)
+          typeof body.version === "string" &&
+          body.maxBodyBytes === undefined &&
+          body.rateLimitPerMinute === undefined &&
+          body.publicDataTimeoutMs === undefined
         ) {
-          return Number(body.maxBodyBytes);
+          return;
         }
       }
     } catch (error) {
@@ -67,6 +86,102 @@ async function waitForHealth(port: number, server: ChildProcess): Promise<number
   }
 
   throw new Error(`Timed out waiting for ${healthUrl}: ${(lastError as Error | undefined)?.message ?? "no response"}`);
+}
+
+function assertSecurityHeaders(response: Response, label: string): void {
+  const requestId = response.headers.get("x-request-id");
+  if (!requestId || !/^[A-Za-z0-9._-]{1,64}$/.test(requestId)) {
+    throw new Error(`${label} response must set a safe X-Request-Id.`);
+  }
+  if (response.headers.get("x-content-type-options") !== "nosniff") {
+    throw new Error(`${label} response must set X-Content-Type-Options: nosniff.`);
+  }
+  if (response.headers.get("x-frame-options") !== "DENY") {
+    throw new Error(`${label} response must set X-Frame-Options: DENY.`);
+  }
+  if (response.headers.get("content-security-policy") !== "default-src 'none'; base-uri 'none'; frame-ancestors 'none'") {
+    throw new Error(`${label} response must set a restrictive Content-Security-Policy.`);
+  }
+  if (response.headers.get("referrer-policy") !== "no-referrer") {
+    throw new Error(`${label} response must set Referrer-Policy: no-referrer.`);
+  }
+  if (response.headers.get("cache-control") !== "no-store") {
+    throw new Error(`${label} response must set Cache-Control: no-store.`);
+  }
+}
+
+async function verifyRequestIdPropagation(endpoint: string): Promise<void> {
+  const response = await fetch(endpoint.replace(/\/mcp$/, "/healthz"), {
+    headers: {
+      "x-request-id": "lease-safe-smoke-request-1"
+    }
+  });
+
+  assertSecurityHeaders(response, "request-id propagation");
+  if (response.headers.get("x-request-id") !== "lease-safe-smoke-request-1") {
+    throw new Error("Health response did not preserve the supplied safe X-Request-Id.");
+  }
+}
+
+async function verifyUnknownRoute(endpoint: string): Promise<void> {
+  const response = await fetch(endpoint.replace(/\/mcp$/, "/unknown-route"));
+  assertSecurityHeaders(response, "unknown route");
+
+  if (response.status !== 404) {
+    const text = await response.text();
+    throw new Error(`Expected unknown route to return 404, got ${response.status}: ${text}`);
+  }
+  if (!response.headers.get("content-type")?.includes("application/json")) {
+    throw new Error("Unknown route must return application/json, not the default HTML response.");
+  }
+
+  const body = await response.json() as { error?: unknown };
+  if (body.error !== "Not found") {
+    throw new Error("Unknown route did not return the expected not-found JSON body.");
+  }
+}
+
+async function verifyEncodedOddPathRejected(endpoint: string): Promise<void> {
+  const target = new URL(endpoint);
+  const response = await new Promise<{ statusCode: number; body: string; contentType: string | string[] | undefined; requestId: string | string[] | undefined }>((resolve, reject) => {
+    const req = request({
+      hostname: target.hostname,
+      port: target.port,
+      path: "/%",
+      method: "GET"
+    }, res => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", chunk => {
+        body += chunk;
+      });
+      res.on("end", () => {
+        resolve({
+          statusCode: res.statusCode ?? 0,
+          body,
+          contentType: res.headers["content-type"],
+          requestId: res.headers["x-request-id"]
+        });
+      });
+    });
+    req.on("error", reject);
+    req.end();
+  });
+
+  if (response.statusCode !== 404) {
+    throw new Error(`Expected encoded odd path to return 404, got ${response.statusCode}: ${response.body}`);
+  }
+  if (typeof response.requestId !== "string" || !/^[A-Za-z0-9._-]{1,64}$/.test(response.requestId)) {
+    throw new Error("Encoded odd path response must include a safe X-Request-Id.");
+  }
+  if (typeof response.contentType !== "string" || !response.contentType.includes("application/json")) {
+    throw new Error("Encoded odd path response must return application/json, not the default HTML error response.");
+  }
+
+  const body = JSON.parse(response.body) as { error?: unknown };
+  if (body.error !== "Not found") {
+    throw new Error("Encoded odd path response did not return the expected not-found JSON body.");
+  }
 }
 
 async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): Promise<void> {
@@ -86,7 +201,7 @@ async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): P
 
 async function verifyRejectedHost(endpoint: string): Promise<void> {
   const target = new URL(endpoint.replace(/\/mcp$/, "/healthz"));
-  const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+  const response = await new Promise<{ statusCode: number; body: string; requestId: string | string[] | undefined }>((resolve, reject) => {
     const req = request({
       hostname: target.hostname,
       port: target.port,
@@ -102,7 +217,7 @@ async function verifyRejectedHost(endpoint: string): Promise<void> {
         body += chunk;
       });
       res.on("end", () => {
-        resolve({ statusCode: res.statusCode ?? 0, body });
+        resolve({ statusCode: res.statusCode ?? 0, body, requestId: res.headers["x-request-id"] });
       });
     });
     req.on("error", reject);
@@ -111,6 +226,9 @@ async function verifyRejectedHost(endpoint: string): Promise<void> {
 
   if (response.statusCode !== 403) {
     throw new Error(`Expected disallowed Host header to return 403, got ${response.statusCode}: ${response.body}`);
+  }
+  if (typeof response.requestId !== "string" || !/^[A-Za-z0-9._-]{1,64}$/.test(response.requestId)) {
+    throw new Error("Disallowed Host header response must include a safe X-Request-Id.");
   }
 
   const body = JSON.parse(response.body) as { error?: { code?: unknown; message?: unknown } };
@@ -222,6 +340,33 @@ async function verifyUnsupportedContentTypeRequest(endpoint: string, authToken: 
   }
 }
 
+async function verifyCompressedRequestRejected(endpoint: string, authToken: string): Promise<void> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${authToken}`,
+      "content-encoding": "gzip",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "compressed-request-smoke",
+      method: "tools/list"
+    })
+  });
+
+  assertSecurityHeaders(response, "compressed request rejection");
+  if (response.status !== 415) {
+    const text = await response.text();
+    throw new Error(`Expected compressed MCP request to return 415, got ${response.status}: ${text}`);
+  }
+
+  const body = await response.json() as { error?: { code?: unknown; message?: unknown } };
+  if (body.error?.code !== -32600 || body.error?.message !== "MCP POST requests must not use compressed request bodies.") {
+    throw new Error("Compressed MCP request did not return the expected JSON-RPC invalid request error.");
+  }
+}
+
 async function verifyUnauthorizedRequest(endpoint: string): Promise<void> {
   const response = await fetch(endpoint, {
     method: "POST",
@@ -248,6 +393,36 @@ async function verifyUnauthorizedRequest(endpoint: string): Promise<void> {
   const body = await response.json() as { error?: { message?: unknown } };
   if (body.error?.message !== "Unauthorized") {
     throw new Error("Unauthenticated MCP request did not return the expected JSON-RPC error.");
+  }
+}
+
+async function verifyOversizedBearerTokenRejected(endpoint: string): Promise<void> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${"x".repeat(4097)}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "oversized-bearer-smoke",
+      method: "tools/list"
+    })
+  });
+
+  if (response.status !== 401) {
+    const text = await response.text();
+    throw new Error(`Expected oversized bearer MCP request to return 401, got ${response.status}: ${text}`);
+  }
+
+  const authenticate = response.headers.get("www-authenticate");
+  if (authenticate !== 'Bearer realm="lease-safe"') {
+    throw new Error(`Expected oversized bearer MCP request to advertise WWW-Authenticate: Bearer, got ${authenticate ?? "missing"}.`);
+  }
+
+  const body = await response.json() as { error?: { message?: unknown } };
+  if (body.error?.message !== "Unauthorized") {
+    throw new Error("Oversized bearer MCP request did not return the expected JSON-RPC auth error.");
   }
 }
 
@@ -302,8 +477,14 @@ async function main() {
   });
 
   try {
-    const maxBodyBytes = await waitForHealth(port, server);
+    await waitForHealth(port, server);
     console.log("healthz=ok");
+    await verifyRequestIdPropagation(endpoint);
+    console.log("request_id=ok");
+    await verifyUnknownRoute(endpoint);
+    console.log("unknown_route=ok");
+    await verifyEncodedOddPathRejected(endpoint);
+    console.log("encoded_odd_path=ok");
     await verifyRejectedHost(endpoint);
     console.log("host_rejection=ok");
     await verifyHeadMethodNotAllowed(endpoint);
@@ -318,9 +499,13 @@ async function main() {
     console.log("auth_before_parse=ok");
     await verifyUnsupportedContentTypeRequest(endpoint, authToken);
     console.log("content_type_rejection=ok");
+    await verifyCompressedRequestRejected(endpoint, authToken);
+    console.log("compressed_request_rejection=ok");
     await verifyUnauthorizedRequest(endpoint);
     console.log("auth_rejection=ok");
-    await verifyOversizedRequest(endpoint, maxBodyBytes);
+    await verifyOversizedBearerTokenRejected(endpoint);
+    console.log("oversized_bearer_rejection=ok");
+    await verifyOversizedRequest(endpoint, mcpMaxBodyBytesFromEnv());
     console.log("oversized_request=ok");
     await runNode(["dist/scripts/smoke.js"], env);
     console.log("http_smoke=ok");

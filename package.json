@@ -16,7 +16,7 @@
     "smoke:rate-limit": "npm run build && node dist/scripts/rate-limit-smoke.js",
     "smoke:public-data": "npm run build && node dist/scripts/public-data-smoke.js",
     "preflight": "npm run build && node dist/scripts/release-preflight.js",
-    "preflight:registration": "npm run build && node dist/scripts/registration-preflight.js",
+    "preflight:registration": "node scripts/require-registration-env.mjs && npm run build && node dist/scripts/registration-preflight.js",
     "validate:playmcp": "npm run build && node dist/scripts/validate-playmcp.js"
   },
   "engines": {

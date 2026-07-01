@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 
 const imageTag = process.env.DOCKER_SMOKE_IMAGE ?? process.env.PREFLIGHT_DOCKER_TAG ?? "lease-safe-mcp-preflight";
 const containerName = `lease-safe-mcp-smoke-${process.pid}`;
+const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
 const publicDataSmokeKey = [
   "LeaseSafePublicDataSmokeKey",
   "OnlyForDockerSmoke1234567890+/",
@@ -99,7 +100,7 @@ async function containerLogs(containerId: string): Promise<string> {
   }
 }
 
-async function waitForHealth(port: number, containerId: string): Promise<number> {
+async function waitForHealth(port: number, containerId: string): Promise<void> {
   const healthUrl = `http://127.0.0.1:${port}/healthz`;
   const startedAt = Date.now();
   let lastError: unknown;
@@ -112,14 +113,17 @@ async function waitForHealth(port: number, containerId: string): Promise<number>
     try {
       const response = await fetch(healthUrl);
       if (response.ok) {
-        const body = await response.json() as { ok?: unknown; service?: unknown; maxBodyBytes?: unknown; rateLimitPerMinute?: unknown };
+        assertSecurityHeaders(response, "docker healthz");
+        const body = await response.json() as { ok?: unknown; service?: unknown; version?: unknown; maxBodyBytes?: unknown; rateLimitPerMinute?: unknown; publicDataTimeoutMs?: unknown };
         if (
           body.ok === true &&
           body.service === "lease-safe" &&
-          Number.isSafeInteger(body.maxBodyBytes) &&
-          Number.isSafeInteger(body.rateLimitPerMinute)
+          typeof body.version === "string" &&
+          body.maxBodyBytes === undefined &&
+          body.rateLimitPerMinute === undefined &&
+          body.publicDataTimeoutMs === undefined
         ) {
-          return Number(body.maxBodyBytes);
+          return;
         }
       }
     } catch (error) {
@@ -129,6 +133,102 @@ async function waitForHealth(port: number, containerId: string): Promise<number>
   }
 
   throw new Error(`Timed out waiting for ${healthUrl}: ${(lastError as Error | undefined)?.message ?? "no response"}`);
+}
+
+function assertSecurityHeaders(response: Response, label: string): void {
+  const requestId = response.headers.get("x-request-id");
+  if (!requestId || !/^[A-Za-z0-9._-]{1,64}$/.test(requestId)) {
+    throw new Error(`${label} response must set a safe X-Request-Id.`);
+  }
+  if (response.headers.get("x-content-type-options") !== "nosniff") {
+    throw new Error(`${label} response must set X-Content-Type-Options: nosniff.`);
+  }
+  if (response.headers.get("x-frame-options") !== "DENY") {
+    throw new Error(`${label} response must set X-Frame-Options: DENY.`);
+  }
+  if (response.headers.get("content-security-policy") !== "default-src 'none'; base-uri 'none'; frame-ancestors 'none'") {
+    throw new Error(`${label} response must set a restrictive Content-Security-Policy.`);
+  }
+  if (response.headers.get("referrer-policy") !== "no-referrer") {
+    throw new Error(`${label} response must set Referrer-Policy: no-referrer.`);
+  }
+  if (response.headers.get("cache-control") !== "no-store") {
+    throw new Error(`${label} response must set Cache-Control: no-store.`);
+  }
+}
+
+async function verifyRequestIdPropagation(endpoint: string): Promise<void> {
+  const response = await fetch(endpoint.replace(/\/mcp$/, "/healthz"), {
+    headers: {
+      "x-request-id": "lease-safe-docker-smoke-request-1"
+    }
+  });
+
+  assertSecurityHeaders(response, "docker request-id propagation");
+  if (response.headers.get("x-request-id") !== "lease-safe-docker-smoke-request-1") {
+    throw new Error("Docker health response did not preserve the supplied safe X-Request-Id.");
+  }
+}
+
+async function verifyUnknownRoute(endpoint: string): Promise<void> {
+  const response = await fetch(endpoint.replace(/\/mcp$/, "/unknown-route"));
+  assertSecurityHeaders(response, "docker unknown route");
+
+  if (response.status !== 404) {
+    const text = await response.text();
+    throw new Error(`Expected unknown Docker route to return 404, got ${response.status}: ${text}`);
+  }
+  if (!response.headers.get("content-type")?.includes("application/json")) {
+    throw new Error("Unknown Docker route must return application/json, not the default HTML response.");
+  }
+
+  const body = await response.json() as { error?: unknown };
+  if (body.error !== "Not found") {
+    throw new Error("Unknown Docker route did not return the expected not-found JSON body.");
+  }
+}
+
+async function verifyEncodedOddPathRejected(endpoint: string): Promise<void> {
+  const target = new URL(endpoint);
+  const response = await new Promise<{ statusCode: number; body: string; contentType: string | string[] | undefined; requestId: string | string[] | undefined }>((resolve, reject) => {
+    const req = request({
+      hostname: target.hostname,
+      port: target.port,
+      path: "/%",
+      method: "GET"
+    }, res => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", chunk => {
+        body += chunk;
+      });
+      res.on("end", () => {
+        resolve({
+          statusCode: res.statusCode ?? 0,
+          body,
+          contentType: res.headers["content-type"],
+          requestId: res.headers["x-request-id"]
+        });
+      });
+    });
+    req.on("error", reject);
+    req.end();
+  });
+
+  if (response.statusCode !== 404) {
+    throw new Error(`Expected encoded odd Docker path to return 404, got ${response.statusCode}: ${response.body}`);
+  }
+  if (typeof response.requestId !== "string" || !/^[A-Za-z0-9._-]{1,64}$/.test(response.requestId)) {
+    throw new Error("Encoded odd Docker path response must include a safe X-Request-Id.");
+  }
+  if (typeof response.contentType !== "string" || !response.contentType.includes("application/json")) {
+    throw new Error("Encoded odd Docker path response must return application/json, not the default HTML error response.");
+  }
+
+  const body = JSON.parse(response.body) as { error?: unknown };
+  if (body.error !== "Not found") {
+    throw new Error("Encoded odd Docker path response did not return the expected not-found JSON body.");
+  }
 }
 
 async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): Promise<void> {
@@ -148,7 +248,7 @@ async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): P
 
 async function verifyRejectedHost(endpoint: string): Promise<void> {
   const target = new URL(endpoint.replace(/\/mcp$/, "/healthz"));
-  const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+  const response = await new Promise<{ statusCode: number; body: string; requestId: string | string[] | undefined }>((resolve, reject) => {
     const req = request({
       hostname: target.hostname,
       port: target.port,
@@ -164,7 +264,7 @@ async function verifyRejectedHost(endpoint: string): Promise<void> {
         body += chunk;
       });
       res.on("end", () => {
-        resolve({ statusCode: res.statusCode ?? 0, body });
+        resolve({ statusCode: res.statusCode ?? 0, body, requestId: res.headers["x-request-id"] });
       });
     });
     req.on("error", reject);
@@ -173,6 +273,9 @@ async function verifyRejectedHost(endpoint: string): Promise<void> {
 
   if (response.statusCode !== 403) {
     throw new Error(`Expected disallowed Docker Host header to return 403, got ${response.statusCode}: ${response.body}`);
+  }
+  if (typeof response.requestId !== "string" || !/^[A-Za-z0-9._-]{1,64}$/.test(response.requestId)) {
+    throw new Error("Disallowed Docker Host header response must include a safe X-Request-Id.");
   }
 
   const body = JSON.parse(response.body) as { error?: { code?: unknown; message?: unknown } };
@@ -284,6 +387,33 @@ async function verifyUnsupportedContentTypeRequest(endpoint: string, authToken: 
   }
 }
 
+async function verifyCompressedRequestRejected(endpoint: string, authToken: string): Promise<void> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${authToken}`,
+      "content-encoding": "gzip",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "docker-compressed-request-smoke",
+      method: "tools/list"
+    })
+  });
+
+  assertSecurityHeaders(response, "docker compressed request rejection");
+  if (response.status !== 415) {
+    const text = await response.text();
+    throw new Error(`Expected compressed Docker MCP request to return 415, got ${response.status}: ${text}`);
+  }
+
+  const body = await response.json() as { error?: { code?: unknown; message?: unknown } };
+  if (body.error?.code !== -32600 || body.error?.message !== "MCP POST requests must not use compressed request bodies.") {
+    throw new Error("Compressed Docker MCP request did not return the expected JSON-RPC invalid request error.");
+  }
+}
+
 async function verifyUnauthorizedRequest(endpoint: string): Promise<void> {
   const response = await fetch(endpoint, {
     method: "POST",
@@ -310,6 +440,36 @@ async function verifyUnauthorizedRequest(endpoint: string): Promise<void> {
   const body = await response.json() as { error?: { message?: unknown } };
   if (body.error?.message !== "Unauthorized") {
     throw new Error("Unauthenticated Docker MCP request did not return the expected JSON-RPC error.");
+  }
+}
+
+async function verifyOversizedBearerTokenRejected(endpoint: string): Promise<void> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${"x".repeat(4097)}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "docker-oversized-bearer-smoke",
+      method: "tools/list"
+    })
+  });
+
+  if (response.status !== 401) {
+    const text = await response.text();
+    throw new Error(`Expected oversized bearer Docker MCP request to return 401, got ${response.status}: ${text}`);
+  }
+
+  const authenticate = response.headers.get("www-authenticate");
+  if (authenticate !== 'Bearer realm="lease-safe"') {
+    throw new Error(`Expected oversized bearer Docker MCP request to advertise WWW-Authenticate: Bearer, got ${authenticate ?? "missing"}.`);
+  }
+
+  const body = await response.json() as { error?: { message?: unknown } };
+  if (body.error?.message !== "Unauthorized") {
+    throw new Error("Oversized bearer Docker MCP request did not return the expected JSON-RPC auth error.");
   }
 }
 
@@ -345,8 +505,14 @@ async function main() {
   ]);
 
   try {
-    const maxBodyBytes = await waitForHealth(port, containerId);
+    await waitForHealth(port, containerId);
     console.log("docker_healthz=ok");
+    await verifyRequestIdPropagation(endpoint);
+    console.log("docker_request_id=ok");
+    await verifyUnknownRoute(endpoint);
+    console.log("docker_unknown_route=ok");
+    await verifyEncodedOddPathRejected(endpoint);
+    console.log("docker_encoded_odd_path=ok");
     await verifyRejectedHost(endpoint);
     console.log("docker_host_rejection=ok");
     await verifyHeadMethodNotAllowed(endpoint);
@@ -361,9 +527,13 @@ async function main() {
     console.log("docker_auth_before_parse=ok");
     await verifyUnsupportedContentTypeRequest(endpoint, authToken);
     console.log("docker_content_type_rejection=ok");
+    await verifyCompressedRequestRejected(endpoint, authToken);
+    console.log("docker_compressed_request_rejection=ok");
     await verifyUnauthorizedRequest(endpoint);
     console.log("docker_auth_rejection=ok");
-    await verifyOversizedRequest(endpoint, maxBodyBytes);
+    await verifyOversizedBearerTokenRejected(endpoint);
+    console.log("docker_oversized_bearer_rejection=ok");
+    await verifyOversizedRequest(endpoint, DEFAULT_MCP_MAX_BODY_BYTES);
     console.log("docker_oversized_request=ok");
     await runNode(["dist/scripts/smoke.js"], {
       ...process.env,

@@ -11,7 +11,7 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   dependencies?: Record<string, string>;
 };
 
-for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", ".github/workflows/registration-preflight.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/registration-preflight.ts", "scripts/rate-limit-smoke.ts"]) {
+for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", ".github/workflows/registration-preflight.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/registration-preflight.ts", "scripts/require-registration-env.mjs", "scripts/rate-limit-smoke.ts"]) {
   readFileSync(file, "utf8");
 }
 
@@ -26,9 +26,11 @@ assert(packageJson.scripts?.["smoke:docker"], "Docker smoke script is required")
 assert(packageJson.scripts?.["smoke:rate-limit"], "rate-limit smoke script is required");
 assert(packageJson.scripts?.preflight, "preflight script is required");
 assert(packageJson.scripts?.["preflight:registration"], "registration preflight script is required");
+assert(/require-registration-env\.mjs/.test(packageJson.scripts?.["preflight:registration"] ?? ""), "registration preflight must check required live-data env before building");
 assert(packageJson.scripts?.["validate:playmcp"], "PlayMCP validation script is required");
 
 const dockerfile = readFileSync("Dockerfile", "utf8");
+assert((dockerfile.match(/^FROM node:20-bookworm-slim@sha256:[a-f0-9]{64}/gm) ?? []).length === 3, "Dockerfile must pin every Node base image stage by digest");
 assert(/COPY package\*\.json \.\//.test(dockerfile), "Dockerfile must copy package-lock.json for reproducible builds");
 assert(/RUN npm ci/.test(dockerfile), "Dockerfile must use npm ci");
 assert(/EXPOSE 3000/.test(dockerfile), "Dockerfile must expose port 3000");
@@ -41,35 +43,59 @@ for (const pattern of [".git", ".env", ".env.*", "node_modules", "dist"]) {
   assert(dockerignore.split(/\r?\n/).includes(pattern), `.dockerignore must exclude ${pattern}`);
 }
 
+const secretScanSource = readFileSync("scripts/secret-scan.ts", "utf8");
+assert(/"\.mjs"/.test(secretScanSource), "secret scan must cover checked-in ESM helper scripts");
+
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
 const registrationWorkflow = readFileSync(".github/workflows/registration-preflight.yml", "utf8");
 const dependabot = readFileSync(".github/dependabot.yml", "utf8");
-assert(/actions\/checkout@v5/.test(ci), "CI must use actions/checkout@v5");
-assert(/actions\/setup-node@v5/.test(ci), "CI must use actions/setup-node@v5");
+for (const workflow of [ci, registrationWorkflow]) {
+  assert(/actions\/checkout@[a-f0-9]{40}/.test(workflow), "GitHub workflows must pin actions/checkout by commit SHA");
+  assert(/actions\/setup-node@[a-f0-9]{40}/.test(workflow), "GitHub workflows must pin actions/setup-node by commit SHA");
+  assert(!/actions\/(?:checkout|setup-node)@v\d+/.test(workflow), "GitHub workflows must not use mutable action version tags");
+}
 for (const command of ["npm ci", "npm run scan:secrets", "npm test", "npm run validate:playmcp", "npm run smoke:http", "npm run smoke:rate-limit", "npm audit --omit=dev", "docker build", "npm run smoke:docker"]) {
   assert(ci.includes(command), `CI must run ${command}`);
 }
 assert(/DATA_GO_KR_SERVICE_KEY/.test(ci), "CI must support optional live public-data smoke through DATA_GO_KR_SERVICE_KEY");
 assert(/REQUIRE_LIVE_PUBLIC_DATA:\s*"1"/.test(ci), "CI live public-data smoke must use registration-mode coverage rules when a key is configured");
+assert(/Publish live public-data status/.test(ci), "CI must publish whether live public-data smoke executed or skipped");
+assert(/skipped because DATA_GO_KR_SERVICE_KEY is not configured/.test(ci), "CI summary must make skipped live public-data evidence explicit");
+assert(/Registration Preflight workflow to pass/.test(ci), "CI summary must point operators to required registration evidence");
 assert(/workflow_dispatch/.test(registrationWorkflow), "registration preflight workflow must be manually dispatchable");
 assert(/DATA_GO_KR_SERVICE_KEY/.test(registrationWorkflow), "registration preflight workflow must inject DATA_GO_KR_SERVICE_KEY from secrets");
+assert(/Verify live public-data secret/.test(registrationWorkflow), "registration preflight workflow must fail fast when the live public-data secret is missing");
+assert(/repository secret is required for registration evidence/.test(registrationWorkflow), "registration preflight workflow must explain the missing secret clearly");
 assert(/npm run preflight:registration/.test(registrationWorkflow), "registration preflight workflow must run npm run preflight:registration");
+assert(/GITHUB_STEP_SUMMARY/.test(registrationWorkflow), "registration preflight workflow must publish a shareable evidence summary");
+assert(/Lease Safe Registration Evidence/.test(registrationWorkflow), "registration preflight summary must be clearly titled");
+assert(/GITHUB_SHA/.test(registrationWorkflow), "registration preflight summary must include the submitted commit");
+assert(/GITHUB_RUN_ID/.test(registrationWorkflow), "registration preflight summary must include the workflow run URL");
+assert(/Live public-data smoke: required by registration preflight/.test(registrationWorkflow), "registration preflight summary must state live public-data evidence is required");
+assert(/Docker runtime smoke: included in registration preflight/.test(registrationWorkflow), "registration preflight summary must state Docker runtime evidence is included");
 assert(/package-ecosystem:\s*npm/.test(dependabot), "Dependabot must monitor npm dependencies");
 assert(/package-ecosystem:\s*github-actions/.test(dependabot), "Dependabot must monitor GitHub Actions");
+assert(/package-ecosystem:\s*docker/.test(dependabot), "Dependabot must monitor Docker base images");
 
 const submission = readFileSync("docs/submission.md", "utf8");
 const operations = readFileSync("docs/operations.md", "utf8");
+const readme = readFileSync("README.md", "utf8");
 const security = readFileSync("SECURITY.md", "utf8");
+assert(/Dependabot monitors npm packages, GitHub Actions, and Docker base images weekly/.test(operations), "operations runbook must describe all Dependabot ecosystems");
+assert(!/submission branch/i.test(readme), "README must not tell operators to register a vague submission branch");
+assert(/Branch\/ref:\s*`main`/.test(readme), "README PlayMCP build instructions must point Branch/ref at main");
 for (const required of [
   "Lease Safe(전월세안전내비)",
   "lease-safe",
   "Streamable HTTP",
   "/mcp",
   "/healthz",
+  "minimal liveness metadata",
   "assess_lease_safety",
   "overall risk level",
   "DATA_GO_KR_SERVICE_KEY",
   "MCP_ALLOWED_HOSTS",
+  "underscores",
   "MCP_MAX_BODY_BYTES",
   "MCP_RATE_LIMIT_PER_MINUTE",
   "PUBLIC_DATA_TIMEOUT_MS",
@@ -77,8 +103,10 @@ for (const required of [
   "unsupported `/mcp` methods",
   "non-JSON MCP POST bodies",
   "WWW-Authenticate",
+  "X-Content-Type-Options",
   "every supported housing type",
   "Registration Preflight",
+  "workflow run URL",
   "npm run preflight:registration",
   "npm run preflight"
 ]) {
@@ -89,9 +117,19 @@ for (const required of [
   "unsupported-method rejection",
   "invalid-JSON rejection",
   "unsupported-content-type rejection",
+  "compressed-request rejection",
+  "unknown-route rejection",
+  "encoded-path rejection",
   "WWW-Authenticate",
+  "X-Request-Id",
+  "Cache-Control",
+  "X-Frame-Options",
+  "Content-Security-Policy",
+  "minimal liveness metadata",
+  "underscores",
   "every supported housing type",
   "Registration Preflight",
+  "job summary",
   "official source registry access",
   "Docker runtime smoke"
 ]) {
@@ -100,12 +138,18 @@ for (const required of [
 
 const server = readFileSync("src/server.ts", "utf8");
 const domain = readFileSync("src/domain.ts", "utf8");
+const healthzRoute = server.match(/app\.get\("\/healthz"[\s\S]*?\n  \}\);/)?.[0] ?? "";
 assert(/MCP_ALLOWED_HOSTS/.test(server), "server must support MCP_ALLOWED_HOSTS");
 assert(/plain hostnames, not URLs, ports/.test(server), "server must reject unsafe MCP_ALLOWED_HOSTS entries");
 assert(/userinfo, query strings, fragments/.test(server), "server must reject URL userinfo/query/fragment host allowlist entries");
+assert(/isValidAllowedHost/.test(server), "server must validate MCP_ALLOWED_HOSTS hostname label syntax");
+assert(/isValidIpv4Host/.test(server), "server must allow validated IPv4 host allowlist entries");
+assert(/isValidDnsHost/.test(server), "server must allow validated DNS host allowlist entries");
 assert(/DATA_GO_KR_SERVICE_KEY is required in production/.test(server), "server must fail fast without DATA_GO_KR_SERVICE_KEY in production");
 assert(/timingSafeEqual/.test(server), "server must compare bearer tokens with timingSafeEqual");
 assert(/MCP_AUTH_TOKEN must be at least/.test(server), "server must reject weak MCP_AUTH_TOKEN values");
+assert(/MAX_MCP_AUTH_TOKEN_LENGTH/.test(server), "server must bound MCP_AUTH_TOKEN length");
+assert(/suppliedToken\.length > MAX_MCP_AUTH_TOKEN_LENGTH/.test(server), "server must reject oversized supplied bearer tokens before timing-safe comparison");
 assert(/MCP_AUTH_TOKEN_PLACEHOLDERS/.test(server), "server must reject placeholder MCP_AUTH_TOKEN values");
 assert(/MCP_AUTH_TOKEN must be a real bearer token, not a placeholder/.test(server), "server must fail clearly on placeholder MCP_AUTH_TOKEN values");
 assert(/WWW-Authenticate/.test(server), "server must advertise bearer authentication on unauthorized MCP requests");
@@ -117,6 +161,8 @@ assert(/express\.json\(\{ limit: `\$\{maxBodyBytes\}b` \}\)/.test(server), "serv
 assert(/MCP_RATE_LIMIT_PER_MINUTE/.test(server), "server must support MCP request rate limiting");
 assert(/requireMcpJsonContentType/.test(server), "server must reject non-JSON MCP POST requests before transport handling");
 assert(/MCP POST requests must use application\/json/.test(server), "server must return a clear non-JSON MCP POST error");
+assert(/rejectCompressedMcpRequest/.test(server), "server must reject compressed MCP request bodies before JSON parsing");
+assert(/MCP POST requests must not use compressed request bodies/.test(server), "server must return a clear compressed MCP request error");
 assert(/MCP_TEXT_LIMITS/.test(server), "server must define explicit MCP text input limits");
 assert(/regionSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.region\)/.test(server), "server must bound MCP region text inputs");
 assert(/situationSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.situation\)/.test(server), "server must bound MCP situation text inputs");
@@ -171,14 +217,33 @@ assert(/PUBLIC_DATA_TIMEOUT_MS/.test(domain), "domain must support a bounded pub
 assert(/parsePlainInteger/.test(domain), "domain must parse public-data timeout as a plain integer");
 assert(/MAX_PUBLIC_DATA_RESPONSE_BYTES/.test(domain), "domain must bound official public-data response sizes");
 assert(/publicDataTimeoutMs/.test(server), "server must validate the public-data timeout at startup");
+assert(/ok:\s*true[\s\S]*service:\s*"lease-safe"[\s\S]*version:\s*VERSION/.test(healthzRoute), "healthz must expose only minimal liveness metadata");
+assert(!/maxBodyBytes/.test(healthzRoute), "healthz must not expose MCP body-size tuning");
+assert(!/rateLimitPerMinute/.test(healthzRoute), "healthz must not expose rate-limit tuning");
+assert(!/publicDataTimeoutMs/.test(healthzRoute), "healthz must not expose public-data timeout tuning");
 assert(/SIGTERM/.test(server), "server must handle SIGTERM for container shutdown");
 assert(/x-powered-by/.test(server), "server must disable x-powered-by");
+assert(/X-Request-Id/.test(server), "server must set X-Request-Id");
+assert(/app\.use\(setRequestId\)[\s\S]*app\.use\(hostHeaderValidation\(allowedHosts\)\)/.test(server), "server must assign request IDs before host validation");
+assert(/REQUEST_ID_PATTERN/.test(server), "server must validate incoming request IDs before echoing them");
+assert(/compactLogError/.test(server), "server must log compact internal error summaries");
+assert(/X-Content-Type-Options/.test(server), "server must set X-Content-Type-Options");
+assert(/X-Frame-Options/.test(server), "server must set X-Frame-Options");
+assert(/Content-Security-Policy/.test(server), "server must set Content-Security-Policy");
+assert(/frame-ancestors 'none'/.test(server), "server CSP must prevent framing");
+assert(/Referrer-Policy/.test(server), "server must set Referrer-Policy");
+assert(/Cache-Control/.test(server), "server must set Cache-Control");
 assert(/name:\s*"lease-safe"/.test(server), "MCP server name must be lease-safe");
 assert(!/name:\s*"[^"]*kakao[^"]*"/i.test(server), "MCP server name must not include kakao");
 assert(/StreamableHTTPServerTransport/.test(server), "server must use Streamable HTTP");
 assert(/sessionIdGenerator:\s*undefined/.test(server), "server must be stateless");
 assert(/methodNotAllowedForMcp/.test(server), "server must centralize MCP method rejection responses");
 assert(/setHeader\("Allow",\s*"POST"\)/.test(server), "server must advertise Allow: POST for unsupported MCP methods");
+assert(/function notFound/.test(server), "server must explicitly handle unknown routes");
+assert(/app\.use\(notFound\)/.test(server), "server must install explicit unknown-route handling");
+assert(/handleUnexpectedExpressError/.test(server), "server must install explicit JSON error handling for non-MCP routes");
+assert(/expressErrorStatus/.test(server), "server must map unexpected Express errors to bounded HTTP statuses");
+assert(/Bad request/.test(server), "server must return a bounded bad-request JSON body for unexpected Express 400 errors");
 assert(/app\.head\("\/mcp"/.test(server), "server must explicitly reject HEAD /mcp with method-not-allowed headers");
 assert(/app\.all\("\/mcp"/.test(server), "server must reject all unsupported MCP methods consistently");
 assert(/app\.post\([\s\S]*requireMcpBearerToken\(authToken\)[\s\S]*requireMcpJsonContentType[\s\S]*express\.json/.test(server), "server must authenticate MCP POST requests before content-type validation and JSON parsing");
@@ -214,17 +279,32 @@ for (const expected of [
   assert(SOURCES.some(source => source.id === expected), `source missing: ${expected}`);
 }
 
+const sourceIds = new Set<string>();
+for (const source of SOURCES) {
+  assert(!sourceIds.has(source.id), `duplicate source id: ${source.id}`);
+  sourceIds.add(source.id);
+  assert(/^https:\/\//.test(source.url), `source must use HTTPS: ${source.id}`);
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(source.reviewedAt), `source reviewedAt must use YYYY-MM-DD: ${source.id}`);
+}
+
+function molitSourceId(housingType: string, transactionType: "rent" | "sale"): string {
+  return `molit-${housingType === "single_multi" ? "single" : housingType}-${transactionType}`;
+}
+
 assert(LEGAL_DONG_API.endpoint.startsWith("https://apis.data.go.kr/1741000/"), "legal-dong endpoint must use the official HTTPS data.go.kr gateway");
 assert(LEGAL_DONG_API.portalUrl.includes("data.go.kr"), "legal-dong portal must use data.go.kr");
+assert(SOURCES.some(source => source.id === "mois-legal-dong-code" && source.url === LEGAL_DONG_API.portalUrl), "legal-dong source registry URL must match the API portal URL");
 
 for (const spec of Object.values(RENT_API_SPECS)) {
   assert(spec.endpoint.includes("apis.data.go.kr/1613000/"), `rent endpoint must use official data.go.kr gateway: ${spec.housingType}`);
   assert(spec.portalUrl.includes("data.go.kr"), `rent portal must use data.go.kr: ${spec.housingType}`);
+  assert(SOURCES.some(source => source.id === molitSourceId(spec.housingType, "rent") && source.url === spec.portalUrl), `rent source registry URL must match the API portal URL: ${spec.housingType}`);
 }
 
 for (const spec of Object.values(SALE_API_SPECS)) {
   assert(spec.endpoint.includes("apis.data.go.kr/1613000/"), `sale endpoint must use official data.go.kr gateway: ${spec.housingType}`);
   assert(spec.portalUrl.includes("data.go.kr"), `sale portal must use data.go.kr: ${spec.housingType}`);
+  assert(SOURCES.some(source => source.id === molitSourceId(spec.housingType, "sale") && source.url === spec.portalUrl), `sale source registry URL must match the API portal URL: ${spec.housingType}`);
 }
 
 const smoke = readFileSync("scripts/smoke.ts", "utf8");
@@ -232,8 +312,19 @@ assert(/supportedPlayMcpProtocolVersions/.test(smoke), "smoke must verify protoc
 assert(/getServerVersion/.test(smoke), "smoke must verify server identity");
 assert(/3-10 tools/.test(smoke), "smoke must verify tool count");
 assert(/MCP_AUTH_TOKEN/.test(smoke), "smoke must support bearer-token MCP endpoints");
+assert(/offlineToolSmokeCases/.test(smoke), "smoke must cover offline MCP tool output quality");
 assert(/assertToolOutputQuality/.test(smoke), "smoke must verify MCP tool output quality");
 assert(/tool_output_chars/.test(smoke), "smoke must report validated tool output size");
+for (const offlineTool of [
+  "check_lease_red_flags",
+  "build_move_in_protection_plan",
+  "prepare_contract_questions",
+  "route_official_help",
+  "explain_dispute_prevention",
+  "explain_data_availability"
+]) {
+  assert(smoke.includes(`name: "${offlineTool}"`), `smoke must call offline tool ${offlineTool}`);
+}
 assert(/readResource/.test(smoke), "smoke must read the official source registry resource");
 assert(/official_sources/.test(smoke), "smoke must report validated official source count");
 assert(/nts-tax/.test(smoke), "smoke must require the national tax source registry entry");
@@ -242,11 +333,19 @@ assert(/국세청/.test(smoke) && /위택스/.test(smoke), "smoke output quality
 
 const httpSmoke = readFileSync("scripts/http-smoke.ts", "utf8");
 assert(/healthz/.test(httpSmoke), "HTTP smoke must verify healthz");
+assert(/assertSecurityHeaders/.test(httpSmoke), "HTTP smoke must verify security headers");
+assert(/request_id=ok/.test(httpSmoke), "HTTP smoke must verify request ID propagation");
+assert(/safe X-Request-Id/.test(httpSmoke), "HTTP smoke must verify safe request IDs on boundary responses");
+assert(/unknown_route=ok/.test(httpSmoke), "HTTP smoke must verify unknown-route rejection");
+assert(/default HTML response/.test(httpSmoke), "HTTP smoke must reject default HTML not-found responses");
+assert(/encoded_odd_path=ok/.test(httpSmoke), "HTTP smoke must verify encoded-path rejection");
+assert(/not-found JSON body/.test(httpSmoke), "HTTP smoke must reject default HTML error responses");
 assert(/smokePortFromEnv/.test(httpSmoke), "HTTP smoke must fail fast on invalid port env values");
 assert(/listen\(0,\s*"0\.0\.0\.0"/.test(httpSmoke), "HTTP smoke free-port probe must match the server bind address");
 assert(/host_rejection/.test(httpSmoke), "HTTP smoke must verify DNS rebinding Host rejection");
 assert(/Invalid Host: evil\.example/.test(httpSmoke), "HTTP smoke must verify the host validation error shape");
 assert(/auth_rejection/.test(httpSmoke), "HTTP smoke must verify bearer auth rejection");
+assert(/oversized_bearer_rejection/.test(httpSmoke), "HTTP smoke must verify oversized bearer token rejection");
 assert(/WWW-Authenticate:\s*Bearer/.test(httpSmoke), "HTTP smoke must verify bearer auth challenge headers");
 assert(/method_rejection/.test(httpSmoke), "HTTP smoke must verify unsupported MCP method rejection");
 assert(/verifyHeadMethodNotAllowed/.test(httpSmoke), "HTTP smoke must verify HEAD /mcp method rejection");
@@ -258,17 +357,28 @@ assert(/-32700/.test(httpSmoke), "HTTP smoke must verify invalid JSON returns th
 assert(/auth_before_parse/.test(httpSmoke), "HTTP smoke must verify unauthorized malformed JSON fails authentication before parsing");
 assert(/content_type_rejection/.test(httpSmoke), "HTTP smoke must verify unsupported content-type rejection");
 assert(/415/.test(httpSmoke), "HTTP smoke must verify unsupported content-type returns 415");
-assert(/rateLimitPerMinute/.test(httpSmoke), "HTTP smoke must verify rate limit health metadata");
+assert(/compressed_request_rejection=ok/.test(httpSmoke), "HTTP smoke must verify compressed request rejection");
+assert(/content-encoding/.test(httpSmoke), "HTTP smoke must send Content-Encoding for compressed request rejection");
+assert(/publicDataTimeoutMs\?: unknown/.test(httpSmoke), "HTTP smoke must verify healthz omits internal tuning metadata");
+assert(/mcpMaxBodyBytesFromEnv/.test(httpSmoke), "HTTP smoke must verify oversized requests without reading limits from healthz");
 assert(/oversized_request/.test(httpSmoke), "HTTP smoke must verify oversized MCP request rejection");
 assert(/dist\/scripts\/smoke\.js/.test(httpSmoke), "HTTP smoke must run the MCP client smoke");
 
 const dockerSmoke = readFileSync("scripts/docker-smoke.ts", "utf8");
 assert(/docker/.test(dockerSmoke), "Docker smoke must run a container");
 assert(/healthz/.test(dockerSmoke), "Docker smoke must verify healthz");
+assert(/assertSecurityHeaders/.test(dockerSmoke), "Docker smoke must verify security headers");
+assert(/docker_request_id=ok/.test(dockerSmoke), "Docker smoke must verify request ID propagation");
+assert(/safe X-Request-Id/.test(dockerSmoke), "Docker smoke must verify safe request IDs on boundary responses");
+assert(/docker_unknown_route=ok/.test(dockerSmoke), "Docker smoke must verify unknown-route rejection");
+assert(/default HTML response/.test(dockerSmoke), "Docker smoke must reject default HTML not-found responses");
+assert(/docker_encoded_odd_path=ok/.test(dockerSmoke), "Docker smoke must verify encoded-path rejection");
+assert(/not-found JSON body/.test(dockerSmoke), "Docker smoke must reject default HTML error responses");
 assert(/smokePortFromEnv/.test(dockerSmoke), "Docker smoke must fail fast on invalid port env values");
 assert(/docker_host_rejection/.test(dockerSmoke), "Docker smoke must verify DNS rebinding Host rejection");
 assert(/Invalid Host: evil\.example/.test(dockerSmoke), "Docker smoke must verify the host validation error shape");
 assert(/docker_auth_rejection/.test(dockerSmoke), "Docker smoke must verify bearer auth rejection");
+assert(/docker_oversized_bearer_rejection/.test(dockerSmoke), "Docker smoke must verify oversized bearer token rejection");
 assert(/WWW-Authenticate:\s*Bearer/.test(dockerSmoke), "Docker smoke must verify bearer auth challenge headers");
 assert(/docker_method_rejection/.test(dockerSmoke), "Docker smoke must verify unsupported MCP method rejection");
 assert(/verifyHeadMethodNotAllowed/.test(dockerSmoke), "Docker smoke must verify HEAD /mcp method rejection");
@@ -280,7 +390,9 @@ assert(/-32700/.test(dockerSmoke), "Docker smoke must verify invalid JSON return
 assert(/docker_auth_before_parse/.test(dockerSmoke), "Docker smoke must verify unauthorized malformed JSON fails authentication before parsing");
 assert(/docker_content_type_rejection/.test(dockerSmoke), "Docker smoke must verify unsupported content-type rejection");
 assert(/415/.test(dockerSmoke), "Docker smoke must verify unsupported content-type returns 415");
-assert(/rateLimitPerMinute/.test(dockerSmoke), "Docker smoke must verify rate limit health metadata");
+assert(/docker_compressed_request_rejection=ok/.test(dockerSmoke), "Docker smoke must verify compressed request rejection");
+assert(/content-encoding/.test(dockerSmoke), "Docker smoke must send Content-Encoding for compressed request rejection");
+assert(/publicDataTimeoutMs\?: unknown/.test(dockerSmoke), "Docker smoke must verify healthz omits internal tuning metadata");
 assert(/docker_oversized_request/.test(dockerSmoke), "Docker smoke must verify oversized MCP request rejection");
 assert(/dist\/scripts\/smoke\.js/.test(dockerSmoke), "Docker smoke must run the MCP client smoke");
 
@@ -319,6 +431,8 @@ assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"smoke:http"\]/.test(releasePr
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"smoke:rate-limit"\]/.test(releasePreflight), "release preflight must include npm run smoke:rate-limit");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["audit",\s*"--omit=dev"\]/.test(releasePreflight), "release preflight must include npm audit --omit=dev");
 assert(/command:\s*"docker"[\s\S]*args:\s*\["build"/.test(releasePreflight), "release preflight must include docker build");
+assert(/attempts:\s*3/.test(releasePreflight), "release preflight must retry transient Docker build failures");
+assert(releasePreflight.includes("attempt ${attempt}/${attempts}"), "release preflight must make Docker build retry attempts visible");
 assert(/command:\s*"node"[\s\S]*args:\s*\["dist\/scripts\/docker-smoke\.js"\]/.test(releasePreflight), "release preflight must include Docker runtime smoke");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"smoke:public-data"\]/.test(releasePreflight), "release preflight must include npm run smoke:public-data");
 assert(/DATA_GO_KR_SERVICE_KEY/.test(releasePreflight), "release preflight must gate live public-data smoke on DATA_GO_KR_SERVICE_KEY");

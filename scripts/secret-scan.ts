@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const root = process.cwd();
-const includeExtensions = new Set([".ts", ".js", ".json", ".md", ".yml", ".yaml", ".dockerignore", ".gitignore"]);
+const includeExtensions = new Set([".ts", ".js", ".mjs", ".json", ".md", ".yml", ".yaml", ".dockerignore", ".gitignore"]);
 const ignoredDirectories = new Set([".git", "node_modules", "dist", "coverage"]);
 const allowedPlaceholders = [
   "DATA_GO_KR_SERVICE_KEY=...",

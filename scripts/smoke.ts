@@ -47,14 +47,86 @@ function textFromToolResult(toolName: string, result: unknown): string {
   return textBlocks.map(item => item.text as string).join("\n");
 }
 
-function assertToolOutputQuality(toolName: string, text: string) {
+interface OfflineToolSmokeCase {
+  name: string;
+  arguments: Record<string, unknown>;
+  requiredPhrases: string[];
+  requiredSources: string[];
+}
+
+const offlineToolSmokeCases: OfflineToolSmokeCase[] = [
+  {
+    name: "check_lease_red_flags",
+    arguments: {
+      situation: "서울 관악구 전세 계약인데 대리인이 오늘 가계약금을 보내라고 하고 근저당도 있다고 합니다.",
+      region: "서울 관악구",
+      contractType: "jeonse",
+      depositManwon: 30000,
+      concerns: "대리계약, 근저당, 가계약금"
+    },
+    requiredPhrases: ["## 계약 위험 신호 점검", "## 계약 전 확인 순서", "## 공식 출처", "## 확인 필요", "전월세안전내비"],
+    requiredSources: ["인터넷등기소", "법제처", "국가법령정보센터", "HUG", "국세청", "위택스"]
+  },
+  {
+    name: "build_move_in_protection_plan",
+    arguments: {
+      region: "서울 관악구",
+      contractType: "jeonse",
+      depositManwon: 30000,
+      moveInDate: "2026-08-15",
+      contractDate: "2026-07-10",
+      concerns: "전입신고와 확정일자를 놓치고 싶지 않습니다."
+    },
+    requiredPhrases: ["## 이사·보증금 보호 체크리스트", "## 계약 전", "## 잔금·입주 당일", "## 입주 후", "## 확인 필요"],
+    requiredSources: ["정부24", "부동산거래관리시스템", "인터넷등기소", "HUG", "국세청", "위택스"]
+  },
+  {
+    name: "prepare_contract_questions",
+    arguments: {
+      region: "서울 관악구",
+      contractType: "jeonse",
+      depositManwon: 30000,
+      concerns: "근저당과 임대인 체납이 걱정됩니다."
+    },
+    requiredPhrases: ["## 중개사·임대인에게 물어볼 질문", "## 통화 첫 문장", "## 공식 출처", "## 확인 필요"],
+    requiredSources: ["부동산거래관리시스템", "인터넷등기소", "HUG", "국세청", "위택스"]
+  },
+  {
+    name: "route_official_help",
+    arguments: {
+      situation: "임대인 국세와 지방세 체납이 걱정됩니다.",
+      issueType: "tax_arrears",
+      region: "서울 관악구"
+    },
+    requiredPhrases: ["## 공식 문의 경로", "먼저 볼 곳:", "## 상황별 빠른 분기", "## 공식 출처", "## 확인 필요"],
+    requiredSources: ["정부24", "부동산거래관리시스템", "인터넷등기소", "HUG", "국세청", "위택스"]
+  },
+  {
+    name: "explain_dispute_prevention",
+    arguments: {
+      disputeType: "deposit_return",
+      region: "서울 관악구",
+      concerns: "만기 후 보증금 반환이 지연될까 봐 걱정됩니다."
+    },
+    requiredPhrases: ["## 분쟁 예방 메모", "## 증거로 남길 것", "## 공식 출처", "## 확인 필요"],
+    requiredSources: ["임대차분쟁조정위원회", "법제처", "국가법령정보센터"]
+  },
+  {
+    name: "explain_data_availability",
+    arguments: {},
+    requiredPhrases: ["## 실제 데이터 조달 가능성", "자동 연동 가능", "수동 검토 레지스트리 권장", "## 공식 출처"],
+    requiredSources: ["행정안전부", "국토교통부", "정부24", "부동산거래관리시스템", "인터넷등기소", "HUG", "국세청", "위택스"]
+  }
+];
+
+function assertToolOutputQuality(toolName: string, text: string, requiredPhrases: string[], requiredSources: string[]) {
   if (!hasKorean(text)) throw new Error(`Tool ${toolName} output must contain Korean text`);
-  if (text.length < 500) throw new Error(`Tool ${toolName} output is unexpectedly short`);
+  if (text.length < 350) throw new Error(`Tool ${toolName} output is unexpectedly short`);
   if (text.length > 12000) throw new Error(`Tool ${toolName} output is unexpectedly long`);
-  for (const required of ["## 계약 위험 신호 점검", "## 공식 출처", "## 확인 필요", "전월세안전내비"]) {
+  for (const required of requiredPhrases) {
     if (!text.includes(required)) throw new Error(`Tool ${toolName} output missing required phrase: ${required}`);
   }
-  for (const requiredSource of ["인터넷등기소", "법제처", "국가법령정보센터", "HUG", "국세청", "위택스"]) {
+  for (const requiredSource of requiredSources) {
     if (!text.includes(requiredSource)) throw new Error(`Tool ${toolName} output missing official source: ${requiredSource}`);
   }
   if (/kakao/i.test(text)) throw new Error(`Tool ${toolName} output contains forbidden kakao string`);
@@ -169,24 +241,19 @@ async function main() {
     assertInputSchemaDescriptions(tool.name, tool.inputSchema);
   }
 
-  const startedAt = performance.now();
-  const result = await client.callTool({
-    name: "check_lease_red_flags",
-    arguments: {
-      situation: "서울 관악구 전세 계약인데 대리인이 오늘 가계약금을 보내라고 하고 근저당도 있다고 합니다.",
-      region: "서울 관악구",
-      contractType: "jeonse",
-      depositManwon: 30000,
-      concerns: "대리계약, 근저당, 가계약금"
-    }
-  });
-  const latencyMs = performance.now() - startedAt;
-  console.log(`latency_ms=${latencyMs.toFixed(1)}`);
-  if (latencyMs > 3000) throw new Error(`Smoke latency exceeded 3000ms: ${latencyMs.toFixed(1)}ms`);
-  const resultText = textFromToolResult("check_lease_red_flags", result);
-  assertToolOutputQuality("check_lease_red_flags", resultText);
-  console.log(`tool_output_chars=${resultText.length}`);
-  console.log(JSON.stringify(result, null, 2));
+  for (const smokeCase of offlineToolSmokeCases) {
+    const startedAt = performance.now();
+    const result = await client.callTool({
+      name: smokeCase.name,
+      arguments: smokeCase.arguments
+    });
+    const latencyMs = performance.now() - startedAt;
+    console.log(`tool_latency_ms[${smokeCase.name}]=${latencyMs.toFixed(1)}`);
+    if (latencyMs > 3000) throw new Error(`Smoke latency exceeded 3000ms for ${smokeCase.name}: ${latencyMs.toFixed(1)}ms`);
+    const resultText = textFromToolResult(smokeCase.name, result);
+    assertToolOutputQuality(smokeCase.name, resultText, smokeCase.requiredPhrases, smokeCase.requiredSources);
+    console.log(`tool_output_chars[${smokeCase.name}]=${resultText.length}`);
+  }
 
   const resources = await client.listResources();
   if (!resources.resources.some(resource => resource.uri === officialSourceRegistryUri)) {

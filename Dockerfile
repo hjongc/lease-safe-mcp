@@ -1,9 +1,9 @@
-FROM node:20-bookworm-slim AS deps
+FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
-FROM node:20-bookworm-slim AS build
+FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY package*.json tsconfig.json ./
@@ -11,7 +11,7 @@ COPY src ./src
 COPY scripts ./scripts
 RUN npm run build
 
-FROM node:20-bookworm-slim AS runtime
+FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS runtime
 ENV NODE_ENV=production
 ENV PORT=3000
 WORKDIR /app

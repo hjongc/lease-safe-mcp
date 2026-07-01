@@ -20,11 +20,18 @@ jobs:
       DATA_GO_KR_SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
 
     steps:
+      - name: Verify live public-data secret
+        run: |
+          if [ -z "${DATA_GO_KR_SERVICE_KEY}" ]; then
+            echo "DATA_GO_KR_SERVICE_KEY repository secret is required for registration evidence." >&2
+            exit 1
+          fi
+
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 20
           cache: npm
@@ -34,3 +41,18 @@ jobs:
 
       - name: Run registration preflight
         run: npm run preflight:registration
+
+      - name: Publish registration evidence summary
+        if: ${{ always() }}
+        run: |
+          {
+            echo "## Lease Safe Registration Evidence"
+            echo ""
+            echo "- Job status: ${{ job.status }}"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Branch/ref: \`${GITHUB_REF_NAME}\`"
+            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "- Required command: \`npm run preflight:registration\`"
+            echo "- Live public-data smoke: required by registration preflight"
+            echo "- Docker runtime smoke: included in registration preflight"
+          } >> "$GITHUB_STEP_SUMMARY"

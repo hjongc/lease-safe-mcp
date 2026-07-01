@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { hostHeaderValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { Server } from "node:http";
 import type { NextFunction, Request, Response } from "express";
 import express from "express";
@@ -30,6 +30,9 @@ const VERSION = "0.1.0";
 const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
 const DEFAULT_MCP_RATE_LIMIT_PER_MINUTE = 120;
 const MIN_MCP_AUTH_TOKEN_LENGTH = 16;
+const MAX_MCP_AUTH_TOKEN_LENGTH = 4096;
+const REQUEST_ID_HEADER = "X-Request-Id";
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 const MCP_AUTH_TOKEN_PLACEHOLDERS = new Set([
   "replace-with-runtime-secret",
   "your-mcp-auth-token",
@@ -93,6 +96,25 @@ function textResult(text: string) {
   };
 }
 
+function isValidIpv4Host(hostname: string): boolean {
+  const parts = hostname.split(".");
+  return parts.length === 4 && parts.every(part => {
+    if (!/^(0|[1-9]\d{0,2})$/.test(part)) return false;
+    const value = Number(part);
+    return Number.isSafeInteger(value) && value >= 0 && value <= 255;
+  });
+}
+
+function isValidDnsHost(hostname: string): boolean {
+  if (hostname.length > 253 || hostname.startsWith(".") || hostname.endsWith(".")) return false;
+  const labels = hostname.split(".");
+  return labels.every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
+}
+
+function isValidAllowedHost(hostname: string): boolean {
+  return isValidIpv4Host(hostname) || isValidDnsHost(hostname);
+}
+
 function allowedHostsFromEnv(): string[] | undefined {
   const hosts = process.env.MCP_ALLOWED_HOSTS?.split(",").map(host => host.trim()).filter(Boolean).map(host => {
     if (
@@ -113,6 +135,7 @@ function allowedHostsFromEnv(): string[] | undefined {
     try {
       const hostname = new URL(`http://${host}`).hostname;
       if (!hostname) throw new Error("missing hostname");
+      if (!isValidAllowedHost(hostname)) throw new Error("invalid hostname");
       return hostname;
     } catch {
       throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames, not URLs, ports, paths, wildcards, userinfo, query strings, fragments, or whitespace.");
@@ -150,6 +173,9 @@ function mcpAuthToken(): string | undefined {
   }
   if (token.length < MIN_MCP_AUTH_TOKEN_LENGTH) {
     throw new Error(`MCP_AUTH_TOKEN must be at least ${MIN_MCP_AUTH_TOKEN_LENGTH} characters when set.`);
+  }
+  if (token.length > MAX_MCP_AUTH_TOKEN_LENGTH) {
+    throw new Error(`MCP_AUTH_TOKEN must be ${MAX_MCP_AUTH_TOKEN_LENGTH} characters or fewer when set.`);
   }
   return token;
 }
@@ -206,6 +232,37 @@ function jsonRpcError(res: Response, httpStatus: number, code: number, message: 
 function methodNotAllowedForMcp(res: Response, message: string): void {
   res.setHeader("Allow", "POST");
   jsonRpcError(res, 405, -32000, message);
+}
+
+function notFound(_req: Request, res: Response): void {
+  res.status(404).json({
+    error: "Not found"
+  });
+}
+
+function expressErrorStatus(error: unknown): number {
+  const candidate = error as { status?: unknown; statusCode?: unknown };
+  const status = typeof candidate.status === "number" ? candidate.status : candidate.statusCode;
+  return typeof status === "number" && Number.isInteger(status) && status >= 400 && status < 500 ? status : 500;
+}
+
+function handleUnexpectedExpressError(error: unknown, _req: Request, res: Response, next: NextFunction): void {
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
+
+  const status = expressErrorStatus(error);
+  if (status >= 500) {
+    console.error("Unexpected Express error", {
+      requestId: requestIdForLog(res),
+      error: compactLogError(error)
+    });
+  }
+
+  res.status(status).json({
+    error: status === 400 ? "Bad request" : "Internal server error"
+  });
 }
 
 function clientKey(req: Request): string {
@@ -295,6 +352,21 @@ function requireMcpJsonContentType(req: Request, res: Response, next: NextFuncti
   jsonRpcError(res, 415, -32600, "MCP POST requests must use application/json.");
 }
 
+function rejectCompressedMcpRequest(req: Request, res: Response, next: NextFunction): void {
+  if (req.method !== "POST") {
+    next();
+    return;
+  }
+
+  const contentEncoding = req.header("content-encoding")?.trim().toLowerCase();
+  if (!contentEncoding || contentEncoding === "identity") {
+    next();
+    return;
+  }
+
+  jsonRpcError(res, 415, -32600, "MCP POST requests must not use compressed request bodies.");
+}
+
 function handleMcpExpressError(error: unknown, _req: Request, res: Response, next: NextFunction): void {
   const expressError = error as { status?: number; type?: string; message?: string };
   if (res.headersSent) {
@@ -318,6 +390,7 @@ function handleMcpExpressError(error: unknown, _req: Request, res: Response, nex
 function bearerTokenMatches(authorization: string | undefined, expectedToken: string): boolean {
   if (!authorization?.startsWith("Bearer ")) return false;
   const suppliedToken = authorization.slice("Bearer ".length);
+  if (suppliedToken.length > MAX_MCP_AUTH_TOKEN_LENGTH) return false;
   const supplied = Buffer.from(suppliedToken);
   const expected = Buffer.from(expectedToken);
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);
@@ -346,6 +419,44 @@ function requireMcpBearerToken(expectedToken: string | undefined) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!requireBearerToken(req, res, expectedToken)) return;
     next();
+  };
+}
+
+function setSecurityHeaders(_req: Request, res: Response, next: NextFunction): void {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Content-Security-Policy", "default-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store");
+  next();
+}
+
+function requestIdFromHeader(value: string | undefined): string {
+  const trimmed = value?.trim();
+  return trimmed && REQUEST_ID_PATTERN.test(trimmed) ? trimmed : randomUUID();
+}
+
+function setRequestId(req: Request, res: Response, next: NextFunction): void {
+  const requestId = requestIdFromHeader(req.header(REQUEST_ID_HEADER));
+  res.locals.requestId = requestId;
+  res.setHeader(REQUEST_ID_HEADER, requestId);
+  next();
+}
+
+function requestIdForLog(res: Response): string {
+  return typeof res.locals.requestId === "string" ? res.locals.requestId : "unknown";
+}
+
+function compactLogError(error: unknown): { name: string; message: string } {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message.replace(/\s+/g, " ").slice(0, 500)
+    };
+  }
+  return {
+    name: typeof error,
+    message: String(error).replace(/\s+/g, " ").slice(0, 500)
   };
 }
 
@@ -576,11 +687,13 @@ export function createApp() {
   requireProductionDataKey();
   const maxBodyBytes = mcpMaxBodyBytes();
   const rateLimitPerMinute = mcpRateLimitPerMinute();
-  const publicDataTimeout = publicDataTimeoutMs();
+  publicDataTimeoutMs();
   const authToken = mcpAuthToken();
   const app = express();
 
   app.disable("x-powered-by");
+  app.use(setSecurityHeaders);
+  app.use(setRequestId);
   app.use(hostHeaderValidation(allowedHosts));
 
   app.get("/", (_req: Request, res: Response) => {
@@ -591,12 +704,7 @@ export function createApp() {
     res.json({
       ok: true,
       service: "lease-safe",
-      version: VERSION,
-      transport: "streamable-http",
-      stateless: true,
-      maxBodyBytes,
-      rateLimitPerMinute,
-      publicDataTimeoutMs: publicDataTimeout
+      version: VERSION
     });
   });
 
@@ -605,6 +713,7 @@ export function createApp() {
     rateLimitMcpRequests(rateLimitPerMinute),
     rejectOversizedMcpRequest(maxBodyBytes),
     requireMcpBearerToken(authToken),
+    rejectCompressedMcpRequest,
     requireMcpJsonContentType,
     express.json({ limit: `${maxBodyBytes}b` }),
     async (req: Request, res: Response) => {
@@ -622,7 +731,10 @@ export function createApp() {
         await server.connect(transport);
         await transport.handleRequest(req, res, req.body);
       } catch (error) {
-        console.error("Error handling MCP request", error);
+        console.error("Error handling MCP request", {
+          requestId: requestIdForLog(res),
+          error: compactLogError(error)
+        });
         if (!res.headersSent) {
           res.status(500).json({
             jsonrpc: "2.0",
@@ -654,6 +766,8 @@ export function createApp() {
   });
 
   app.use("/mcp", handleMcpExpressError);
+  app.use(notFound);
+  app.use(handleUnexpectedExpressError);
 
   return app;
 }

@@ -66,7 +66,7 @@ Production requires DNS rebinding protection:
 MCP_ALLOWED_HOSTS=your.playmcp.host,your.custom.domain
 ```
 
-Use plain hostnames only. Do not include `https://`, ports, paths, whitespace, or wildcards.
+Use plain hostnames only. Do not include `https://`, ports, paths, whitespace, wildcards, underscores, empty labels, or labels that start or end with `-`.
 
 Production also requires the official public-data key at startup because the flagship tool depends on live legal-dong, rent, and sale APIs:
 
@@ -174,7 +174,7 @@ Do not use a narrowed `PUBLIC_DATA_SMOKE_HOUSING_TYPES` list as registration evi
 
 ## CI Gate
 
-The repository includes `.github/workflows/ci.yml` for the submission branch. It runs:
+The repository includes `.github/workflows/ci.yml` for `main`. It runs:
 
 - `npm test`
 - `npm run scan:secrets`
@@ -205,6 +205,6 @@ Before registering in PlayMCP:
 PlayMCP in KC Git-source build:
 
 - Git URL: this repository URL
-- Branch/ref: submission branch
+- Branch/ref: `main`
 - Dockerfile path: `Dockerfile`
 - PAT: empty if the repository is public

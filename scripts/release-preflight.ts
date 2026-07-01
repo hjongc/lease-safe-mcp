@@ -7,6 +7,7 @@ interface Step {
   env?: NodeJS.ProcessEnv;
   skip?: boolean;
   skipReason?: string;
+  attempts?: number;
 }
 
 const dockerTag = process.env.PREFLIGHT_DOCKER_TAG ?? "lease-safe-mcp-preflight";
@@ -47,7 +48,8 @@ const steps: Step[] = [
   {
     name: "Docker build",
     command: "docker",
-    args: ["build", "-t", dockerTag, "."]
+    args: ["build", "-t", dockerTag, "."],
+    attempts: 3
   },
   {
     name: "Docker runtime smoke",
@@ -70,15 +72,11 @@ function elapsedSeconds(startedAt: number): string {
   return `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
 }
 
-function runStep(step: Step): Promise<void> {
-  if (step.skip) {
-    console.log(`- ${step.name}: skipped (${step.skipReason})`);
-    return Promise.resolve();
-  }
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
-  const startedAt = Date.now();
-  console.log(`- ${step.name}: running ${step.command} ${step.args.join(" ")}`);
-
+function runStepAttempt(step: Step): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(step.command, step.args, {
       env: { ...process.env, ...step.env },
@@ -89,13 +87,38 @@ function runStep(step: Step): Promise<void> {
     child.on("error", reject);
     child.on("close", code => {
       if (code === 0) {
-        console.log(`- ${step.name}: ok (${elapsedSeconds(startedAt)})`);
         resolve();
         return;
       }
       reject(new Error(`${step.name} failed with exit code ${code ?? "unknown"}`));
     });
   });
+}
+
+async function runStep(step: Step): Promise<void> {
+  if (step.skip) {
+    console.log(`- ${step.name}: skipped (${step.skipReason})`);
+    return;
+  }
+
+  const startedAt = Date.now();
+  const attempts = step.attempts ?? 1;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const attemptLabel = attempts > 1 ? ` (attempt ${attempt}/${attempts})` : "";
+    console.log(`- ${step.name}: running ${step.command} ${step.args.join(" ")}${attemptLabel}`);
+
+    try {
+      await runStepAttempt(step);
+      console.log(`- ${step.name}: ok (${elapsedSeconds(startedAt)})`);
+      return;
+    } catch (error) {
+      if (attempt === attempts) throw error;
+      const delayMs = attempt * 10000;
+      console.log(`- ${step.name}: attempt ${attempt} failed; retrying in ${delayMs / 1000}s`);
+      await delay(delayMs);
+    }
+  }
 }
 
 async function main() {
