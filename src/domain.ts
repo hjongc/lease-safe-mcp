@@ -2,6 +2,12 @@ import { LEGAL_DONG_API, RENT_API_SPECS, SALE_API_SPECS, renderSources, SOURCES,
 
 const DEFAULT_PUBLIC_DATA_TIMEOUT_MS = 8000;
 const MAX_PUBLIC_DATA_TIMEOUT_MS = 60000;
+const DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS = new Set([
+  "...",
+  "your-data-go-kr-service-key",
+  "replace-with-data-go-kr-service-key",
+  "data-go-kr-service-key"
+]);
 
 export interface LeaseProfileInput {
   situation?: string;
@@ -161,16 +167,27 @@ export function explainDataAvailability(): string {
   ].join("\n");
 }
 
-function dataGoKrServiceKey(): string {
+export function dataGoKrServiceKey(): string {
   const rawServiceKey = process.env.DATA_GO_KR_SERVICE_KEY?.trim();
   if (!rawServiceKey) {
     throw new Error("DATA_GO_KR_SERVICE_KEY is required for live public-data lookup. 샘플 데이터로 대체하지 않습니다.");
   }
-  try {
-    return rawServiceKey.includes("%") ? decodeURIComponent(rawServiceKey) : rawServiceKey;
-  } catch {
-    return rawServiceKey;
+
+  if (DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS.has(rawServiceKey.toLowerCase())) {
+    throw new Error("DATA_GO_KR_SERVICE_KEY must be a real data.go.kr service key, not a placeholder.");
   }
+
+  let serviceKey: string;
+  try {
+    serviceKey = rawServiceKey.includes("%") ? decodeURIComponent(rawServiceKey) : rawServiceKey;
+  } catch {
+    throw new Error("DATA_GO_KR_SERVICE_KEY must be a valid percent-encoded or decoded data.go.kr service key.");
+  }
+
+  if (DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS.has(serviceKey.toLowerCase())) {
+    throw new Error("DATA_GO_KR_SERVICE_KEY must be a real data.go.kr service key, not a placeholder.");
+  }
+  return serviceKey;
 }
 
 export function publicDataTimeoutMs(): number {

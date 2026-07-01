@@ -12,6 +12,7 @@ import {
   compareDepositToSaleMarket,
   checkLeaseRedFlags,
   compareRentMarket,
+  dataGoKrServiceKey,
   explainDataAvailability,
   explainDisputePrevention,
   prepareContractQuestions,
@@ -100,8 +101,14 @@ function requiredAllowedHosts(): string[] {
 
 function requireProductionDataKey(): void {
   if (process.env.NODE_ENV !== "production") return;
-  if (process.env.DATA_GO_KR_SERVICE_KEY?.trim()) return;
-  throw new Error("DATA_GO_KR_SERVICE_KEY is required in production for official public-data tools.");
+  try {
+    dataGoKrServiceKey();
+  } catch (error) {
+    if (/DATA_GO_KR_SERVICE_KEY is required/.test((error as Error).message)) {
+      throw new Error("DATA_GO_KR_SERVICE_KEY is required in production for official public-data tools.");
+    }
+    throw error;
+  }
 }
 
 function mcpAuthToken(): string | undefined {

@@ -6,6 +6,7 @@ import {
   checkLeaseRedFlags,
   compareDepositToSaleMarket,
   compareRentMarket,
+  dataGoKrServiceKey,
   explainDataAvailability,
   prepareContractQuestions,
   publicDataTimeoutMs,
@@ -161,6 +162,38 @@ test("legal dong helper fails clearly without public-data key", async () => {
     );
   } finally {
     if (previousKey !== undefined) process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+  }
+});
+
+test("public-data key validation rejects placeholders and malformed encoding before fetch", async () => {
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousFetch = globalThis.fetch;
+  const placeholderKey = ["your", "data", "go", "kr", "service", "key"].join("-");
+  try {
+    globalThis.fetch = async () => {
+      throw new Error("fetch should not be called for invalid public-data keys");
+    };
+
+    process.env.DATA_GO_KR_SERVICE_KEY = placeholderKey;
+    assert.throws(() => dataGoKrServiceKey(), /not a placeholder/);
+    await assert.rejects(
+      resolveLegalDongCode({ region: "관악구" }),
+      /not a placeholder/
+    );
+
+    process.env.DATA_GO_KR_SERVICE_KEY = "bad%ZZkey";
+    assert.throws(() => dataGoKrServiceKey(), /valid percent-encoded or decoded/);
+    await assert.rejects(
+      compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" }),
+      /valid percent-encoded or decoded/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
   }
 });
 
@@ -829,6 +862,36 @@ test("production app requires public-data key", () => {
     delete process.env.DATA_GO_KR_SERVICE_KEY;
 
     assert.throws(() => createApp(), /DATA_GO_KR_SERVICE_KEY is required in production/);
+  } finally {
+    if (previousNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+    if (previousAllowedHosts === undefined) {
+      delete process.env.MCP_ALLOWED_HOSTS;
+    } else {
+      process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
+    }
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
+test("production app rejects placeholder public-data keys", () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const placeholderKey = ["your", "data", "go", "kr", "service", "key"].join("-");
+  try {
+    process.env.NODE_ENV = "production";
+    process.env.MCP_ALLOWED_HOSTS = "127.0.0.1,localhost";
+    process.env.DATA_GO_KR_SERVICE_KEY = placeholderKey;
+
+    assert.throws(() => createApp(), /not a placeholder/);
   } finally {
     if (previousNodeEnv === undefined) {
       delete process.env.NODE_ENV;
