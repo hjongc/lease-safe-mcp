@@ -534,12 +534,17 @@ function parsePublicDataInteger(value: string): number {
   return Number(value);
 }
 
+function parsePublicDataDecimal(value: string): number {
+  if (!/^\d+(?:\.\d+)?$/.test(value)) return Number.NaN;
+  return Number(value);
+}
+
 function publicDataNumberFromOptionalTag(xml: string, tags: string[], label: string): number | undefined {
   const rawValue = extractFirstTag(xml, tags);
   if (rawValue === undefined) return undefined;
 
   const normalized = rawValue.replace(/,/g, "").trim();
-  const value = Number(normalized);
+  const value = parsePublicDataDecimal(normalized);
   if (normalized === "" || !Number.isFinite(value) || value < 0) {
     throw new Error(`${label} returned invalid numeric field ${tags.join(" or ")}: ${rawValue}`);
   }

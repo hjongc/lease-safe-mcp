@@ -96,6 +96,7 @@ assert(/region:\s*z\.string\(\)\.min\(2\)\.max\(MCP_TEXT_LIMITS\.region\)/.test(
 assert(/MONEY_INPUT_LIMITS/.test(domain), "domain must define explicit money input limits");
 assert(/publicDataTextFromOptionalTag/.test(domain), "domain must normalize official public-data text fields before rendering");
 assert(/parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data money fields");
+assert(/parsePublicDataDecimal/.test(domain), "domain must reject exponent-style official public-data decimal fields");
 assert(/parsedYear = parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data date fields");
 assert(/depositSchema[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "server must bound optional MCP deposit inputs");
 assert(/monthlyRentSchema[\s\S]*\.max\(MONEY_INPUT_LIMITS\.monthlyRentManwon\)/.test(server), "server must bound optional MCP monthly-rent inputs");
