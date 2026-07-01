@@ -234,6 +234,12 @@ function methodNotAllowedForMcp(res: Response, message: string): void {
   jsonRpcError(res, 405, -32000, message);
 }
 
+function notFound(_req: Request, res: Response): void {
+  res.status(404).json({
+    error: "Not found"
+  });
+}
+
 function clientKey(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
 }
@@ -719,6 +725,7 @@ export function createApp() {
   });
 
   app.use("/mcp", handleMcpExpressError);
+  app.use(notFound);
 
   return app;
 }

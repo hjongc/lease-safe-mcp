@@ -102,6 +102,7 @@ for (const required of [
   "unsupported-method rejection",
   "invalid-JSON rejection",
   "unsupported-content-type rejection",
+  "unknown-route rejection",
   "WWW-Authenticate",
   "X-Request-Id",
   "Cache-Control",
@@ -219,6 +220,8 @@ assert(/StreamableHTTPServerTransport/.test(server), "server must use Streamable
 assert(/sessionIdGenerator:\s*undefined/.test(server), "server must be stateless");
 assert(/methodNotAllowedForMcp/.test(server), "server must centralize MCP method rejection responses");
 assert(/setHeader\("Allow",\s*"POST"\)/.test(server), "server must advertise Allow: POST for unsupported MCP methods");
+assert(/function notFound/.test(server), "server must explicitly handle unknown routes");
+assert(/app\.use\(notFound\)/.test(server), "server must install explicit unknown-route handling");
 assert(/app\.head\("\/mcp"/.test(server), "server must explicitly reject HEAD /mcp with method-not-allowed headers");
 assert(/app\.all\("\/mcp"/.test(server), "server must reject all unsupported MCP methods consistently");
 assert(/app\.post\([\s\S]*requireMcpBearerToken\(authToken\)[\s\S]*requireMcpJsonContentType[\s\S]*express\.json/.test(server), "server must authenticate MCP POST requests before content-type validation and JSON parsing");
@@ -296,6 +299,8 @@ assert(/healthz/.test(httpSmoke), "HTTP smoke must verify healthz");
 assert(/assertSecurityHeaders/.test(httpSmoke), "HTTP smoke must verify security headers");
 assert(/request_id=ok/.test(httpSmoke), "HTTP smoke must verify request ID propagation");
 assert(/safe X-Request-Id/.test(httpSmoke), "HTTP smoke must verify safe request IDs on boundary responses");
+assert(/unknown_route=ok/.test(httpSmoke), "HTTP smoke must verify unknown-route rejection");
+assert(/default HTML response/.test(httpSmoke), "HTTP smoke must reject default HTML not-found responses");
 assert(/smokePortFromEnv/.test(httpSmoke), "HTTP smoke must fail fast on invalid port env values");
 assert(/listen\(0,\s*"0\.0\.0\.0"/.test(httpSmoke), "HTTP smoke free-port probe must match the server bind address");
 assert(/host_rejection/.test(httpSmoke), "HTTP smoke must verify DNS rebinding Host rejection");
@@ -324,6 +329,8 @@ assert(/healthz/.test(dockerSmoke), "Docker smoke must verify healthz");
 assert(/assertSecurityHeaders/.test(dockerSmoke), "Docker smoke must verify security headers");
 assert(/docker_request_id=ok/.test(dockerSmoke), "Docker smoke must verify request ID propagation");
 assert(/safe X-Request-Id/.test(dockerSmoke), "Docker smoke must verify safe request IDs on boundary responses");
+assert(/docker_unknown_route=ok/.test(dockerSmoke), "Docker smoke must verify unknown-route rejection");
+assert(/default HTML response/.test(dockerSmoke), "Docker smoke must reject default HTML not-found responses");
 assert(/smokePortFromEnv/.test(dockerSmoke), "Docker smoke must fail fast on invalid port env values");
 assert(/docker_host_rejection/.test(dockerSmoke), "Docker smoke must verify DNS rebinding Host rejection");
 assert(/Invalid Host: evil\.example/.test(dockerSmoke), "Docker smoke must verify the host validation error shape");

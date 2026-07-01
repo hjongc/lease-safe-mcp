@@ -123,6 +123,24 @@ async function verifyRequestIdPropagation(endpoint: string): Promise<void> {
   }
 }
 
+async function verifyUnknownRoute(endpoint: string): Promise<void> {
+  const response = await fetch(endpoint.replace(/\/mcp$/, "/unknown-route"));
+  assertSecurityHeaders(response, "unknown route");
+
+  if (response.status !== 404) {
+    const text = await response.text();
+    throw new Error(`Expected unknown route to return 404, got ${response.status}: ${text}`);
+  }
+  if (!response.headers.get("content-type")?.includes("application/json")) {
+    throw new Error("Unknown route must return application/json, not the default HTML response.");
+  }
+
+  const body = await response.json() as { error?: unknown };
+  if (body.error !== "Not found") {
+    throw new Error("Unknown route did not return the expected not-found JSON body.");
+  }
+}
+
 async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): Promise<void> {
   const response = await fetch(endpoint, {
     method: "POST",
@@ -393,6 +411,8 @@ async function main() {
     console.log("healthz=ok");
     await verifyRequestIdPropagation(endpoint);
     console.log("request_id=ok");
+    await verifyUnknownRoute(endpoint);
+    console.log("unknown_route=ok");
     await verifyRejectedHost(endpoint);
     console.log("host_rejection=ok");
     await verifyHeadMethodNotAllowed(endpoint);
