@@ -153,7 +153,7 @@ function sourceIdFor(kind: "rent" | "sale", housingType: HousingType): string {
 function officialNotice(): string {
   return [
     "## 확인 필요",
-    "전월세안전내비는 계약 전 점검과 공식 확인 경로를 정리하는 도구입니다. 법률 자문, 등기부 권리분석 확정, 보증보험 가입 가능 여부, 특정 매물 안전성 판단은 제공하지 않습니다."
+    "전월세안전내비는 계약 전 점검과 공식 확인 경로를 정리하는 도구입니다. 법률 자문, 등기부 권리분석 확정, 보증보험 가입 가능 여부, 임대인 세금 체납 여부 확정, 납세증명 진위 판단, 특정 매물 안전성 판단은 제공하지 않습니다."
   ].join("\n");
 }
 
@@ -1153,7 +1153,7 @@ export function prepareContractQuestions(input: LeaseProfileInput): string {
     ]),
     "",
     "## 통화 첫 문장",
-    "계약 전 확인을 위해 등기부 권리관계, 전입·확정일자 가능 여부, 임대차신고, 보증보험 가능 여부를 문서 기준으로 확인하고 싶습니다.",
+    "계약 전 확인을 위해 등기부 권리관계, 전입·확정일자 가능 여부, 임대차신고, 보증보험 가능 여부, 임대인 납세·체납 관련 확인 가능 서류를 문서 기준으로 확인하고 싶습니다.",
     "",
     "## 공식 출처",
     renderSources(["rtms-lease-report", "iros-fixed-date", "adr-lease-dispute", "hug-deposit-guarantee", "nts-tax", "wetax-local-tax"]),

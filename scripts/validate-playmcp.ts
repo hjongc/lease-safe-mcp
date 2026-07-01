@@ -135,6 +135,8 @@ assert(/말소 조건, 잔금 전 등기부 재발급/.test(domain), "flagship a
 assert(/근저당\|압류\|가압류\|경매\|채권\|신탁/.test(domain), "red-flag scoring must treat trust registry language as a senior-right signal");
 assert(/체납\|미납\|국세\|지방세\|세금\|납세/.test(domain), "red-flag scoring must treat landlord tax-arrears language as a contract risk signal");
 assert(/tax_arrears/.test(server), "official help schema must expose tax_arrears routing");
+assert(/세금 체납 여부 확정/.test(domain), "official notice must not imply tax-arrears determination");
+assert(/납세증명 진위 판단/.test(domain), "official notice must not imply tax-certificate validation");
 assert(/inferOfficialHelpIssueType/.test(domain), "official help router must infer routes from natural-language situations");
 assert(domain.includes("보증\\s*보험"), "official help router must infer HUG routes from natural-language guarantee questions");
 assert(/등기부\|등기/.test(domain), "official help router must infer registry routes from natural-language registry questions");

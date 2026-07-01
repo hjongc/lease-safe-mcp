@@ -2957,6 +2957,8 @@ test("red flag checker surfaces landlord tax arrears concerns", () => {
   assert.match(text, /납세증명/);
   assert.match(text, /국세청/);
   assert.match(text, /위택스/);
+  assert.match(text, /세금 체납 여부 확정/);
+  assert.match(text, /납세증명 진위 판단/);
   assert.doesNotMatch(text, /현재 입력만으로 확정 위험/);
 });
 
@@ -2973,6 +2975,7 @@ test("contract questions include HUG and lease report", () => {
   assert.match(text, /전세보증금반환보증/);
   assert.match(text, /임대차신고/);
   assert.match(text, /국세·지방세 체납/);
+  assert.match(text, /임대인 납세·체납 관련 확인 가능 서류/);
 });
 
 test("contract questions redact contact details from user text", () => {

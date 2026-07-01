@@ -64,7 +64,7 @@ const assessmentDepositSchema = z.number().int().positive().max(MONEY_INPUT_LIMI
 const monthlyRentSchema = z.number().int().nonnegative().max(MONEY_INPUT_LIMITS.monthlyRentManwon).optional().describe(`월세를 만원 단위 정수로 적어주세요. 예: 80은 월세 80만원입니다. 최대 ${MONEY_INPUT_LIMITS.monthlyRentManwon.toLocaleString("ko-KR")}만원까지 입력할 수 있습니다.`);
 const moveInDateSchema = z.string().max(MCP_TEXT_LIMITS.dateText).optional().describe(`이사 예정일 또는 입주일을 YYYY-MM-DD 형식이나 ${MCP_TEXT_LIMITS.dateText}자 이내 자연어로 적어주세요.`);
 const contractDateSchema = z.string().max(MCP_TEXT_LIMITS.dateText).optional().describe(`계약일을 YYYY-MM-DD 형식이나 ${MCP_TEXT_LIMITS.dateText}자 이내 자연어로 적어주세요.`);
-const concernsSchema = z.string().max(MCP_TEXT_LIMITS.concerns).optional().describe(`가장 걱정되는 점을 ${MCP_TEXT_LIMITS.concerns}자 이내로 짧게 적어주세요. 예: 근저당, 대리계약, 보증보험, 전입신고, 확정일자.`);
+const concernsSchema = z.string().max(MCP_TEXT_LIMITS.concerns).optional().describe(`가장 걱정되는 점을 ${MCP_TEXT_LIMITS.concerns}자 이내로 짧게 적어주세요. 예: 근저당, 대리계약, 보증보험, 임대인 체납, 전입신고, 확정일자.`);
 const lawdCdSchema = z
   .string()
   .regex(/^\d{5}$/)
@@ -471,7 +471,7 @@ export function createServer(): McpServer {
     {
       title: "이사 보호 절차 계획",
       description:
-        "전월세안전내비가 계약 전, 잔금·입주 당일, 입주 후에 확인할 전입신고, 확정일자, 임대차신고, 등기부 재확인 절차를 체크리스트로 정리합니다.",
+        "전월세안전내비가 계약 전, 잔금·입주 당일, 입주 후에 확인할 전입신고, 확정일자, 임대차신고, 등기부 재확인, 임대인 납세·체납 확인 질문을 체크리스트로 정리합니다.",
       inputSchema: {
         situation: situationSchema,
         region: regionSchema,
@@ -492,7 +492,7 @@ export function createServer(): McpServer {
     {
       title: "계약 전 질문 준비",
       description:
-        "전월세안전내비가 공인중개사나 임대인에게 물어볼 등기부, 대리권, 임대차신고, 확정일자, 보증보험, 특약 질문을 준비합니다.",
+        "전월세안전내비가 공인중개사나 임대인에게 물어볼 등기부, 대리권, 임대차신고, 확정일자, 보증보험, 임대인 납세증명·체납, 특약 질문을 준비합니다.",
       inputSchema: {
         situation: situationSchema,
         region: regionSchema,
