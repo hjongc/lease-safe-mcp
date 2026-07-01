@@ -117,6 +117,8 @@ assert(/userinfo, query strings, fragments/.test(server), "server must reject UR
 assert(/DATA_GO_KR_SERVICE_KEY is required in production/.test(server), "server must fail fast without DATA_GO_KR_SERVICE_KEY in production");
 assert(/timingSafeEqual/.test(server), "server must compare bearer tokens with timingSafeEqual");
 assert(/MCP_AUTH_TOKEN must be at least/.test(server), "server must reject weak MCP_AUTH_TOKEN values");
+assert(/MAX_MCP_AUTH_TOKEN_LENGTH/.test(server), "server must bound MCP_AUTH_TOKEN length");
+assert(/suppliedToken\.length > MAX_MCP_AUTH_TOKEN_LENGTH/.test(server), "server must reject oversized supplied bearer tokens before timing-safe comparison");
 assert(/MCP_AUTH_TOKEN_PLACEHOLDERS/.test(server), "server must reject placeholder MCP_AUTH_TOKEN values");
 assert(/MCP_AUTH_TOKEN must be a real bearer token, not a placeholder/.test(server), "server must fail clearly on placeholder MCP_AUTH_TOKEN values");
 assert(/WWW-Authenticate/.test(server), "server must advertise bearer authentication on unauthorized MCP requests");
@@ -269,6 +271,7 @@ assert(/listen\(0,\s*"0\.0\.0\.0"/.test(httpSmoke), "HTTP smoke free-port probe 
 assert(/host_rejection/.test(httpSmoke), "HTTP smoke must verify DNS rebinding Host rejection");
 assert(/Invalid Host: evil\.example/.test(httpSmoke), "HTTP smoke must verify the host validation error shape");
 assert(/auth_rejection/.test(httpSmoke), "HTTP smoke must verify bearer auth rejection");
+assert(/oversized_bearer_rejection/.test(httpSmoke), "HTTP smoke must verify oversized bearer token rejection");
 assert(/WWW-Authenticate:\s*Bearer/.test(httpSmoke), "HTTP smoke must verify bearer auth challenge headers");
 assert(/method_rejection/.test(httpSmoke), "HTTP smoke must verify unsupported MCP method rejection");
 assert(/verifyHeadMethodNotAllowed/.test(httpSmoke), "HTTP smoke must verify HEAD /mcp method rejection");
@@ -291,6 +294,7 @@ assert(/smokePortFromEnv/.test(dockerSmoke), "Docker smoke must fail fast on inv
 assert(/docker_host_rejection/.test(dockerSmoke), "Docker smoke must verify DNS rebinding Host rejection");
 assert(/Invalid Host: evil\.example/.test(dockerSmoke), "Docker smoke must verify the host validation error shape");
 assert(/docker_auth_rejection/.test(dockerSmoke), "Docker smoke must verify bearer auth rejection");
+assert(/docker_oversized_bearer_rejection/.test(dockerSmoke), "Docker smoke must verify oversized bearer token rejection");
 assert(/WWW-Authenticate:\s*Bearer/.test(dockerSmoke), "Docker smoke must verify bearer auth challenge headers");
 assert(/docker_method_rejection/.test(dockerSmoke), "Docker smoke must verify unsupported MCP method rejection");
 assert(/verifyHeadMethodNotAllowed/.test(dockerSmoke), "Docker smoke must verify HEAD /mcp method rejection");

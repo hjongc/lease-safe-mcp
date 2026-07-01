@@ -251,6 +251,36 @@ async function verifyUnauthorizedRequest(endpoint: string): Promise<void> {
   }
 }
 
+async function verifyOversizedBearerTokenRejected(endpoint: string): Promise<void> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${"x".repeat(4097)}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "oversized-bearer-smoke",
+      method: "tools/list"
+    })
+  });
+
+  if (response.status !== 401) {
+    const text = await response.text();
+    throw new Error(`Expected oversized bearer MCP request to return 401, got ${response.status}: ${text}`);
+  }
+
+  const authenticate = response.headers.get("www-authenticate");
+  if (authenticate !== 'Bearer realm="lease-safe"') {
+    throw new Error(`Expected oversized bearer MCP request to advertise WWW-Authenticate: Bearer, got ${authenticate ?? "missing"}.`);
+  }
+
+  const body = await response.json() as { error?: { message?: unknown } };
+  if (body.error?.message !== "Unauthorized") {
+    throw new Error("Oversized bearer MCP request did not return the expected JSON-RPC auth error.");
+  }
+}
+
 function runNode(args: string[], env: NodeJS.ProcessEnv): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, {
@@ -320,6 +350,8 @@ async function main() {
     console.log("content_type_rejection=ok");
     await verifyUnauthorizedRequest(endpoint);
     console.log("auth_rejection=ok");
+    await verifyOversizedBearerTokenRejected(endpoint);
+    console.log("oversized_bearer_rejection=ok");
     await verifyOversizedRequest(endpoint, maxBodyBytes);
     console.log("oversized_request=ok");
     await runNode(["dist/scripts/smoke.js"], env);

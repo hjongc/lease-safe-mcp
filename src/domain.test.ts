@@ -2718,6 +2718,9 @@ test("MCP auth token fails fast when configured too weakly", () => {
     process.env[authEnvName] = "replace-with-runtime-secret";
     assert.throws(() => createApp(), /MCP_AUTH_TOKEN must be a real bearer token, not a placeholder/);
 
+    process.env[authEnvName] = "x".repeat(4097);
+    assert.throws(() => createApp(), /MCP_AUTH_TOKEN must be 4096 characters or fewer/);
+
     process.env[authEnvName] = "strong-test-token";
     assert.doesNotThrow(() => createApp());
   } finally {

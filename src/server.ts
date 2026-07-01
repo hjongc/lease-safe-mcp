@@ -30,6 +30,7 @@ const VERSION = "0.1.0";
 const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
 const DEFAULT_MCP_RATE_LIMIT_PER_MINUTE = 120;
 const MIN_MCP_AUTH_TOKEN_LENGTH = 16;
+const MAX_MCP_AUTH_TOKEN_LENGTH = 4096;
 const MCP_AUTH_TOKEN_PLACEHOLDERS = new Set([
   "replace-with-runtime-secret",
   "your-mcp-auth-token",
@@ -150,6 +151,9 @@ function mcpAuthToken(): string | undefined {
   }
   if (token.length < MIN_MCP_AUTH_TOKEN_LENGTH) {
     throw new Error(`MCP_AUTH_TOKEN must be at least ${MIN_MCP_AUTH_TOKEN_LENGTH} characters when set.`);
+  }
+  if (token.length > MAX_MCP_AUTH_TOKEN_LENGTH) {
+    throw new Error(`MCP_AUTH_TOKEN must be ${MAX_MCP_AUTH_TOKEN_LENGTH} characters or fewer when set.`);
   }
   return token;
 }
@@ -318,6 +322,7 @@ function handleMcpExpressError(error: unknown, _req: Request, res: Response, nex
 function bearerTokenMatches(authorization: string | undefined, expectedToken: string): boolean {
   if (!authorization?.startsWith("Bearer ")) return false;
   const suppliedToken = authorization.slice("Bearer ".length);
+  if (suppliedToken.length > MAX_MCP_AUTH_TOKEN_LENGTH) return false;
   const supplied = Buffer.from(suppliedToken);
   const expected = Buffer.from(expectedToken);
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);
