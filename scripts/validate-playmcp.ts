@@ -121,6 +121,8 @@ assert(/\$\{value\/\/\$'\\t'\/ \}/.test(registrationWorkflow), "registration pre
 assert(/\$\{value\/\/\\`\/ \}/.test(registrationWorkflow), "registration preflight summary must neutralize Markdown backticks");
 assert(/Lease Safe Registration Evidence/.test(registrationWorkflow), "registration preflight summary must be clearly titled");
 assert(/GITHUB_SHA/.test(registrationWorkflow), "registration preflight summary must include the submitted commit");
+assert(/SAFE_GITHUB_REF_NAME="\$\(sanitize_summary_value "\$\{GITHUB_REF_NAME\}"\)"/.test(registrationWorkflow), "registration preflight summary must sanitize the submitted ref name");
+assert(/Branch\/ref: \\`\$\{SAFE_GITHUB_REF_NAME\}\\`/.test(registrationWorkflow), "registration preflight summary must render the sanitized ref name");
 assert(/GITHUB_RUN_ID/.test(registrationWorkflow), "registration preflight summary must include the workflow run URL");
 assert(/Live public-data smoke: required by registration preflight/.test(registrationWorkflow), "registration preflight summary must state live public-data evidence is required");
 assert(/Demo smoke region/.test(registrationWorkflow), "registration preflight summary must include the demo smoke region");

@@ -79,6 +79,7 @@ jobs:
             printf '%s' "$value"
           }
 
+          SAFE_GITHUB_REF_NAME="$(sanitize_summary_value "${GITHUB_REF_NAME}")"
           SAFE_PUBLIC_DATA_SMOKE_REGION="$(sanitize_summary_value "${PUBLIC_DATA_SMOKE_REGION}")"
           SAFE_PUBLIC_DATA_SMOKE_LAWD_CD="$(sanitize_summary_value "${PUBLIC_DATA_SMOKE_LAWD_CD}")"
           SAFE_PUBLIC_DATA_SMOKE_DEAL_YMD="$(sanitize_summary_value "${PUBLIC_DATA_SMOKE_DEAL_YMD}")"
@@ -89,7 +90,7 @@ jobs:
             echo ""
             echo "- Job status: ${{ job.status }}"
             echo "- Commit: \`${GITHUB_SHA}\`"
-            echo "- Branch/ref: \`${GITHUB_REF_NAME}\`"
+            echo "- Branch/ref: \`${SAFE_GITHUB_REF_NAME}\`"
             echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "- Required command: \`npm run preflight:registration\`"
             echo "- Live public-data smoke: required by registration preflight"
