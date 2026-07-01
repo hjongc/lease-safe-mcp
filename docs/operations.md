@@ -62,7 +62,7 @@ Recommended demo input:
 - `npm run smoke:rate-limit` verifies the MCP POST rate limiter returns `429` with `Retry-After`.
 - `npm run smoke:docker` verifies the built image starts in production mode, answers `/healthz`, rejects unsupported methods, invalid JSON, unsupported content types, unauthenticated requests, and oversized MCP requests, then completes MCP handshake/list-tools and official source registry access.
 - `npm run smoke:public-data` verifies legal-dong lookup, all rent APIs, all sale APIs, and the flagship assessment against live official APIs. It fails when `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` is not positive or when a rent or sale API returns zero samples, because registration evidence must prove a real demo data path.
-- `npm run preflight:registration` runs the full release preflight and fails if live public-data smoke cannot run.
+- `npm run preflight:registration` runs the full release preflight and fails if live public-data smoke cannot run for every supported housing type.
 
 ## Incident Response
 
@@ -71,7 +71,7 @@ If API-backed tools fail:
 1. Check whether `DATA_GO_KR_SERVICE_KEY` is configured in the runtime and has active data.go.kr approvals.
 2. Run `npm run smoke:public-data` with the same key outside the deployment.
 3. If data.go.kr returns an auth or quota payload, keep the original error visible and rotate or re-approve the key.
-4. If requests time out or a region/month returns zero samples, lower demo scope only by changing `PUBLIC_DATA_SMOKE_HOUSING_TYPES` or choose a verified `PUBLIC_DATA_SMOKE_LAWD_CD` and `PUBLIC_DATA_SMOKE_DEAL_YMD`; do not add fake sample data.
+4. If requests time out or a region/month returns zero samples, narrow `PUBLIC_DATA_SMOKE_HOUSING_TYPES` only to isolate the failing source with `npm run smoke:public-data`, or choose a verified `PUBLIC_DATA_SMOKE_LAWD_CD` and `PUBLIC_DATA_SMOKE_DEAL_YMD`; do not use a narrowed smoke as registration evidence and do not add fake sample data.
 5. If all live public-data checks pass locally but fail in deployment, inspect host allowlist, egress/network policy, and runtime env injection.
 
 If a security issue or leaked secret is reported:

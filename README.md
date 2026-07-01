@@ -144,7 +144,7 @@ Registration preflight:
 DATA_GO_KR_SERVICE_KEY=... npm run preflight:registration
 ```
 
-`npm run preflight:registration` runs the same checks but requires the live public-data smoke to run and pass. Use it before PlayMCP registration.
+`npm run preflight:registration` runs the same checks but requires the live public-data smoke to run and pass for every supported housing type. Use it before PlayMCP registration.
 
 Live public-data smoke before production rollout:
 
@@ -165,6 +165,8 @@ To narrow the live smoke while debugging one source:
 ```bash
 PUBLIC_DATA_SMOKE_HOUSING_TYPES=apartment,rowhouse DATA_GO_KR_SERVICE_KEY=... npm run smoke:public-data
 ```
+
+Do not use a narrowed `PUBLIC_DATA_SMOKE_HOUSING_TYPES` list as registration evidence. `npm run preflight:registration` fails unless all supported housing types are included.
 
 ## CI Gate
 

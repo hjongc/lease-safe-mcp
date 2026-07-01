@@ -92,6 +92,6 @@ Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_K
 
 CI also runs `npm run smoke:docker` after building the image, so registration should use a commit whose Docker image has been proven to boot and answer MCP requests before the optional live API smoke.
 
-The live public-data smoke is intentionally stricter than a connectivity check: `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` must be positive, and rent and sale APIs must return positive sample counts for the configured demo region/month. A zero-sample official response means the demo input is not registration-ready yet.
+The live public-data smoke is intentionally stricter than a connectivity check: `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` must be positive, `npm run preflight:registration` must cover every supported housing type, and rent and sale APIs must return positive sample counts for the configured demo region/month. A zero-sample official response means the demo input is not registration-ready yet.
 
 Use `docs/operations.md` as the final registration runbook. Registration is not evidence-complete until `npm run preflight:registration` and the GitHub Actions live public-data smoke are passed, not skipped.

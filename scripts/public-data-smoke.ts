@@ -37,6 +37,13 @@ export function publicDataSmokeHousingTypes(): HousingType[] {
       throw new Error(`Unsupported PUBLIC_DATA_SMOKE_HOUSING_TYPES value: ${type}`);
     }
   }
+
+  if (process.env.REQUIRE_LIVE_PUBLIC_DATA === "1") {
+    const missingTypes = HOUSING_TYPES.filter(type => !requested.includes(type));
+    if (missingTypes.length > 0) {
+      throw new Error(`PUBLIC_DATA_SMOKE_HOUSING_TYPES must include all supported housing types in registration preflight. Missing: ${missingTypes.join(",")}`);
+    }
+  }
   return requested as HousingType[];
 }
 

@@ -192,12 +192,21 @@ test("public-data smoke validates configured region query parameters before API 
 
 test("public-data smoke validates requested housing types", () => {
   const previousHousingTypes = process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES;
+  const previousRequireLivePublicData = process.env.REQUIRE_LIVE_PUBLIC_DATA;
   try {
+    delete process.env.REQUIRE_LIVE_PUBLIC_DATA;
     delete process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES;
     assert.deepEqual(publicDataSmokeHousingTypes(), ["apartment", "rowhouse", "single_multi", "officetel"]);
 
     process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES = "apartment,rowhouse";
     assert.deepEqual(publicDataSmokeHousingTypes(), ["apartment", "rowhouse"]);
+
+    process.env.REQUIRE_LIVE_PUBLIC_DATA = "1";
+    assert.throws(() => publicDataSmokeHousingTypes(), /must include all supported housing types in registration preflight/);
+
+    process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES = "apartment,rowhouse,single_multi,officetel";
+    assert.deepEqual(publicDataSmokeHousingTypes(), ["apartment", "rowhouse", "single_multi", "officetel"]);
+    delete process.env.REQUIRE_LIVE_PUBLIC_DATA;
 
     process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES = ",";
     assert.throws(() => publicDataSmokeHousingTypes(), /at least one supported housing type/);
@@ -212,6 +221,11 @@ test("public-data smoke validates requested housing types", () => {
       delete process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES;
     } else {
       process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES = previousHousingTypes;
+    }
+    if (previousRequireLivePublicData === undefined) {
+      delete process.env.REQUIRE_LIVE_PUBLIC_DATA;
+    } else {
+      process.env.REQUIRE_LIVE_PUBLIC_DATA = previousRequireLivePublicData;
     }
   }
 });

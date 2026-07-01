@@ -72,6 +72,7 @@ for (const required of [
   "unsupported `/mcp` methods",
   "non-JSON MCP POST bodies",
   "WWW-Authenticate",
+  "every supported housing type",
   "npm run preflight:registration",
   "npm run preflight"
 ]) {
@@ -83,6 +84,7 @@ for (const required of [
   "invalid-JSON rejection",
   "unsupported-content-type rejection",
   "WWW-Authenticate",
+  "every supported housing type",
   "official source registry access",
   "Docker runtime smoke"
 ]) {
@@ -258,6 +260,8 @@ assert(/MONEY_INPUT_LIMITS\.depositManwon/.test(publicDataSmoke), "public-data s
 assert(/plain positive integer/.test(publicDataSmoke), "public-data smoke must require a plain integer deposit value");
 assert(/isAllZeroLawdCd/.test(publicDataSmoke), "public-data smoke must reject all-zero LAWD_CD values before API calls");
 assert(/isFutureDealYmd/.test(publicDataSmoke), "public-data smoke must reject future deal months before API calls");
+assert(/REQUIRE_LIVE_PUBLIC_DATA/.test(publicDataSmoke), "public-data smoke must know when registration preflight requires live evidence");
+assert(/must include all supported housing types in registration preflight/.test(publicDataSmoke), "registration preflight must reject narrowed public-data housing smoke");
 
 const releasePreflight = readFileSync("scripts/release-preflight.ts", "utf8");
 const registrationPreflight = readFileSync("scripts/registration-preflight.ts", "utf8");
