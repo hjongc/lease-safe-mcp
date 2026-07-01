@@ -10,7 +10,7 @@ Lease Safe(전월세안전내비) is a Korean lease-safety MCP server for people
 - MCP server name: `lease-safe`
 - Transport: Streamable HTTP
 - Endpoint path: `/mcp`
-- Health path: `/healthz` and Docker `HEALTHCHECK`
+- Health path: `/healthz` with minimal liveness metadata and Docker `HEALTHCHECK`
 - Source build: Git repository + `Dockerfile`
 - Container runtime user: non-root `node`
 - Container smoke: image starts in production mode and passes `/healthz` plus MCP handshake/list-tools

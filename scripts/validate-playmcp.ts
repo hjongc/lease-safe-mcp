@@ -75,6 +75,7 @@ for (const required of [
   "Streamable HTTP",
   "/mcp",
   "/healthz",
+  "minimal liveness metadata",
   "assess_lease_safety",
   "overall risk level",
   "DATA_GO_KR_SERVICE_KEY",
@@ -103,6 +104,7 @@ for (const required of [
   "unsupported-content-type rejection",
   "WWW-Authenticate",
   "Cache-Control",
+  "minimal liveness metadata",
   "underscores",
   "every supported housing type",
   "Registration Preflight",
@@ -115,6 +117,7 @@ for (const required of [
 
 const server = readFileSync("src/server.ts", "utf8");
 const domain = readFileSync("src/domain.ts", "utf8");
+const healthzRoute = server.match(/app\.get\("\/healthz"[\s\S]*?\n  \}\);/)?.[0] ?? "";
 assert(/MCP_ALLOWED_HOSTS/.test(server), "server must support MCP_ALLOWED_HOSTS");
 assert(/plain hostnames, not URLs, ports/.test(server), "server must reject unsafe MCP_ALLOWED_HOSTS entries");
 assert(/userinfo, query strings, fragments/.test(server), "server must reject URL userinfo/query/fragment host allowlist entries");
@@ -191,6 +194,10 @@ assert(/PUBLIC_DATA_TIMEOUT_MS/.test(domain), "domain must support a bounded pub
 assert(/parsePlainInteger/.test(domain), "domain must parse public-data timeout as a plain integer");
 assert(/MAX_PUBLIC_DATA_RESPONSE_BYTES/.test(domain), "domain must bound official public-data response sizes");
 assert(/publicDataTimeoutMs/.test(server), "server must validate the public-data timeout at startup");
+assert(/ok:\s*true[\s\S]*service:\s*"lease-safe"[\s\S]*version:\s*VERSION/.test(healthzRoute), "healthz must expose only minimal liveness metadata");
+assert(!/maxBodyBytes/.test(healthzRoute), "healthz must not expose MCP body-size tuning");
+assert(!/rateLimitPerMinute/.test(healthzRoute), "healthz must not expose rate-limit tuning");
+assert(!/publicDataTimeoutMs/.test(healthzRoute), "healthz must not expose public-data timeout tuning");
 assert(/SIGTERM/.test(server), "server must handle SIGTERM for container shutdown");
 assert(/x-powered-by/.test(server), "server must disable x-powered-by");
 assert(/X-Content-Type-Options/.test(server), "server must set X-Content-Type-Options");
@@ -294,7 +301,8 @@ assert(/-32700/.test(httpSmoke), "HTTP smoke must verify invalid JSON returns th
 assert(/auth_before_parse/.test(httpSmoke), "HTTP smoke must verify unauthorized malformed JSON fails authentication before parsing");
 assert(/content_type_rejection/.test(httpSmoke), "HTTP smoke must verify unsupported content-type rejection");
 assert(/415/.test(httpSmoke), "HTTP smoke must verify unsupported content-type returns 415");
-assert(/rateLimitPerMinute/.test(httpSmoke), "HTTP smoke must verify rate limit health metadata");
+assert(/publicDataTimeoutMs\?: unknown/.test(httpSmoke), "HTTP smoke must verify healthz omits internal tuning metadata");
+assert(/mcpMaxBodyBytesFromEnv/.test(httpSmoke), "HTTP smoke must verify oversized requests without reading limits from healthz");
 assert(/oversized_request/.test(httpSmoke), "HTTP smoke must verify oversized MCP request rejection");
 assert(/dist\/scripts\/smoke\.js/.test(httpSmoke), "HTTP smoke must run the MCP client smoke");
 
@@ -318,7 +326,7 @@ assert(/-32700/.test(dockerSmoke), "Docker smoke must verify invalid JSON return
 assert(/docker_auth_before_parse/.test(dockerSmoke), "Docker smoke must verify unauthorized malformed JSON fails authentication before parsing");
 assert(/docker_content_type_rejection/.test(dockerSmoke), "Docker smoke must verify unsupported content-type rejection");
 assert(/415/.test(dockerSmoke), "Docker smoke must verify unsupported content-type returns 415");
-assert(/rateLimitPerMinute/.test(dockerSmoke), "Docker smoke must verify rate limit health metadata");
+assert(/publicDataTimeoutMs\?: unknown/.test(dockerSmoke), "Docker smoke must verify healthz omits internal tuning metadata");
 assert(/docker_oversized_request/.test(dockerSmoke), "Docker smoke must verify oversized MCP request rejection");
 assert(/dist\/scripts\/smoke\.js/.test(dockerSmoke), "Docker smoke must run the MCP client smoke");
 

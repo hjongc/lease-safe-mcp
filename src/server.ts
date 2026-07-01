@@ -608,7 +608,7 @@ export function createApp() {
   requireProductionDataKey();
   const maxBodyBytes = mcpMaxBodyBytes();
   const rateLimitPerMinute = mcpRateLimitPerMinute();
-  const publicDataTimeout = publicDataTimeoutMs();
+  publicDataTimeoutMs();
   const authToken = mcpAuthToken();
   const app = express();
 
@@ -624,12 +624,7 @@ export function createApp() {
     res.json({
       ok: true,
       service: "lease-safe",
-      version: VERSION,
-      transport: "streamable-http",
-      stateless: true,
-      maxBodyBytes,
-      rateLimitPerMinute,
-      publicDataTimeoutMs: publicDataTimeout
+      version: VERSION
     });
   });
 

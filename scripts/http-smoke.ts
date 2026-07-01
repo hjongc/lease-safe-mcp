@@ -2,6 +2,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { request } from "node:http";
 import { createServer } from "node:net";
 
+const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
+
 function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
@@ -37,7 +39,21 @@ function smokePortFromEnv(name: string): number | undefined {
   return port;
 }
 
-async function waitForHealth(port: number, server: ChildProcess): Promise<number> {
+function mcpMaxBodyBytesFromEnv(): number {
+  const rawLimit = process.env.MCP_MAX_BODY_BYTES?.trim();
+  if (!rawLimit) return DEFAULT_MCP_MAX_BODY_BYTES;
+  if (!/^(0|[1-9]\d*)$/.test(rawLimit)) {
+    throw new Error("MCP_MAX_BODY_BYTES must be a positive integer.");
+  }
+
+  const parsed = Number(rawLimit);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error("MCP_MAX_BODY_BYTES must be a positive integer.");
+  }
+  return parsed;
+}
+
+async function waitForHealth(port: number, server: ChildProcess): Promise<void> {
   const healthUrl = `http://127.0.0.1:${port}/healthz`;
   const startedAt = Date.now();
   let lastError: unknown;
@@ -51,14 +67,16 @@ async function waitForHealth(port: number, server: ChildProcess): Promise<number
       const response = await fetch(healthUrl);
       if (response.ok) {
         assertSecurityHeaders(response, "healthz");
-        const body = await response.json() as { ok?: unknown; service?: unknown; maxBodyBytes?: unknown; rateLimitPerMinute?: unknown };
+        const body = await response.json() as { ok?: unknown; service?: unknown; version?: unknown; maxBodyBytes?: unknown; rateLimitPerMinute?: unknown; publicDataTimeoutMs?: unknown };
         if (
           body.ok === true &&
           body.service === "lease-safe" &&
-          Number.isSafeInteger(body.maxBodyBytes) &&
-          Number.isSafeInteger(body.rateLimitPerMinute)
+          typeof body.version === "string" &&
+          body.maxBodyBytes === undefined &&
+          body.rateLimitPerMinute === undefined &&
+          body.publicDataTimeoutMs === undefined
         ) {
-          return Number(body.maxBodyBytes);
+          return;
         }
       }
     } catch (error) {
@@ -345,7 +363,7 @@ async function main() {
   });
 
   try {
-    const maxBodyBytes = await waitForHealth(port, server);
+    await waitForHealth(port, server);
     console.log("healthz=ok");
     await verifyRejectedHost(endpoint);
     console.log("host_rejection=ok");
@@ -365,7 +383,7 @@ async function main() {
     console.log("auth_rejection=ok");
     await verifyOversizedBearerTokenRejected(endpoint);
     console.log("oversized_bearer_rejection=ok");
-    await verifyOversizedRequest(endpoint, maxBodyBytes);
+    await verifyOversizedRequest(endpoint, mcpMaxBodyBytesFromEnv());
     console.log("oversized_request=ok");
     await runNode(["dist/scripts/smoke.js"], env);
     console.log("http_smoke=ok");

@@ -49,8 +49,13 @@ async function waitForHealth(port: number, server: ChildProcess): Promise<void> 
     try {
       const response = await fetch(healthUrl);
       if (response.ok) {
-        const body = await response.json() as { ok?: unknown; service?: unknown; rateLimitPerMinute?: unknown };
-        if (body.ok === true && body.service === "lease-safe" && body.rateLimitPerMinute === 1) return;
+        const body = await response.json() as { ok?: unknown; service?: unknown; version?: unknown; rateLimitPerMinute?: unknown };
+        if (
+          body.ok === true &&
+          body.service === "lease-safe" &&
+          typeof body.version === "string" &&
+          body.rateLimitPerMinute === undefined
+        ) return;
       }
     } catch (error) {
       lastError = error;

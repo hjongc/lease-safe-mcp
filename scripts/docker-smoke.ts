@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 
 const imageTag = process.env.DOCKER_SMOKE_IMAGE ?? process.env.PREFLIGHT_DOCKER_TAG ?? "lease-safe-mcp-preflight";
 const containerName = `lease-safe-mcp-smoke-${process.pid}`;
+const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
 const publicDataSmokeKey = [
   "LeaseSafePublicDataSmokeKey",
   "OnlyForDockerSmoke1234567890+/",
@@ -99,7 +100,7 @@ async function containerLogs(containerId: string): Promise<string> {
   }
 }
 
-async function waitForHealth(port: number, containerId: string): Promise<number> {
+async function waitForHealth(port: number, containerId: string): Promise<void> {
   const healthUrl = `http://127.0.0.1:${port}/healthz`;
   const startedAt = Date.now();
   let lastError: unknown;
@@ -113,14 +114,16 @@ async function waitForHealth(port: number, containerId: string): Promise<number>
       const response = await fetch(healthUrl);
       if (response.ok) {
         assertSecurityHeaders(response, "docker healthz");
-        const body = await response.json() as { ok?: unknown; service?: unknown; maxBodyBytes?: unknown; rateLimitPerMinute?: unknown };
+        const body = await response.json() as { ok?: unknown; service?: unknown; version?: unknown; maxBodyBytes?: unknown; rateLimitPerMinute?: unknown; publicDataTimeoutMs?: unknown };
         if (
           body.ok === true &&
           body.service === "lease-safe" &&
-          Number.isSafeInteger(body.maxBodyBytes) &&
-          Number.isSafeInteger(body.rateLimitPerMinute)
+          typeof body.version === "string" &&
+          body.maxBodyBytes === undefined &&
+          body.rateLimitPerMinute === undefined &&
+          body.publicDataTimeoutMs === undefined
         ) {
-          return Number(body.maxBodyBytes);
+          return;
         }
       }
     } catch (error) {
@@ -388,7 +391,7 @@ async function main() {
   ]);
 
   try {
-    const maxBodyBytes = await waitForHealth(port, containerId);
+    await waitForHealth(port, containerId);
     console.log("docker_healthz=ok");
     await verifyRejectedHost(endpoint);
     console.log("docker_host_rejection=ok");
@@ -408,7 +411,7 @@ async function main() {
     console.log("docker_auth_rejection=ok");
     await verifyOversizedBearerTokenRejected(endpoint);
     console.log("docker_oversized_bearer_rejection=ok");
-    await verifyOversizedRequest(endpoint, maxBodyBytes);
+    await verifyOversizedRequest(endpoint, DEFAULT_MCP_MAX_BODY_BYTES);
     console.log("docker_oversized_request=ok");
     await runNode(["dist/scripts/smoke.js"], {
       ...process.env,
