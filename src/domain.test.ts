@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
   assessLeaseSafety,
   buildMoveInProtectionPlan,
@@ -42,6 +43,22 @@ function registeredToolSchema(toolName: string): ToolInputSchema {
   return tool.inputSchema;
 }
 
+function runRegistrationEnvCheck(value?: string): ReturnType<typeof spawnSync> {
+  const env = { ...process.env };
+  delete env[PUBLIC_DATA_KEY_ENV_NAME];
+  if (value !== undefined) env[PUBLIC_DATA_KEY_ENV_NAME] = value;
+
+  return spawnSync(process.execPath, ["scripts/require-registration-env.mjs"], {
+    cwd: process.cwd(),
+    env,
+    encoding: "utf8"
+  });
+}
+
+function processStderr(result: ReturnType<typeof spawnSync>): string {
+  return typeof result.stderr === "string" ? result.stderr : result.stderr.toString("utf8");
+}
+
 test("data availability names automatic APIs and no fake fallback", () => {
   const text = explainDataAvailability();
   assert.match(text, /법정동코드/);
@@ -75,6 +92,28 @@ test("secret scan allows exact placeholders but rejects hidden values beside the
   ].join("");
   assert.equal(scanLine("README.md", decodedPublicDataKey, 1).length, 1);
   assert.deepEqual(scanLine("src/domain.test.ts", VALID_TEST_SERVICE_KEY, 1), []);
+});
+
+test("registration preflight env check rejects bad public-data keys before build", () => {
+  const missing = runRegistrationEnvCheck();
+  assert.notEqual(missing.status, 0);
+  assert.match(processStderr(missing), /DATA_GO_KR_SERVICE_KEY is required/);
+
+  const placeholder = runRegistrationEnvCheck("your-data-go-kr-service-key");
+  assert.notEqual(placeholder.status, 0);
+  assert.match(processStderr(placeholder), /not a placeholder/);
+
+  const malformed = runRegistrationEnvCheck("short-key");
+  assert.notEqual(malformed.status, 0);
+  assert.match(processStderr(malformed), /must look like a real data\.go\.kr service key/);
+
+  const invalidEncoding = runRegistrationEnvCheck("%E0%A4%A");
+  assert.notEqual(invalidEncoding.status, 0);
+  assert.match(processStderr(invalidEncoding), /valid percent-encoded or decoded/);
+
+  const encoded = runRegistrationEnvCheck(VALID_TEST_SERVICE_KEY_ENCODED);
+  assert.equal(encoded.status, 0);
+  assert.equal(processStderr(encoded), "");
 });
 
 test("public-data smoke requires positive live sample counts", () => {
