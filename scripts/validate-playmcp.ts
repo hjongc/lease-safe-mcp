@@ -45,6 +45,7 @@ for (const required of [
   "/mcp",
   "/healthz",
   "assess_lease_safety",
+  "overall risk level",
   "DATA_GO_KR_SERVICE_KEY",
   "MCP_ALLOWED_HOSTS",
   "fails at startup",

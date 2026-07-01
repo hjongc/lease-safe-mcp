@@ -49,6 +49,7 @@ Use `assess_lease_safety` first.
 
 Expected value shown in one response:
 
+- overall risk level and explicit reasons
 - nearby rent-market sample count and deposit median
 - nearby sale-market sample count and deposit-to-sale ratio
 - red flags such as proxy contract, mortgage, or rushed deposit pressure

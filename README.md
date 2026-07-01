@@ -49,6 +49,7 @@ Reviewed official guidance:
 
 `assess_lease_safety` is the primary tool to show in a demo. It takes `housingType`, `lawdCd`, `dealYmd`, `depositManwon`, and optional situation details, then returns:
 
+- an overall risk level with explicit reasons
 - nearby rent-market median and sample transactions
 - nearby sale-market median and deposit-to-sale ratio
 - contract red flags from the user's situation

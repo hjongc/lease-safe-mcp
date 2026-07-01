@@ -60,6 +60,12 @@ interface SaleMarketSnapshot {
   sourceId: string;
 }
 
+interface AssessmentRiskSummary {
+  level: "매우 높음" | "높음" | "주의" | "보통";
+  score: number;
+  reasons: string[];
+}
+
 interface LegalDongRecord {
   regionName: string;
   regionCode: string;
@@ -402,6 +408,59 @@ function saleRatioSignal(ratio: number | undefined): string {
   return "입력 보증금은 주변 매매가 중앙값 대비 70% 미만입니다. 그래도 개별 등기부, 선순위 보증금, 특약 확인은 별도입니다.";
 }
 
+function assessmentRiskSummary(
+  input: LeaseProfileInput & { depositManwon: number },
+  rentMarket: RentMarketSnapshot,
+  saleMarket: SaleMarketSnapshot,
+  redFlags: string[]
+): AssessmentRiskSummary {
+  let score = 0;
+  const reasons: string[] = [];
+
+  if (!Number.isFinite(saleMarket.ratio)) {
+    score += 25;
+    reasons.push("매매 표본이 부족해 보증금-매매가 비율을 계산하지 못했습니다.");
+  } else if ((saleMarket.ratio as number) >= 90) {
+    score += 70;
+    reasons.push("보증금이 주변 매매가 중앙값의 90% 이상입니다.");
+  } else if ((saleMarket.ratio as number) >= 80) {
+    score += 55;
+    reasons.push("보증금이 주변 매매가 중앙값의 80% 이상입니다.");
+  } else if ((saleMarket.ratio as number) >= 70) {
+    score += 35;
+    reasons.push("보증금이 주변 매매가 중앙값의 70% 이상입니다.");
+  }
+
+  if (!rentMarket.median || rentMarket.sampleCount === 0) {
+    score += 15;
+    reasons.push("전월세 표본이 부족해 주변 임대 시세 위치가 약합니다.");
+  } else if (input.depositManwon > rentMarket.median * 1.25) {
+    score += 20;
+    reasons.push("입력 보증금이 전월세 신고 표본 중앙값보다 25% 이상 높습니다.");
+  }
+
+  const joinedFlags = redFlags.join(" ");
+  if (/대리|위임|명의|소유자|집주인/.test(joinedFlags)) {
+    score += 15;
+    reasons.push("대리계약 또는 소유자 확인 신호가 있습니다.");
+  }
+  if (/근저당|압류|가압류|경매|채권/.test(joinedFlags)) {
+    score += 20;
+    reasons.push("근저당, 압류, 경매 등 선순위 권리 확인 신호가 있습니다.");
+  }
+  if (/송금|가계약|계약금|압박/.test(joinedFlags)) {
+    score += 15;
+    reasons.push("계약금 또는 가계약금 송금을 서두르는 신호가 있습니다.");
+  }
+
+  const level = score >= 85 ? "매우 높음" : score >= 60 ? "높음" : score >= 30 ? "주의" : "보통";
+  return {
+    level,
+    score: Math.min(score, 100),
+    reasons: reasons.length > 0 ? reasons : ["현재 공식 시세 신호와 입력 위험 신호만으로는 높은 위험도를 단정할 근거가 부족합니다."]
+  };
+}
+
 async function fetchSaleMarketSnapshot(input: {
   housingType: HousingType;
   lawdCd: string;
@@ -495,6 +554,7 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
     fetchSaleMarketSnapshot(input)
   ]);
   const redFlags = inferRiskSignals(input);
+  const riskSummary = assessmentRiskSummary(input, rentMarket, saleMarket, redFlags);
   const ratioLine = saleMarket.ratio
     ? `${saleMarket.ratio.toLocaleString("ko-KR")}%`
     : "계산 불가";
@@ -515,9 +575,11 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
     `주택유형: ${rentMarket.label}`,
     `계약월: ${input.dealYmd}`,
     `입력 조건: 보증금 ${money(input.depositManwon)} / 월세 ${money(input.monthlyRentManwon)}`,
+    `종합 위험도: ${riskSummary.level} (${riskSummary.score}/100)`,
     "",
     "## 핵심 판단",
     lineItems([
+      `위험도 근거: ${riskSummary.reasons.join(" / ")}`,
       `전월세 신고 표본 ${rentMarket.sampleCount}건, 보증금 중앙값 ${money(rentMarket.median)}`,
       `매매 신고 표본 ${saleMarket.sampleCount}건, 매매가 중앙값 ${money(saleMarket.median)}`,
       `매매가 대비 보증금 비율 ${ratioLine}: ${saleMarket.signal}`,

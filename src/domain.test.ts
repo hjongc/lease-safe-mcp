@@ -274,6 +274,8 @@ test("one-shot lease assessment combines rent, sale, red flags, and actions", as
     });
 
     assert.match(text, /전월세 안전 종합 진단/);
+    assert.match(text, /종합 위험도: 매우 높음/);
+    assert.match(text, /위험도 근거:/);
     assert.match(text, /전월세 신고 표본 1건/);
     assert.match(text, /매매 신고 표본 1건/);
     assert.match(text, /매매가 대비 보증금 비율 95%/);
