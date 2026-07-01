@@ -28,6 +28,7 @@ const dockerfile = readFileSync("Dockerfile", "utf8");
 assert(/COPY package\*\.json \.\//.test(dockerfile), "Dockerfile must copy package-lock.json for reproducible builds");
 assert(/RUN npm ci/.test(dockerfile), "Dockerfile must use npm ci");
 assert(/EXPOSE 3000/.test(dockerfile), "Dockerfile must expose port 3000");
+assert(/USER node/.test(dockerfile), "Dockerfile runtime must use the non-root node user");
 assert(/HEALTHCHECK[\s\S]*\/healthz/.test(dockerfile), "Dockerfile must healthcheck /healthz");
 assert(/CMD \["node", "dist\/src\/server\.js"\]/.test(dockerfile), "Dockerfile CMD must start built server");
 
