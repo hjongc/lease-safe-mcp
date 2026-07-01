@@ -78,13 +78,18 @@ jobs:
 
       - name: Live public-data smoke
         if: ${{ env.DATA_GO_KR_SERVICE_KEY != '' }}
-        run: npm run smoke:public-data
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run smoke:public-data | tee live-public-data-smoke.log
         env:
           REQUIRE_LIVE_PUBLIC_DATA: "1"
 
       - name: Publish live public-data status
         if: ${{ always() }}
+        shell: bash
         run: |
+          evidence_status=0
           {
             echo "## Lease Safe CI Evidence"
             echo ""
@@ -96,7 +101,27 @@ jobs:
               echo "- Registration evidence still requires the manual Registration Preflight workflow to pass"
             fi
             echo "- Whitespace diff checks: working tree, staged diff, and submitted commit executed"
+            echo "- Root route minimality smoke: executed in local HTTP and Docker runtime smoke"
             echo "- Docker runtime smoke: executed"
             echo "- Docker non-root runtime check: executed"
             echo "- Dependency lifecycle scripts: disabled during npm ci"
+            echo ""
+            echo "### Live Public-Data Evidence Lines"
+            echo ""
+            if [ -f live-public-data-smoke.log ]; then
+              echo '```text'
+              if node dist/scripts/live-evidence.js live-public-data-smoke.log > live-public-data-evidence.log 2> live-public-data-evidence-error.log; then
+                cat live-public-data-evidence.log
+              else
+                cat live-public-data-evidence-error.log
+                evidence_status=1
+              fi
+              echo '```'
+            else
+              echo "Live public-data evidence lines were not collected in this CI run."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$evidence_status" -ne 0 ]; then
+            echo "Live public-data evidence lines were missing from captured smoke output." >&2
+            exit "$evidence_status"
+          fi

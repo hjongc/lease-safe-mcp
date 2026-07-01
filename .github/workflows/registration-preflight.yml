@@ -57,15 +57,23 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Verify registration public-data key
+        run: node scripts/require-registration-env.mjs
+
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
       - name: Run registration preflight
-        run: npm run preflight:registration
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run preflight:registration | tee registration-preflight.log
 
       - name: Publish registration evidence summary
         if: ${{ always() }}
+        shell: bash
         run: |
+          evidence_status=0
           sanitize_summary_value() {
             local value="$1"
             local max_length=120
@@ -99,7 +107,28 @@ jobs:
             echo "- Demo smoke deal month: \`${SAFE_PUBLIC_DATA_SMOKE_DEAL_YMD}\`"
             echo "- Demo smoke deposit: \`${SAFE_PUBLIC_DATA_SMOKE_DEPOSIT_MANWON}\` manwon"
             echo "- Whitespace diff checks: working tree, staged diff, and submitted commit included"
+            echo "- Root route minimality smoke: included in local HTTP and Docker runtime smoke"
             echo "- Docker runtime smoke: included in registration preflight"
             echo "- Docker non-root runtime check: included in registration preflight"
             echo "- Dependency lifecycle scripts: disabled during npm ci"
+            echo ""
+            echo "### Live Public-Data Evidence Lines"
+            echo ""
+            if [ -f registration-preflight.log ]; then
+              echo '```text'
+              if node dist/scripts/live-evidence.js registration-preflight.log > registration-preflight-evidence.log 2> registration-preflight-evidence-error.log; then
+                cat registration-preflight-evidence.log
+              else
+                cat registration-preflight-evidence-error.log
+                evidence_status=1
+              fi
+              echo '```'
+            else
+              echo "Preflight log was not created before the summary step."
+              evidence_status=1
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$evidence_status" -ne 0 ]; then
+            echo "Live public-data evidence lines were missing from captured registration preflight output." >&2
+            exit "$evidence_status"
+          fi

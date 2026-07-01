@@ -14,7 +14,7 @@ Lease Safe(전월세안전내비) is a Korean lease-safety MCP server for people
 - Source build: Git repository + `Dockerfile`
 - Git URL: `https://github.com/hjongc/lease-safe-mcp.git`
 - Container runtime user: non-root `node`
-- Container smoke: image starts in production mode and passes `/healthz` plus MCP handshake/list-tools
+- Container smoke: image starts in production mode and passes `/healthz`, root route minimality, and MCP handshake/list-tools
 - Branch: `main`
 - Demo entry tool: `assess_lease_safety`
 
@@ -39,7 +39,7 @@ The production server fails at startup if `MCP_ALLOWED_HOSTS` or `DATA_GO_KR_SER
 
 The Docker `HEALTHCHECK` connects to loopback but sends the first configured `MCP_ALLOWED_HOSTS` value as the `Host` header, so a production allowlist containing only the PlayMCP host can still pass container liveness checks.
 
-The server also rejects unknown and odd encoded routes with JSON `404`, bounds unexpected Express bad requests with JSON `400`, rejects unsupported `/mcp` methods with `Allow: POST`, rejects invalid JSON, compressed request bodies, and non-JSON MCP POST bodies before transport handling, advertises bearer authentication failures with `WWW-Authenticate` when `MCP_AUTH_TOKEN` is set, rejects oversized MCP request bodies, rate-limits MCP POST traffic, fails clearly on public-data timeout, disables `x-powered-by`, emits `X-Request-Id` for log correlation, sets `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Content-Security-Policy: default-src 'none'; base-uri 'none'; frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`, and handles container shutdown signals so PlayMCP can stop the image cleanly.
+The server keeps `GET /` to a text/plain MCP usage hint, rejects unknown and odd encoded routes with JSON `404`, bounds unexpected Express bad requests with JSON `400`, rejects unsupported `/mcp` methods with `Allow: POST`, rejects invalid JSON, compressed request bodies, and non-JSON MCP POST bodies before transport handling, advertises bearer authentication failures with `WWW-Authenticate` when `MCP_AUTH_TOKEN` is set, rejects oversized MCP request bodies, rate-limits MCP POST traffic, fails clearly on public-data timeout, disables `x-powered-by`, emits `X-Request-Id` for log correlation, sets `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Content-Security-Policy: default-src 'none'; base-uri 'none'; frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`, and handles container shutdown signals so PlayMCP can stop the image cleanly.
 
 ## Demo Scenario
 
@@ -91,12 +91,12 @@ Before registration:
 DATA_GO_KR_SERVICE_KEY=... npm run preflight:registration
 ```
 
-Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_KEY` is configured as a GitHub repository secret, CI also runs the live public-data smoke in registration mode.
+Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_KEY` is configured as a GitHub repository secret, CI also runs the live public-data smoke in registration mode and publishes the extracted live public-data evidence lines in the job summary.
 
-For shareable registration evidence, trigger the manual GitHub Actions **Registration Preflight** workflow on the submitted commit. This workflow runs `npm run preflight:registration`, includes working-tree, staged, and committed whitespace diff checks, fails when `DATA_GO_KR_SERVICE_KEY` is missing instead of treating live public-data smoke as optional, and publishes a GitHub Actions job summary with the commit, workflow run URL, required command, live public-data requirement, sanitized, length-limited demo smoke input values, and Docker runtime smoke coverage.
+For shareable registration evidence, trigger the manual GitHub Actions **Registration Preflight** workflow on the submitted commit. This workflow runs `npm run preflight:registration`, includes working-tree, staged, and committed whitespace diff checks, fails when `DATA_GO_KR_SERVICE_KEY` is missing instead of treating live public-data smoke as optional, and publishes a GitHub Actions job summary with the commit, workflow run URL, required command, live public-data requirement, sanitized, length-limited demo smoke input values, root route minimality smoke coverage, Docker runtime smoke coverage, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines.
 
 CI also runs `npm run smoke:docker` after building the image, so registration should use a commit whose Docker image has been proven to boot and answer MCP requests before the optional live API smoke.
 
-The live public-data smoke is intentionally stricter than a connectivity check: `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` must be positive, `npm run preflight:registration` must cover every supported housing type, and rent and sale APIs must return positive sample counts for the configured demo region/month. A zero-sample official response means the demo input is not registration-ready yet.
+The live public-data smoke is intentionally stricter than a connectivity check: `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` must be positive, `npm run preflight:registration` must cover every supported housing type, rent, sale, and flagship assessment API paths must return positive sample counts for the configured demo region/month, and the captured output must produce extractable registration evidence lines. The shareable log evidence should include `legal_dong=ok`, `rent_market[...]`, `sale_market[...]`, and `lease_assessment[...]` lines for every supported housing type. A zero-sample official response means the demo input is not registration-ready yet.
 
 Use `docs/operations.md` as the final registration runbook. Registration is not evidence-complete until `npm run preflight:registration`, the GitHub Actions **Registration Preflight** workflow summary, and the GitHub Actions live public-data smoke are passed, not skipped.

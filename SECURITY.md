@@ -38,4 +38,4 @@ Before PlayMCP registration, `npm run preflight:registration` must pass with a l
 
 ## Dependency Updates
 
-Dependabot is configured for npm dependencies and GitHub Actions. Dependency PRs should not be merged until CI is green and the PlayMCP validation still passes.
+Dependabot is configured for npm dependencies, GitHub Actions, and Docker base images. Dependency PRs should not be merged until CI is green and the PlayMCP validation still passes.

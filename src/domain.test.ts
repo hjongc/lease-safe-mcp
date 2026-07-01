@@ -21,6 +21,7 @@ import { MCP_TEXT_LIMITS, compactLogError, createApp, createServer, httpPort, mc
 import { renderSources } from "./sources.js";
 import { assertLegalDongSmokeMatchesLawdCd, positiveSampleCount, publicDataSmokeConfigLine, publicDataSmokeDealYmd, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes, publicDataSmokeLawdCd, publicDataSmokeRegion } from "../scripts/public-data-smoke.js";
 import { scanLine, shouldScanFileName } from "../scripts/secret-scan.js";
+import { extractLivePublicDataEvidenceLines } from "../scripts/live-evidence.js";
 
 const PUBLIC_DATA_KEY_ENV_NAME = ["DATA_GO_KR", "SERVICE_KEY"].join("_");
 const VALID_TEST_SERVICE_KEY = [
@@ -127,6 +128,10 @@ test("registration preflight env check rejects bad public-data keys before build
   const placeholder = runRegistrationEnvCheck("your-data-go-kr-service-key");
   assert.notEqual(placeholder.status, 0);
   assert.match(processStderr(placeholder), /not a placeholder/);
+
+  const encodedPlaceholder = runRegistrationEnvCheck(encodeURIComponent("your-data-go-kr-service-key"));
+  assert.notEqual(encodedPlaceholder.status, 0);
+  assert.match(processStderr(encodedPlaceholder), /not a placeholder/);
 
   const malformed = runRegistrationEnvCheck("short-key");
   assert.notEqual(malformed.status, 0);
@@ -357,6 +362,127 @@ test("public-data smoke config line exposes non-secret evidence inputs", () => {
   assert.equal(line, 'public_data_smoke_config registration_mode=true region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse deposit_manwon=30000');
   assert.doesNotMatch(line, /DATA_GO_KR_SERVICE_KEY|serviceKey|secret/i);
   assert.match(publicDataSmokeConfigLine('서울 "관악구"', "11620", "202605", ["apartment"], 30000, false), /registration_mode=false region="서울 \\"관악구\\""/);
+});
+
+test("live evidence extractor requires every public-data proof category", () => {
+  const evidence = extractLivePublicDataEvidenceLines([
+    "noise before evidence",
+    'public_data_smoke_config registration_mode=true region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse,single_multi,officetel deposit_manwon=30000',
+    "legal_dong=ok",
+    "rent_market[apartment]=ok samples=12",
+    "rent_market[rowhouse]=ok samples=11",
+    "rent_market[single_multi]=ok samples=10",
+    "rent_market[officetel]=ok samples=8",
+    "sale_market[apartment]=ok samples=9",
+    "sale_market[rowhouse]=ok samples=7",
+    "sale_market[single_multi]=ok samples=6",
+    "sale_market[officetel]=ok samples=5",
+    "lease_assessment[apartment]=ok rent_samples=12 sale_samples=9",
+    "lease_assessment[rowhouse]=ok rent_samples=11 sale_samples=7",
+    "lease_assessment[single_multi]=ok rent_samples=10 sale_samples=6",
+    "lease_assessment[officetel]=ok rent_samples=8 sale_samples=5",
+    "noise after evidence"
+  ].join("\n"));
+
+  assert.deepEqual(evidence, [
+    'public_data_smoke_config registration_mode=true region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse,single_multi,officetel deposit_manwon=30000',
+    "legal_dong=ok",
+    "rent_market[apartment]=ok samples=12",
+    "rent_market[rowhouse]=ok samples=11",
+    "rent_market[single_multi]=ok samples=10",
+    "rent_market[officetel]=ok samples=8",
+    "sale_market[apartment]=ok samples=9",
+    "sale_market[rowhouse]=ok samples=7",
+    "sale_market[single_multi]=ok samples=6",
+    "sale_market[officetel]=ok samples=5",
+    "lease_assessment[apartment]=ok rent_samples=12 sale_samples=9",
+    "lease_assessment[rowhouse]=ok rent_samples=11 sale_samples=7",
+    "lease_assessment[single_multi]=ok rent_samples=10 sale_samples=6",
+    "lease_assessment[officetel]=ok rent_samples=8 sale_samples=5"
+  ]);
+});
+
+test("live evidence extractor rejects empty or partial evidence", () => {
+  assert.throws(
+    () => extractLivePublicDataEvidenceLines("http_smoke=ok\n"),
+    /No live public-data evidence lines/
+  );
+  assert.throws(
+    () => extractLivePublicDataEvidenceLines([
+      'public_data_smoke_config registration_mode=true region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse,single_multi,officetel deposit_manwon=30000',
+      "legal_dong=ok",
+      "rent_market[apartment]=ok samples=12"
+    ].join("\n")),
+    /Missing required live public-data evidence categories: sale_market, lease_assessment/
+  );
+  assert.throws(
+    () => extractLivePublicDataEvidenceLines([
+      'public_data_smoke_config registration_mode=false region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment deposit_manwon=30000',
+      "legal_dong=ok",
+      "rent_market[apartment]=ok samples=12",
+      "sale_market[apartment]=ok samples=9",
+      "lease_assessment[apartment]=ok rent_samples=12 sale_samples=9"
+    ].join("\n")),
+    /registration_mode=true/
+  );
+  assert.throws(
+    () => extractLivePublicDataEvidenceLines([
+      'public_data_smoke_config registration_mode=true region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse,single_multi,officetel deposit_manwon=30000',
+      "legal_dong=ok",
+      "rent_market[apartment]=ok samples=12",
+      "rent_market[rowhouse]=ok samples=11",
+      "rent_market[single_multi]=ok samples=10",
+      "rent_market[officetel]=ok samples=8",
+      "sale_market[apartment]=ok samples=9",
+      "sale_market[single_multi]=ok samples=6",
+      "sale_market[officetel]=ok samples=5",
+      "lease_assessment[apartment]=ok rent_samples=12 sale_samples=9",
+      "lease_assessment[rowhouse]=ok rent_samples=11 sale_samples=7",
+      "lease_assessment[single_multi]=ok rent_samples=10 sale_samples=6",
+      "lease_assessment[officetel]=ok rent_samples=8 sale_samples=5"
+    ].join("\n")),
+    /Missing live public-data evidence lines by housing type: sale_market\[rowhouse\]/
+  );
+});
+
+test("live evidence extractor rejects malformed housing type coverage", () => {
+  const validProofLines = [
+    "legal_dong=ok",
+    "rent_market[apartment]=ok samples=12",
+    "rent_market[rowhouse]=ok samples=11",
+    "rent_market[single_multi]=ok samples=10",
+    "rent_market[officetel]=ok samples=8",
+    "sale_market[apartment]=ok samples=9",
+    "sale_market[rowhouse]=ok samples=7",
+    "sale_market[single_multi]=ok samples=6",
+    "sale_market[officetel]=ok samples=5",
+    "lease_assessment[apartment]=ok rent_samples=12 sale_samples=9",
+    "lease_assessment[rowhouse]=ok rent_samples=11 sale_samples=7",
+    "lease_assessment[single_multi]=ok rent_samples=10 sale_samples=6",
+    "lease_assessment[officetel]=ok rent_samples=8 sale_samples=5"
+  ];
+
+  assert.throws(
+    () => extractLivePublicDataEvidenceLines([
+      'public_data_smoke_config registration_mode=true region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,apartment,rowhouse,single_multi,officetel deposit_manwon=30000',
+      ...validProofLines
+    ].join("\n")),
+    /Duplicate live public-data evidence housing types: apartment/
+  );
+  assert.throws(
+    () => extractLivePublicDataEvidenceLines([
+      'public_data_smoke_config registration_mode=true region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse,single_multi,officetel,villa deposit_manwon=30000',
+      ...validProofLines
+    ].join("\n")),
+    /Unsupported live public-data evidence housing types: villa/
+  );
+  assert.throws(
+    () => extractLivePublicDataEvidenceLines([
+      'public_data_smoke_config registration_mode=true region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse,single_multi deposit_manwon=30000',
+      ...validProofLines
+    ].join("\n")),
+    /Missing supported live public-data evidence housing types: officetel/
+  );
 });
 
 test("legal dong helper calls official API and exposes LAWD code", async () => {

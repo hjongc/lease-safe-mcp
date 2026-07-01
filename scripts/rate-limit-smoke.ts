@@ -155,6 +155,14 @@ async function main() {
     if (second.status !== 429 || !retryAfter) {
       throw new Error(`Expected second MCP POST to return 429 with Retry-After, got ${second.status}: ${body}`);
     }
+    if (!second.headers.get("content-type")?.includes("application/json")) {
+      throw new Error("Rate-limit rejection must return application/json.");
+    }
+
+    const parsed = JSON.parse(body) as { error?: { code?: unknown; message?: unknown } };
+    if (parsed.error?.code !== -32002 || parsed.error?.message !== "Too many MCP requests. Try again later.") {
+      throw new Error("Rate-limit rejection did not return the expected JSON-RPC error body.");
+    }
 
     console.log("rate_limit_rejection=ok");
   } finally {

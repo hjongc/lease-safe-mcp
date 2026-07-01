@@ -259,6 +259,38 @@ async function verifyRequestIdPropagation(endpoint: string): Promise<void> {
   if (response.headers.get("x-request-id") !== "lease-safe-docker-smoke-request-1") {
     throw new Error("Docker health response did not preserve the supplied safe X-Request-Id.");
   }
+
+  const unsafeRequestId = "unsafe docker request id with spaces";
+  const unsafeResponse = await fetch(endpoint.replace(/\/mcp$/, "/healthz"), {
+    headers: {
+      "x-request-id": unsafeRequestId
+    }
+  });
+  assertSecurityHeaders(unsafeResponse, "docker invalid request-id regeneration");
+  if (unsafeResponse.headers.get("x-request-id") === unsafeRequestId) {
+    throw new Error("Docker health response must not echo an unsafe X-Request-Id value.");
+  }
+}
+
+async function verifyRootRoute(endpoint: string): Promise<void> {
+  const response = await fetch(endpoint.replace(/\/mcp$/, "/"));
+  assertSecurityHeaders(response, "docker root route");
+
+  if (response.status !== 200) {
+    const text = await response.text();
+    throw new Error(`Expected Docker root route to return 200, got ${response.status}: ${text}`);
+  }
+  if (!response.headers.get("content-type")?.startsWith("text/plain")) {
+    throw new Error("Docker root route must return text/plain.");
+  }
+
+  const text = await response.text();
+  if (text !== "Lease Safe(전월세안전내비) MCP server is running. Use POST /mcp for Streamable HTTP.") {
+    throw new Error("Docker root route did not return the expected minimal MCP usage hint.");
+  }
+  if (/DATA_GO_KR_SERVICE_KEY|MCP_AUTH_TOKEN|MCP_ALLOWED_HOSTS|PUBLIC_DATA_TIMEOUT_MS/.test(text)) {
+    throw new Error("Docker root route must not expose runtime configuration names.");
+  }
 }
 
 async function verifyUnknownRoute(endpoint: string): Promise<void> {
@@ -337,6 +369,14 @@ async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): P
   if (response.status !== 413) {
     const text = await response.text();
     throw new Error(`Expected oversized MCP request to return 413, got ${response.status}: ${text}`);
+  }
+  if (!response.headers.get("content-type")?.includes("application/json")) {
+    throw new Error("Oversized Docker MCP request rejection must return application/json.");
+  }
+
+  const body = await response.json() as { error?: { code?: unknown; message?: unknown } };
+  if (body.error?.code !== -32600 || body.error?.message !== `MCP request body exceeds ${maxBodyBytes} bytes.`) {
+    throw new Error("Oversized Docker MCP request did not return the expected JSON-RPC invalid request error.");
   }
 }
 
@@ -455,8 +495,8 @@ async function verifyUnauthorizedInvalidJsonRequest(endpoint: string): Promise<v
     throw new Error(`Expected unauthenticated invalid JSON Docker MCP request to advertise WWW-Authenticate: Bearer, got ${authenticate ?? "missing"}.`);
   }
 
-  const body = await response.json() as { error?: { message?: unknown } };
-  if (body.error?.message !== "Unauthorized") {
+  const body = await response.json() as { error?: { code?: unknown; message?: unknown } };
+  if (body.error?.code !== -32001 || body.error?.message !== "Unauthorized") {
     throw new Error("Unauthenticated invalid JSON Docker MCP request did not return the expected JSON-RPC auth error.");
   }
 }
@@ -538,8 +578,8 @@ async function verifyUnauthorizedRequest(endpoint: string): Promise<void> {
     throw new Error(`Expected unauthenticated Docker MCP request to advertise WWW-Authenticate: Bearer, got ${authenticate ?? "missing"}.`);
   }
 
-  const body = await response.json() as { error?: { message?: unknown } };
-  if (body.error?.message !== "Unauthorized") {
+  const body = await response.json() as { error?: { code?: unknown; message?: unknown } };
+  if (body.error?.code !== -32001 || body.error?.message !== "Unauthorized") {
     throw new Error("Unauthenticated Docker MCP request did not return the expected JSON-RPC error.");
   }
 }
@@ -569,8 +609,8 @@ async function verifyOversizedBearerTokenRejected(endpoint: string): Promise<voi
     throw new Error(`Expected oversized bearer Docker MCP request to advertise WWW-Authenticate: Bearer, got ${authenticate ?? "missing"}.`);
   }
 
-  const body = await response.json() as { error?: { message?: unknown } };
-  if (body.error?.message !== "Unauthorized") {
+  const body = await response.json() as { error?: { code?: unknown; message?: unknown } };
+  if (body.error?.code !== -32001 || body.error?.message !== "Unauthorized") {
     throw new Error("Oversized bearer Docker MCP request did not return the expected JSON-RPC auth error.");
   }
 }
@@ -613,6 +653,8 @@ async function main() {
     console.log("docker_healthz=ok");
     await verifyRequestIdPropagation(endpoint);
     console.log("docker_request_id=ok");
+    await verifyRootRoute(endpoint);
+    console.log("docker_root_route=ok");
     await verifyUnknownRoute(endpoint);
     console.log("docker_unknown_route=ok");
     await verifyEncodedOddPathRejected(endpoint);

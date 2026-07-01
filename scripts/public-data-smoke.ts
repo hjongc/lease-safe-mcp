@@ -1,7 +1,7 @@
 import { MONEY_INPUT_LIMITS, assessLeaseSafety, compareDepositToSaleMarket, compareRentMarket, isAllZeroLawdCd, isFutureDealYmd, resolveLegalDongCode } from "../src/domain.js";
 import type { HousingType } from "../src/sources.js";
 
-const HOUSING_TYPES = ["apartment", "rowhouse", "single_multi", "officetel"] as const satisfies readonly HousingType[];
+export const PUBLIC_DATA_SMOKE_HOUSING_TYPES = ["apartment", "rowhouse", "single_multi", "officetel"] as const satisfies readonly HousingType[];
 const MAX_PUBLIC_DATA_SMOKE_REGION_LENGTH = 80;
 
 export function positiveSampleCount(text: string, label: string, pattern: RegExp): number {
@@ -20,7 +20,7 @@ export function positiveSampleCount(text: string, label: string, pattern: RegExp
 
 export function publicDataSmokeHousingTypes(): HousingType[] {
   const raw = process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES?.trim();
-  if (!raw) return [...HOUSING_TYPES];
+  if (!raw) return [...PUBLIC_DATA_SMOKE_HOUSING_TYPES];
 
   const requested = raw.split(",").map(type => type.trim()).filter(Boolean);
   if (requested.length === 0) {
@@ -33,13 +33,13 @@ export function publicDataSmokeHousingTypes(): HousingType[] {
   }
 
   for (const type of requested) {
-    if (!HOUSING_TYPES.includes(type as HousingType)) {
+    if (!PUBLIC_DATA_SMOKE_HOUSING_TYPES.includes(type as HousingType)) {
       throw new Error(`Unsupported PUBLIC_DATA_SMOKE_HOUSING_TYPES value: ${type}`);
     }
   }
 
   if (process.env.REQUIRE_LIVE_PUBLIC_DATA === "1") {
-    const missingTypes = HOUSING_TYPES.filter(type => !requested.includes(type));
+    const missingTypes = PUBLIC_DATA_SMOKE_HOUSING_TYPES.filter(type => !requested.includes(type));
     if (missingTypes.length > 0) {
       throw new Error(`PUBLIC_DATA_SMOKE_HOUSING_TYPES must include all supported housing types in registration preflight. Missing: ${missingTypes.join(",")}`);
     }
@@ -155,22 +155,22 @@ async function main() {
       throw new Error(`Sale-market smoke did not return a deposit-to-sale ratio: ${housingType}`);
     }
     console.log(`sale_market[${housingType}]=ok samples=${saleSampleCount}`);
-  }
 
-  const assessment = await assessLeaseSafety({
-    housingType: housingTypes[0],
-    lawdCd,
-    dealYmd,
-    region,
-    depositManwon: deposit,
-    concerns: "공공데이터 실 API 스모크"
-  });
-  if (!assessment.includes("전월세 안전 종합 진단") || !assessment.includes("매매가 대비 보증금 비율")) {
-    throw new Error("One-shot assessment smoke did not return the expected summary.");
+    const assessment = await assessLeaseSafety({
+      housingType,
+      lawdCd,
+      dealYmd,
+      region,
+      depositManwon: deposit,
+      concerns: "공공데이터 실 API 스모크"
+    });
+    if (!assessment.includes("전월세 안전 종합 진단") || !assessment.includes("매매가 대비 보증금 비율")) {
+      throw new Error(`One-shot assessment smoke did not return the expected summary: ${housingType}`);
+    }
+    const assessmentRentCount = positiveSampleCount(assessment, `Lease-assessment[${housingType}] rent`, /전월세 신고 표본\s*([\d,]+)건/);
+    const assessmentSaleCount = positiveSampleCount(assessment, `Lease-assessment[${housingType}] sale`, /매매 신고 표본\s*([\d,]+)건/);
+    console.log(`lease_assessment[${housingType}]=ok rent_samples=${assessmentRentCount} sale_samples=${assessmentSaleCount}`);
   }
-  const assessmentRentCount = positiveSampleCount(assessment, "Lease-assessment rent", /전월세 신고 표본\s*([\d,]+)건/);
-  const assessmentSaleCount = positiveSampleCount(assessment, "Lease-assessment sale", /매매 신고 표본\s*([\d,]+)건/);
-  console.log(`lease_assessment=ok rent_samples=${assessmentRentCount} sale_samples=${assessmentSaleCount}`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { dockerImageReferenceFromEnv } from "./docker-image-reference.js";
+import { extractLivePublicDataEvidenceLines } from "./live-evidence.js";
 
 interface Step {
   name: string;
@@ -9,6 +10,8 @@ interface Step {
   skip?: boolean;
   skipReason?: string;
   attempts?: number;
+  captureOutput?: boolean;
+  validateOutput?: (output: string) => void;
 }
 
 const dockerTag = dockerImageReferenceFromEnv("PREFLIGHT_DOCKER_TAG", undefined, "lease-safe-mcp-preflight");
@@ -79,8 +82,16 @@ const steps: Step[] = [
     name: "Live public-data smoke",
     command: "npm",
     args: ["run", "smoke:public-data"],
+    env: {
+      REQUIRE_LIVE_PUBLIC_DATA: "1"
+    },
     skip: !hasPublicDataKey && !requireLivePublicData,
-    skipReason: "DATA_GO_KR_SERVICE_KEY is not set"
+    skipReason: "DATA_GO_KR_SERVICE_KEY is not set",
+    captureOutput: true,
+    validateOutput: output => {
+      const evidenceLines = extractLivePublicDataEvidenceLines(output);
+      console.log(`- Live public-data evidence extraction: ok (${evidenceLines.length} lines)`);
+    }
   }
 ];
 
@@ -92,18 +103,29 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function runStepAttempt(step: Step): Promise<void> {
+function runStepAttempt(step: Step): Promise<string> {
   return new Promise((resolve, reject) => {
+    let output = "";
     const child = spawn(step.command, step.args, {
       env: { ...process.env, ...step.env },
       shell: process.platform === "win32",
-      stdio: "inherit"
+      stdio: step.captureOutput ? ["inherit", "pipe", "pipe"] : "inherit"
     });
+
+    if (step.captureOutput) {
+      child.stdout?.on("data", (chunk: Buffer) => {
+        output += chunk.toString("utf8");
+        process.stdout.write(chunk);
+      });
+      child.stderr?.on("data", (chunk: Buffer) => {
+        process.stderr.write(chunk);
+      });
+    }
 
     child.on("error", reject);
     child.on("close", code => {
       if (code === 0) {
-        resolve();
+        resolve(output);
         return;
       }
       reject(new Error(`${step.name} failed with exit code ${code ?? "unknown"}`));
@@ -125,7 +147,8 @@ async function runStep(step: Step): Promise<void> {
     console.log(`- ${step.name}: running ${step.command} ${step.args.join(" ")}${attemptLabel}`);
 
     try {
-      await runStepAttempt(step);
+      const output = await runStepAttempt(step);
+      step.validateOutput?.(output);
       console.log(`- ${step.name}: ok (${elapsedSeconds(startedAt)})`);
       return;
     } catch (error) {

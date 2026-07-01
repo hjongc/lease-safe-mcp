@@ -140,7 +140,7 @@ Release preflight:
 npm run preflight
 ```
 
-`npm run preflight` runs working-tree, staged, and committed whitespace diff checks, secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke with DNS-rebinding Host rejection, unsupported-method, invalid-JSON, unsupported-content-type, bearer-auth, and oversized-request rejection checks, MCP rate-limit smoke, production dependency audit, Docker build, Docker runtime smoke with the same MCP boundary checks, and live public-data smoke when `DATA_GO_KR_SERVICE_KEY` is set.
+`npm run preflight` runs working-tree, staged, and committed whitespace diff checks, secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke with root route minimality, DNS-rebinding Host rejection, unsupported-method, invalid-JSON, unsupported-content-type, bearer-auth, and oversized-request rejection checks, MCP rate-limit smoke, production dependency audit, Docker build, Docker runtime smoke with the same MCP boundary checks, and live public-data smoke with extracted evidence-line validation when `DATA_GO_KR_SERVICE_KEY` is set.
 
 Registration preflight:
 
@@ -148,7 +148,7 @@ Registration preflight:
 DATA_GO_KR_SERVICE_KEY=... npm run preflight:registration
 ```
 
-`npm run preflight:registration` runs the same checks but requires the live public-data smoke to run and pass for every supported housing type. Use it before PlayMCP registration.
+`npm run preflight:registration` runs the same checks but requires the live public-data smoke to run, pass for every supported housing type, and produce extractable registration evidence lines. Use it before PlayMCP registration.
 
 For registration evidence in GitHub Actions, run the manual **Registration Preflight** workflow after adding `DATA_GO_KR_SERVICE_KEY` as a repository secret. Unlike the normal CI workflow, this workflow fails instead of skipping when the live public-data key is missing.
 
@@ -158,7 +158,7 @@ Live public-data smoke before production rollout:
 DATA_GO_KR_SERVICE_KEY=... npm run smoke:public-data
 ```
 
-By default, the live public-data smoke checks legal-dong lookup, rent-market APIs for all four housing types, sale-market APIs for all four housing types, and the flagship one-shot assessment.
+By default, the live public-data smoke checks legal-dong lookup, rent-market APIs for all four housing types, sale-market APIs for all four housing types, and the flagship one-shot assessment for every selected housing type. Successful registration evidence includes `legal_dong=ok`, `rent_market[...]`, `sale_market[...]`, and `lease_assessment[...]` log lines for every selected housing type.
 
 Optional overrides:
 
@@ -188,7 +188,7 @@ The repository includes `.github/workflows/ci.yml` for `main`. It runs:
 - `docker build -t lease-safe-mcp-ci .`
 - `npm run smoke:docker`
 
-If the GitHub repository has a `DATA_GO_KR_SERVICE_KEY` secret, CI also runs the live public-data smoke against all supported housing types in registration mode. Without that secret, the live API smoke is skipped and local pre-submission smoke should be run with the key.
+If the GitHub repository has a `DATA_GO_KR_SERVICE_KEY` secret, CI also runs the live public-data smoke against all supported housing types in registration mode and publishes the extracted live public-data evidence lines in the job summary. Without that secret, the live API smoke is skipped and local pre-submission smoke should be run with the key.
 
 ## Submission Checklist
 

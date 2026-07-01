@@ -25,7 +25,7 @@ const packageLockJson = JSON.parse(readFileSync("package-lock.json", "utf8")) as
   packages?: Record<string, { engines?: Record<string, string> }>;
 };
 
-for (const file of ["Dockerfile", ".dockerignore", ".gitignore", ".npmrc", ".github/workflows/ci.yml", ".github/workflows/registration-preflight.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/docker-image-reference.ts", "scripts/registration-preflight.ts", "scripts/require-registration-env.mjs", "scripts/rate-limit-smoke.ts"]) {
+for (const file of ["Dockerfile", ".dockerignore", ".gitignore", ".npmrc", ".github/workflows/ci.yml", ".github/workflows/registration-preflight.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/docker-image-reference.ts", "scripts/live-evidence.ts", "scripts/registration-preflight.ts", "scripts/require-registration-env.mjs", "scripts/rate-limit-smoke.ts"]) {
   readFileSync(file, "utf8");
 }
 
@@ -114,12 +114,21 @@ assertIncludesInOrder(ci, [
 ], "CI evidence gates must run in release-risk order");
 assert(/DATA_GO_KR_SERVICE_KEY/.test(ci), "CI must support optional live public-data smoke through DATA_GO_KR_SERVICE_KEY");
 assert(/REQUIRE_LIVE_PUBLIC_DATA:\s*"1"/.test(ci), "CI live public-data smoke must use registration-mode coverage rules when a key is configured");
+assert(/tee live-public-data-smoke\.log/.test(ci), "CI live public-data smoke must capture output for evidence extraction");
 assert(/Publish live public-data status/.test(ci), "CI must publish whether live public-data smoke executed or skipped");
 assert(/skipped because DATA_GO_KR_SERVICE_KEY is not configured/.test(ci), "CI summary must make skipped live public-data evidence explicit");
 assert(/Registration Preflight workflow to pass/.test(ci), "CI summary must point operators to required registration evidence");
 assert(/Whitespace diff checks: working tree, staged diff, and submitted commit executed/.test(ci), "CI summary must publish whitespace diff evidence");
+assert(/Root route minimality smoke: executed in local HTTP and Docker runtime smoke/.test(ci), "CI summary must publish root route minimality smoke evidence");
 assert(/Docker non-root runtime check: executed/.test(ci), "CI summary must publish non-root Docker runtime evidence");
 assert(/Dependency lifecycle scripts: disabled during npm ci/.test(ci), "CI summary must publish scriptless npm install evidence");
+assert(/Live Public-Data Evidence Lines/.test(ci), "CI summary must include a live public-data evidence section");
+assert(/live-public-data-smoke\.log/.test(ci), "CI summary must read captured live public-data output");
+assert(/live-public-data-evidence\.log/.test(ci), "CI summary must store extracted live public-data evidence lines");
+assert(/evidence_status=0/.test(ci), "CI summary must track missing evidence extraction as a failure");
+assert(/node dist\/scripts\/live-evidence\.js live-public-data-smoke\.log/.test(ci), "CI summary must use the shared live evidence extractor");
+assert(/live-public-data-evidence-error\.log/.test(ci), "CI summary must publish extractor errors when live evidence is invalid");
+assert(/exit "\$evidence_status"/.test(ci), "CI summary must fail when captured live evidence lines are empty");
 assert(/workflow_dispatch/.test(registrationWorkflow), "registration preflight workflow must be manually dispatchable");
 for (const input of [
   "public_data_smoke_region",
@@ -141,7 +150,10 @@ for (const envName of [
 }
 assert(/Verify live public-data secret/.test(registrationWorkflow), "registration preflight workflow must fail fast when the live public-data secret is missing");
 assert(/repository secret is required for registration evidence/.test(registrationWorkflow), "registration preflight workflow must explain the missing secret clearly");
+assert(/Verify registration public-data key/.test(registrationWorkflow), "registration preflight workflow must validate the live public-data key before dependency install");
+assert(/node scripts\/require-registration-env\.mjs/.test(registrationWorkflow), "registration preflight workflow must run the shared registration env validator before npm ci");
 assert(/npm run preflight:registration/.test(registrationWorkflow), "registration preflight workflow must run npm run preflight:registration");
+assert(/tee registration-preflight\.log/.test(registrationWorkflow), "registration preflight workflow must capture preflight output for evidence extraction");
 assert(/GITHUB_STEP_SUMMARY/.test(registrationWorkflow), "registration preflight workflow must publish a shareable evidence summary");
 assert(/sanitize_summary_value\(\)/.test(registrationWorkflow), "registration preflight summary must sanitize workflow-dispatch inputs");
 assert(/local max_length=120/.test(registrationWorkflow), "registration preflight summary must bound workflow-dispatch input length");
@@ -162,13 +174,21 @@ assert(/Demo smoke LAWD_CD/.test(registrationWorkflow), "registration preflight 
 assert(/Demo smoke deal month/.test(registrationWorkflow), "registration preflight summary must include the demo smoke deal month");
 assert(/Demo smoke deposit/.test(registrationWorkflow), "registration preflight summary must include the demo smoke deposit");
 assert(/Whitespace diff checks: working tree, staged diff, and submitted commit included/.test(registrationWorkflow), "registration preflight summary must state all whitespace diff evidence is included");
+assert(/Root route minimality smoke: included in local HTTP and Docker runtime smoke/.test(registrationWorkflow), "registration preflight summary must state root route minimality evidence is included");
 assert(/Docker runtime smoke: included in registration preflight/.test(registrationWorkflow), "registration preflight summary must state Docker runtime evidence is included");
 assert(/Docker non-root runtime check: included in registration preflight/.test(registrationWorkflow), "registration preflight summary must state non-root Docker runtime evidence is included");
 assert(/Dependency lifecycle scripts: disabled during npm ci/.test(registrationWorkflow), "registration preflight summary must state scriptless npm install evidence is included");
+assert(/Live Public-Data Evidence Lines/.test(registrationWorkflow), "registration preflight summary must include a live public-data evidence section");
+assert(/registration-preflight-evidence\.log/.test(registrationWorkflow), "registration preflight summary must store extracted live public-data evidence lines");
+assert(/evidence_status=0/.test(registrationWorkflow), "registration preflight summary must track missing evidence extraction as a failure");
+assert(/node dist\/scripts\/live-evidence\.js registration-preflight\.log/.test(registrationWorkflow), "registration preflight summary must use the shared live evidence extractor");
+assert(/registration-preflight-evidence-error\.log/.test(registrationWorkflow), "registration preflight summary must publish extractor errors when live evidence is invalid");
+assert(/exit "\$evidence_status"/.test(registrationWorkflow), "registration preflight summary must fail when captured live evidence lines are empty");
 assertIncludesInOrder(registrationWorkflow, [
   "Verify live public-data secret",
   "Checkout",
   "Setup Node.js",
+  "Verify registration public-data key",
   "Install dependencies",
   "Run registration preflight",
   "Publish registration evidence summary"
@@ -199,6 +219,8 @@ for (const required of [
   "/mcp",
   "/healthz",
   "minimal liveness metadata",
+  "root route minimality",
+  "text/plain MCP usage hint",
   "assess_lease_safety",
   "overall risk level",
   "DATA_GO_KR_SERVICE_KEY",
@@ -240,6 +262,7 @@ for (const required of [
   "Registration Preflight",
   "job summary",
   "official source registry access",
+  "root route minimality smoke coverage",
   "Docker runtime smoke",
   "Docker `HEALTHCHECK`",
   "external deployment host",
@@ -254,9 +277,29 @@ for (const required of [
 assert(/sanitized and length-limited/.test(operations), "operations runbook must document sanitized registration summary inputs");
 assert(/non-root runtime evidence/.test(operations), "operations runbook must document non-root runtime summary evidence");
 assert(/scriptless npm install evidence/.test(operations), "operations runbook must document scriptless npm install summary evidence");
+assert(/Latest GitHub Actions `CI` run is green and its summary shows working-tree\/staged\/committed whitespace diff checks, root route minimality smoke evidence, Docker runtime smoke evidence, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines/.test(operations), "operations runbook must document all CI summary evidence fields");
+assert(/CI also runs the live public-data smoke[\s\S]*publishes the extracted live public-data evidence lines/.test(readme), "README must document CI live-smoke evidence line summary");
+assert(/CI also runs the live public-data smoke[\s\S]*publishes the extracted live public-data evidence lines/.test(submission), "submission pack must document CI live-smoke evidence line summary");
+assert(/flagship assessment for every selected housing type/.test(operations), "operations runbook must document per-housing-type flagship live smoke coverage");
+assert(/extractable registration evidence lines/.test(operations), "operations runbook must document registration preflight evidence extraction validation");
+assert(/legal_dong=ok/.test(operations), "operations runbook must document legal-dong live smoke evidence");
+assert(/rent_market\[\.\.\.\]/.test(operations), "operations runbook must document rent-market live smoke evidence lines");
+assert(/sale_market\[\.\.\.\]/.test(operations), "operations runbook must document sale-market live smoke evidence lines");
+assert(/lease_assessment\[\.\.\.\]/.test(operations), "operations runbook must document flagship assessment live smoke evidence lines");
 assert(/working-tree, staged, and committed whitespace diff checks/.test(readme), "README must document all release preflight whitespace checks");
+assert(/root route minimality/.test(readme), "README must document root route minimality smoke coverage");
+assert(/extracted evidence-line validation/.test(readme), "README must document local live-smoke evidence extraction validation");
+assert(/flagship one-shot assessment for every selected housing type/.test(readme), "README must document per-housing-type flagship live smoke coverage");
+assert(/lease_assessment\[\.\.\.\]/.test(readme), "README must document flagship assessment live smoke evidence lines");
 assert(/working-tree, staged, and committed whitespace diff checks/.test(submission), "submission pack must document all registration preflight whitespace checks");
 assert(/sanitized, length-limited demo smoke input values/.test(submission), "submission pack must document sanitized registration evidence inputs");
+assert(/root route minimality smoke coverage, Docker runtime smoke coverage, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines/.test(submission), "submission pack must document the full registration evidence summary");
+assert(/rent, sale, and flagship assessment API paths must return positive sample counts/.test(submission), "submission pack must document flagship live smoke sample evidence");
+assert(/captured output must produce extractable registration evidence lines/.test(submission), "submission pack must document extracted registration evidence validation");
+assert(/legal_dong=ok/.test(submission), "submission pack must document legal-dong live smoke evidence");
+assert(/rent_market\[\.\.\.\]/.test(submission), "submission pack must document rent-market live smoke evidence lines");
+assert(/sale_market\[\.\.\.\]/.test(submission), "submission pack must document sale-market live smoke evidence lines");
+assert(/lease_assessment\[\.\.\.\]/.test(submission), "submission pack must document flagship assessment live smoke evidence lines");
 
 const server = readFileSync("src/server.ts", "utf8");
 const domain = readFileSync("src/domain.ts", "utf8");
@@ -466,11 +509,15 @@ assert(/healthz/.test(httpSmoke), "HTTP smoke must verify healthz");
 assert(/assertSecurityHeaders/.test(httpSmoke), "HTTP smoke must verify security headers");
 assert(/assertRawSecurityHeaders/.test(httpSmoke), "HTTP smoke must verify security headers on raw node:http boundary responses");
 assert(/must not expose X-Powered-By/.test(httpSmoke), "HTTP smoke must verify X-Powered-By is not exposed");
+assert(/root_route=ok/.test(httpSmoke), "HTTP smoke must verify the public root route");
+assert(/minimal MCP usage hint/.test(httpSmoke), "HTTP smoke must verify the root route returns only a minimal usage hint");
+assert(/Root route must not expose runtime configuration names/.test(httpSmoke), "HTTP smoke must verify the root route does not expose runtime configuration names");
 for (const requiredBoundary of ["method rejection", "invalid JSON rejection", "auth rejection", "unsupported content-type rejection", "oversized request rejection"]) {
   assert(httpSmoke.includes(requiredBoundary), `HTTP smoke must verify security headers on ${requiredBoundary}`);
 }
 assert(/request_id=ok/.test(httpSmoke), "HTTP smoke must verify request ID propagation");
 assert(/safe X-Request-Id/.test(httpSmoke), "HTTP smoke must verify safe request IDs on boundary responses");
+assert(/must not echo an unsafe X-Request-Id/.test(httpSmoke), "HTTP smoke must verify unsafe inbound request IDs are regenerated");
 assert(/unknown_route=ok/.test(httpSmoke), "HTTP smoke must verify unknown-route rejection");
 assert(/default HTML response/.test(httpSmoke), "HTTP smoke must reject default HTML not-found responses");
 assert(/encoded_odd_path=ok/.test(httpSmoke), "HTTP smoke must verify encoded-path rejection");
@@ -482,6 +529,7 @@ assert(/Invalid Host: evil\.example/.test(httpSmoke), "HTTP smoke must verify th
 assert(/auth_rejection/.test(httpSmoke), "HTTP smoke must verify bearer auth rejection");
 assert(/oversized_bearer_rejection/.test(httpSmoke), "HTTP smoke must verify oversized bearer token rejection");
 assert(/WWW-Authenticate:\s*Bearer/.test(httpSmoke), "HTTP smoke must verify bearer auth challenge headers");
+assert(/-32001/.test(httpSmoke), "HTTP smoke must verify the JSON-RPC auth error code");
 assert(/method_rejection/.test(httpSmoke), "HTTP smoke must verify unsupported MCP method rejection");
 assert(/verifyHeadMethodNotAllowed/.test(httpSmoke), "HTTP smoke must verify HEAD /mcp method rejection");
 assert(/"OPTIONS"/.test(httpSmoke), "HTTP smoke must verify OPTIONS /mcp method rejection");
@@ -497,6 +545,7 @@ assert(/content-encoding/.test(httpSmoke), "HTTP smoke must send Content-Encodin
 assert(/publicDataTimeoutMs\?: unknown/.test(httpSmoke), "HTTP smoke must verify healthz omits internal tuning metadata");
 assert(/mcpMaxBodyBytesFromEnv/.test(httpSmoke), "HTTP smoke must verify oversized requests without reading limits from healthz");
 assert(/oversized_request/.test(httpSmoke), "HTTP smoke must verify oversized MCP request rejection");
+assert(/MCP request body exceeds \$\{maxBodyBytes\} bytes\./.test(httpSmoke), "HTTP smoke must verify oversized request JSON-RPC body");
 assert(/dist\/scripts\/smoke\.js/.test(httpSmoke), "HTTP smoke must run the MCP client smoke");
 
 const dockerSmoke = readFileSync("scripts/docker-smoke.ts", "utf8");
@@ -507,6 +556,9 @@ assert(/healthz/.test(dockerSmoke), "Docker smoke must verify healthz");
 assert(/assertSecurityHeaders/.test(dockerSmoke), "Docker smoke must verify security headers");
 assert(/assertRawSecurityHeaders/.test(dockerSmoke), "Docker smoke must verify security headers on raw node:http boundary responses");
 assert(/must not expose X-Powered-By/.test(dockerSmoke), "Docker smoke must verify X-Powered-By is not exposed");
+assert(/docker_root_route=ok/.test(dockerSmoke), "Docker smoke must verify the public root route");
+assert(/minimal MCP usage hint/.test(dockerSmoke), "Docker smoke must verify the root route returns only a minimal usage hint");
+assert(/Docker root route must not expose runtime configuration names/.test(dockerSmoke), "Docker smoke must verify the root route does not expose runtime configuration names");
 for (const requiredBoundary of ["Docker method rejection", "docker invalid JSON rejection", "docker auth rejection", "docker unsupported content-type rejection", "docker oversized request rejection"]) {
   assert(dockerSmoke.includes(requiredBoundary), `Docker smoke must verify security headers on ${requiredBoundary}`);
 }
@@ -514,6 +566,7 @@ assert(/docker_request_id=ok/.test(dockerSmoke), "Docker smoke must verify reque
 assert(/verifyHealthcheckWithExternalAllowedHost/.test(dockerSmoke), "Docker smoke must verify Docker HEALTHCHECK with an external-only allowed host");
 assert(/docker_healthcheck_external_host=ok/.test(dockerSmoke), "Docker smoke must report external-host healthcheck evidence");
 assert(/safe X-Request-Id/.test(dockerSmoke), "Docker smoke must verify safe request IDs on boundary responses");
+assert(/must not echo an unsafe X-Request-Id/.test(dockerSmoke), "Docker smoke must verify unsafe inbound request IDs are regenerated");
 assert(/docker_unknown_route=ok/.test(dockerSmoke), "Docker smoke must verify unknown-route rejection");
 assert(/default HTML response/.test(dockerSmoke), "Docker smoke must reject default HTML not-found responses");
 assert(/docker_encoded_odd_path=ok/.test(dockerSmoke), "Docker smoke must verify encoded-path rejection");
@@ -524,6 +577,7 @@ assert(/Invalid Host: evil\.example/.test(dockerSmoke), "Docker smoke must verif
 assert(/docker_auth_rejection/.test(dockerSmoke), "Docker smoke must verify bearer auth rejection");
 assert(/docker_oversized_bearer_rejection/.test(dockerSmoke), "Docker smoke must verify oversized bearer token rejection");
 assert(/WWW-Authenticate:\s*Bearer/.test(dockerSmoke), "Docker smoke must verify bearer auth challenge headers");
+assert(/-32001/.test(dockerSmoke), "Docker smoke must verify the JSON-RPC auth error code");
 assert(/docker_method_rejection/.test(dockerSmoke), "Docker smoke must verify unsupported MCP method rejection");
 assert(/verifyHeadMethodNotAllowed/.test(dockerSmoke), "Docker smoke must verify HEAD /mcp method rejection");
 assert(/"OPTIONS"/.test(dockerSmoke), "Docker smoke must verify OPTIONS /mcp method rejection");
@@ -538,6 +592,7 @@ assert(/docker_compressed_request_rejection=ok/.test(dockerSmoke), "Docker smoke
 assert(/content-encoding/.test(dockerSmoke), "Docker smoke must send Content-Encoding for compressed request rejection");
 assert(/publicDataTimeoutMs\?: unknown/.test(dockerSmoke), "Docker smoke must verify healthz omits internal tuning metadata");
 assert(/docker_oversized_request/.test(dockerSmoke), "Docker smoke must verify oversized MCP request rejection");
+assert(/MCP request body exceeds \$\{maxBodyBytes\} bytes\./.test(dockerSmoke), "Docker smoke must verify oversized request JSON-RPC body");
 assert(/dist\/scripts\/smoke\.js/.test(dockerSmoke), "Docker smoke must run the MCP client smoke");
 
 const rateLimitSmoke = readFileSync("scripts/rate-limit-smoke.ts", "utf8");
@@ -548,6 +603,8 @@ assert(/assertSecurityHeaders/.test(rateLimitSmoke), "rate-limit smoke must veri
 assert(/must not expose X-Powered-By/.test(rateLimitSmoke), "rate-limit smoke must verify X-Powered-By is not exposed");
 assert(/Retry-After/.test(rateLimitSmoke), "rate-limit smoke must verify Retry-After");
 assert(/429/.test(rateLimitSmoke), "rate-limit smoke must verify 429 rejection");
+assert(/-32002/.test(rateLimitSmoke), "rate-limit smoke must verify the JSON-RPC rate-limit error code");
+assert(/Too many MCP requests\. Try again later\./.test(rateLimitSmoke), "rate-limit smoke must verify the JSON-RPC rate-limit error message");
 
 const secretScan = readFileSync("scripts/secret-scan.ts", "utf8");
 for (const required of ["DATA_GO_KR_SERVICE_KEY", "MCP_AUTH_TOKEN", "decoded data.go.kr", "Secret scan failed"]) {
@@ -555,10 +612,12 @@ for (const required of ["DATA_GO_KR_SERVICE_KEY", "MCP_AUTH_TOKEN", "decoded dat
 }
 
 const publicDataSmoke = readFileSync("scripts/public-data-smoke.ts", "utf8");
+const liveEvidence = readFileSync("scripts/live-evidence.ts", "utf8");
 for (const housingType of ["apartment", "rowhouse", "single_multi", "officetel"]) {
   assert(publicDataSmoke.includes(`"${housingType}"`), `public-data smoke must cover ${housingType}`);
 }
 assert(/assessLeaseSafety/.test(publicDataSmoke), "public-data smoke must verify the flagship assessment tool");
+assert(/lease_assessment\[\$\{housingType\}\]=ok/.test(publicDataSmoke), "public-data smoke must verify flagship assessment evidence per selected housing type");
 assert(/MONEY_INPUT_LIMITS\.depositManwon/.test(publicDataSmoke), "public-data smoke must reuse the bounded deposit input limit");
 assert(/plain positive integer/.test(publicDataSmoke), "public-data smoke must require a plain integer deposit value");
 assert(/control characters, line breaks, tabs, or Markdown backticks/.test(publicDataSmoke), "public-data smoke must reject summary-breaking region characters");
@@ -568,9 +627,23 @@ assert(/isAllZeroLawdCd/.test(publicDataSmoke), "public-data smoke must reject a
 assert(/isFutureDealYmd/.test(publicDataSmoke), "public-data smoke must reject future deal months before API calls");
 assert(/REQUIRE_LIVE_PUBLIC_DATA/.test(publicDataSmoke), "public-data smoke must know when registration preflight requires live evidence");
 assert(/must include all supported housing types in registration preflight/.test(publicDataSmoke), "registration preflight must reject narrowed public-data housing smoke");
+assert(/PUBLIC_DATA_SMOKE_HOUSING_TYPES/.test(publicDataSmoke), "public-data smoke must expose one supported housing-type source of truth");
 assert(/publicDataSmokeConfigLine/.test(publicDataSmoke), "public-data smoke must log non-secret demo configuration");
 assert(/public_data_smoke_config/.test(publicDataSmoke), "public-data smoke config log must be easy to grep in CI logs");
 assert(/registration_mode/.test(publicDataSmoke), "public-data smoke config log must distinguish registration coverage from narrowed debugging runs");
+assert(/extractLivePublicDataEvidenceLines/.test(liveEvidence), "shared live evidence extractor must expose a testable function");
+assert(/expectedHousingTypesFromConfig/.test(liveEvidence), "shared live evidence extractor must derive expected housing types from the smoke config line");
+assert(/SUPPORTED_EVIDENCE_HOUSING_TYPES/.test(liveEvidence), "shared live evidence extractor must know the full supported registration housing coverage");
+assert(/PUBLIC_DATA_SMOKE_HOUSING_TYPES/.test(liveEvidence), "shared live evidence extractor must reuse the public-data smoke housing-type source of truth");
+assert(/registration_mode=true/.test(liveEvidence), "shared live evidence extractor must require registration-mode evidence");
+for (const required of ["public_data_smoke_config", "legal_dong=ok", "rent_market", "sale_market", "lease_assessment"]) {
+  assert(liveEvidence.includes(required), `shared live evidence extractor must require ${required}`);
+}
+assert(/Missing required live public-data evidence categories/.test(liveEvidence), "shared live evidence extractor must fail clearly on partial evidence");
+assert(/Missing live public-data evidence lines by housing type/.test(liveEvidence), "shared live evidence extractor must fail clearly on missing per-housing-type evidence");
+assert(/Duplicate live public-data evidence housing types/.test(liveEvidence), "shared live evidence extractor must fail clearly on duplicate housing-type coverage");
+assert(/Unsupported live public-data evidence housing types/.test(liveEvidence), "shared live evidence extractor must fail clearly on unsupported housing-type coverage");
+assert(/Missing supported live public-data evidence housing types/.test(liveEvidence), "shared live evidence extractor must fail clearly on missing supported housing-type coverage");
 
 const releasePreflight = readFileSync("scripts/release-preflight.ts", "utf8");
 const registrationPreflight = readFileSync("scripts/registration-preflight.ts", "utf8");
@@ -595,6 +668,10 @@ assert(/command:\s*"node"[\s\S]*args:\s*\["dist\/scripts\/docker-smoke\.js"\]/.t
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"smoke:public-data"\]/.test(releasePreflight), "release preflight must include npm run smoke:public-data");
 assert(/DATA_GO_KR_SERVICE_KEY/.test(releasePreflight), "release preflight must gate live public-data smoke on DATA_GO_KR_SERVICE_KEY");
 assert(/REQUIRE_LIVE_PUBLIC_DATA/.test(releasePreflight), "release preflight must support requiring live public-data smoke");
+assert(/name:\s*"Live public-data smoke"[\s\S]*env:\s*\{[\s\S]*REQUIRE_LIVE_PUBLIC_DATA:\s*"1"[\s\S]*captureOutput:\s*true/.test(releasePreflight), "release preflight live smoke must run in registration coverage mode before evidence extraction");
+assert(/extractLivePublicDataEvidenceLines/.test(releasePreflight), "release preflight must validate captured live public-data evidence lines");
+assert(/captureOutput:\s*true/.test(releasePreflight), "release preflight must capture live public-data smoke output for evidence validation");
+assert(/Live public-data evidence extraction: ok/.test(releasePreflight), "release preflight must report successful live evidence extraction");
 assert(/REQUIRE_LIVE_PUBLIC_DATA/.test(registrationPreflight), "registration preflight must require live public-data smoke");
 
 for (const required of [
@@ -614,6 +691,7 @@ for (const required of [
   "Secret Handling",
   "Security Gates",
   "Dependency Updates",
+  "Docker base images",
   "npm run preflight:registration"
 ]) {
   assert(security.includes(required), `security policy missing: ${required}`);
