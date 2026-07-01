@@ -135,6 +135,27 @@ test("legal dong helper fails clearly without public-data key", async () => {
   }
 });
 
+test("market API helpers fail fast on invalid public-data query parameters", async () => {
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => {
+      throw new Error("fetch should not be called for invalid query parameters");
+    };
+
+    await assert.rejects(
+      compareRentMarket({ housingType: "apartment", lawdCd: "1162", dealYmd: "202605" }),
+      /LAWD_CD must be exactly 5 digits/
+    );
+
+    await assert.rejects(
+      compareDepositToSaleMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202613", depositManwon: 30000 }),
+      /DEAL_YMD must use YYYYMM format/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("rent market comparison parses live XML records", async () => {
   const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
   const previousFetch = globalThis.fetch;

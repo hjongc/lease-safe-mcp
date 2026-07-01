@@ -184,6 +184,15 @@ export function publicDataTimeoutMs(): number {
   return parsed;
 }
 
+function validateMarketQuery(lawdCd: string, dealYmd: string): void {
+  if (!/^\d{5}$/.test(lawdCd)) {
+    throw new Error("LAWD_CD must be exactly 5 digits.");
+  }
+  if (!/^\d{4}(0[1-9]|1[0-2])$/.test(dealYmd)) {
+    throw new Error("DEAL_YMD must use YYYYMM format with a month from 01 to 12.");
+  }
+}
+
 function isAbortLikeError(error: unknown): boolean {
   const name = (error as { name?: unknown })?.name;
   return name === "AbortError" || name === "TimeoutError";
@@ -384,6 +393,7 @@ async function fetchRentMarketSnapshot(input: {
   depositManwon?: number;
   monthlyRentManwon?: number;
 }): Promise<RentMarketSnapshot> {
+  validateMarketQuery(input.lawdCd, input.dealYmd);
   const serviceKey = dataGoKrServiceKey();
 
   const spec = RENT_API_SPECS[input.housingType];
@@ -546,6 +556,7 @@ async function fetchSaleMarketSnapshot(input: {
   dealYmd: string;
   depositManwon: number;
 }): Promise<SaleMarketSnapshot> {
+  validateMarketQuery(input.lawdCd, input.dealYmd);
   const serviceKey = dataGoKrServiceKey();
   const spec = SALE_API_SPECS[input.housingType];
   const url = new URL(spec.endpoint);
