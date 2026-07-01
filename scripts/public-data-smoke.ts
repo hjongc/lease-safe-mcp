@@ -1,4 +1,4 @@
-import { MONEY_INPUT_LIMITS, assessLeaseSafety, compareDepositToSaleMarket, compareRentMarket, resolveLegalDongCode } from "../src/domain.js";
+import { MONEY_INPUT_LIMITS, assessLeaseSafety, compareDepositToSaleMarket, compareRentMarket, isFutureDealYmd, resolveLegalDongCode } from "../src/domain.js";
 import type { HousingType } from "../src/sources.js";
 
 const HOUSING_TYPES = ["apartment", "rowhouse", "single_multi", "officetel"] as const satisfies readonly HousingType[];
@@ -82,6 +82,9 @@ export function publicDataSmokeDealYmd(): string {
   const dealYmd = process.env.PUBLIC_DATA_SMOKE_DEAL_YMD?.trim() || "202605";
   if (!/^\d{4}(0[1-9]|1[0-2])$/.test(dealYmd)) {
     throw new Error("PUBLIC_DATA_SMOKE_DEAL_YMD must use YYYYMM format with a month from 01 to 12.");
+  }
+  if (isFutureDealYmd(dealYmd)) {
+    throw new Error("PUBLIC_DATA_SMOKE_DEAL_YMD must not be in the future.");
   }
   return dealYmd;
 }

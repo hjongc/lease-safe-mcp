@@ -96,6 +96,8 @@ assert(/MONEY_INPUT_LIMITS/.test(domain), "domain must define explicit money inp
 assert(/depositSchema[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "server must bound optional MCP deposit inputs");
 assert(/monthlyRentSchema[\s\S]*\.max\(MONEY_INPUT_LIMITS\.monthlyRentManwon\)/.test(server), "server must bound optional MCP monthly-rent inputs");
 assert(/depositManwon:[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "server must bound required MCP deposit inputs");
+assert(/isFutureDealYmd/.test(domain), "domain must reject future public-data deal months");
+assert(/dealYmdSchema[\s\S]*\.refine\(value => !isFutureDealYmd\(value\)/.test(server), "server must reject future MCP deal months");
 assert(/PUBLIC_DATA_TIMEOUT_MS/.test(domain), "domain must support a bounded public-data timeout");
 assert(/publicDataTimeoutMs/.test(server), "server must validate the public-data timeout at startup");
 assert(/SIGTERM/.test(server), "server must handle SIGTERM for container shutdown");
@@ -189,6 +191,7 @@ for (const housingType of ["apartment", "rowhouse", "single_multi", "officetel"]
 assert(/assessLeaseSafety/.test(publicDataSmoke), "public-data smoke must verify the flagship assessment tool");
 assert(/MONEY_INPUT_LIMITS\.depositManwon/.test(publicDataSmoke), "public-data smoke must reuse the bounded deposit input limit");
 assert(/plain positive integer/.test(publicDataSmoke), "public-data smoke must require a plain integer deposit value");
+assert(/isFutureDealYmd/.test(publicDataSmoke), "public-data smoke must reject future deal months before API calls");
 
 const releasePreflight = readFileSync("scripts/release-preflight.ts", "utf8");
 const registrationPreflight = readFileSync("scripts/registration-preflight.ts", "utf8");

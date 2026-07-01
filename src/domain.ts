@@ -213,12 +213,24 @@ export function publicDataTimeoutMs(): number {
   return parsed;
 }
 
+export function isFutureDealYmd(dealYmd: string, now = new Date()): boolean {
+  if (!/^\d{4}(0[1-9]|1[0-2])$/.test(dealYmd)) return false;
+  const dealYear = Number(dealYmd.slice(0, 4));
+  const dealMonth = Number(dealYmd.slice(4, 6));
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  return dealYear > currentYear || (dealYear === currentYear && dealMonth > currentMonth);
+}
+
 function validateMarketQuery(lawdCd: string, dealYmd: string): void {
   if (!/^\d{5}$/.test(lawdCd)) {
     throw new Error("LAWD_CD must be exactly 5 digits.");
   }
   if (!/^\d{4}(0[1-9]|1[0-2])$/.test(dealYmd)) {
     throw new Error("DEAL_YMD must use YYYYMM format with a month from 01 to 12.");
+  }
+  if (isFutureDealYmd(dealYmd)) {
+    throw new Error("DEAL_YMD must not be in the future.");
   }
 }
 

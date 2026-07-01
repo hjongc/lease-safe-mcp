@@ -8,6 +8,7 @@ import {
   compareRentMarket,
   dataGoKrServiceKey,
   explainDataAvailability,
+  isFutureDealYmd,
   prepareContractQuestions,
   MONEY_INPUT_LIMITS,
   publicDataTimeoutMs,
@@ -25,6 +26,7 @@ const VALID_TEST_SERVICE_KEY = [
   "=="
 ].join("");
 const VALID_TEST_SERVICE_KEY_ENCODED = encodeURIComponent(VALID_TEST_SERVICE_KEY);
+const FUTURE_DEAL_YMD = "999912";
 
 type ToolInputSchema = {
   safeParse(input: unknown): { success: boolean };
@@ -158,6 +160,9 @@ test("public-data smoke validates configured region query parameters before API 
     process.env.PUBLIC_DATA_SMOKE_LAWD_CD = "11110";
     process.env.PUBLIC_DATA_SMOKE_DEAL_YMD = "202613";
     assert.throws(() => publicDataSmokeDealYmd(), /PUBLIC_DATA_SMOKE_DEAL_YMD must use YYYYMM format/);
+
+    process.env.PUBLIC_DATA_SMOKE_DEAL_YMD = FUTURE_DEAL_YMD;
+    assert.throws(() => publicDataSmokeDealYmd(), /must not be in the future/);
   } finally {
     if (previousLawdCd === undefined) {
       delete process.env.PUBLIC_DATA_SMOKE_LAWD_CD;
@@ -196,6 +201,12 @@ test("public-data smoke validates requested housing types", () => {
       process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES = previousHousingTypes;
     }
   }
+});
+
+test("deal month helper identifies future official-data lookups", () => {
+  assert.equal(isFutureDealYmd("202605", new Date("2026-07-01T00:00:00Z")), false);
+  assert.equal(isFutureDealYmd("202608", new Date("2026-07-01T00:00:00Z")), true);
+  assert.equal(isFutureDealYmd("202613", new Date("2026-07-01T00:00:00Z")), false);
 });
 
 test("public-data smoke requires legal-dong proof for configured LAWD code", () => {
@@ -526,6 +537,11 @@ test("market API helpers fail fast on invalid public-data query parameters", asy
     await assert.rejects(
       compareDepositToSaleMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202613", depositManwon: 30000 }),
       /DEAL_YMD must use YYYYMM format/
+    );
+
+    await assert.rejects(
+      compareDepositToSaleMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: FUTURE_DEAL_YMD, depositManwon: 30000 }),
+      /DEAL_YMD must not be in the future/
     );
   } finally {
     globalThis.fetch = previousFetch;
@@ -2051,6 +2067,7 @@ test("MCP tool input schemas bound free-text fields", () => {
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, moveInDate: "가".repeat(MCP_TEXT_LIMITS.dateText + 1) }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, contractDate: "가".repeat(MCP_TEXT_LIMITS.dateText + 1) }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, concerns: "가".repeat(MCP_TEXT_LIMITS.concerns + 1) }).success, false);
+  assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, dealYmd: FUTURE_DEAL_YMD }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, depositManwon: MONEY_INPUT_LIMITS.depositManwon + 1 }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, monthlyRentManwon: MONEY_INPUT_LIMITS.monthlyRentManwon + 1 }).success, false);
 
