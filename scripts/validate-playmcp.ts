@@ -99,6 +99,7 @@ assert(/timingSafeEqual/.test(server), "server must compare bearer tokens with t
 assert(/MCP_AUTH_TOKEN must be at least/.test(server), "server must reject weak MCP_AUTH_TOKEN values");
 assert(/WWW-Authenticate/.test(server), "server must advertise bearer authentication on unauthorized MCP requests");
 assert(/Bearer realm="lease-safe"/.test(server), "server must use a stable bearer realm for unauthorized MCP requests");
+assert(/requireMcpBearerToken/.test(server), "server must authenticate MCP POST requests before parsing request bodies");
 assert(/parsePlainInteger/.test(server), "server must parse runtime numeric settings as plain integers");
 assert(/MCP_MAX_BODY_BYTES/.test(server), "server must support a bounded MCP request body size");
 assert(/express\.json\(\{ limit: `\$\{maxBodyBytes\}b` \}\)/.test(server), "server JSON parser limit must match MCP_MAX_BODY_BYTES");
@@ -143,6 +144,7 @@ assert(/sessionIdGenerator:\s*undefined/.test(server), "server must be stateless
 assert(/methodNotAllowedForMcp/.test(server), "server must centralize MCP method rejection responses");
 assert(/setHeader\("Allow",\s*"POST"\)/.test(server), "server must advertise Allow: POST for unsupported MCP methods");
 assert(/app\.all\("\/mcp"/.test(server), "server must reject all unsupported MCP methods consistently");
+assert(/app\.post\([\s\S]*requireMcpBearerToken\(authToken\)[\s\S]*requireMcpJsonContentType[\s\S]*express\.json/.test(server), "server must authenticate MCP POST requests before content-type validation and JSON parsing");
 
 const registeredTools = [...server.matchAll(/server\.registerTool\(\s*"([^"]+)"/g)].map(match => match[1]);
 assert(registeredTools.length >= 3 && registeredTools.length <= 10, `tool count must be 3-10, got ${registeredTools.length}`);
@@ -206,6 +208,7 @@ assert(/"PUT"/.test(httpSmoke), "HTTP smoke must verify a catch-all unsupported 
 assert(/Allow:\s*POST/.test(httpSmoke), "HTTP smoke must verify unsupported MCP methods advertise Allow: POST");
 assert(/invalid_json_rejection/.test(httpSmoke), "HTTP smoke must verify invalid JSON rejection");
 assert(/-32700/.test(httpSmoke), "HTTP smoke must verify invalid JSON returns the JSON-RPC parse error code");
+assert(/auth_before_parse/.test(httpSmoke), "HTTP smoke must verify unauthorized malformed JSON fails authentication before parsing");
 assert(/content_type_rejection/.test(httpSmoke), "HTTP smoke must verify unsupported content-type rejection");
 assert(/415/.test(httpSmoke), "HTTP smoke must verify unsupported content-type returns 415");
 assert(/rateLimitPerMinute/.test(httpSmoke), "HTTP smoke must verify rate limit health metadata");
@@ -223,6 +226,7 @@ assert(/"PUT"/.test(dockerSmoke), "Docker smoke must verify a catch-all unsuppor
 assert(/Allow:\s*POST/.test(dockerSmoke), "Docker smoke must verify unsupported MCP methods advertise Allow: POST");
 assert(/docker_invalid_json_rejection/.test(dockerSmoke), "Docker smoke must verify invalid JSON rejection");
 assert(/-32700/.test(dockerSmoke), "Docker smoke must verify invalid JSON returns the JSON-RPC parse error code");
+assert(/docker_auth_before_parse/.test(dockerSmoke), "Docker smoke must verify unauthorized malformed JSON fails authentication before parsing");
 assert(/docker_content_type_rejection/.test(dockerSmoke), "Docker smoke must verify unsupported content-type rejection");
 assert(/415/.test(dockerSmoke), "Docker smoke must verify unsupported content-type returns 415");
 assert(/rateLimitPerMinute/.test(dockerSmoke), "Docker smoke must verify rate limit health metadata");

@@ -123,6 +123,31 @@ async function verifyInvalidJsonRequest(endpoint: string, authToken: string): Pr
   }
 }
 
+async function verifyUnauthorizedInvalidJsonRequest(endpoint: string): Promise<void> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: "{"
+  });
+
+  if (response.status !== 401) {
+    const text = await response.text();
+    throw new Error(`Expected unauthenticated invalid JSON MCP request to return 401 before parsing, got ${response.status}: ${text}`);
+  }
+
+  const authenticate = response.headers.get("www-authenticate");
+  if (authenticate !== 'Bearer realm="lease-safe"') {
+    throw new Error(`Expected unauthenticated invalid JSON MCP request to advertise WWW-Authenticate: Bearer, got ${authenticate ?? "missing"}.`);
+  }
+
+  const body = await response.json() as { error?: { message?: unknown } };
+  if (body.error?.message !== "Unauthorized") {
+    throw new Error("Unauthenticated invalid JSON MCP request did not return the expected JSON-RPC auth error.");
+  }
+}
+
 async function verifyUnsupportedContentTypeRequest(endpoint: string, authToken: string): Promise<void> {
   const response = await fetch(endpoint, {
     method: "POST",
@@ -236,6 +261,8 @@ async function main() {
     console.log("method_rejection=ok");
     await verifyInvalidJsonRequest(endpoint, authToken);
     console.log("invalid_json_rejection=ok");
+    await verifyUnauthorizedInvalidJsonRequest(endpoint);
+    console.log("auth_before_parse=ok");
     await verifyUnsupportedContentTypeRequest(endpoint, authToken);
     console.log("content_type_rejection=ok");
     await verifyUnauthorizedRequest(endpoint);

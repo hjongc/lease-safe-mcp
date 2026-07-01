@@ -330,6 +330,13 @@ function requireBearerToken(req: Request, res: Response, expectedToken: string |
   return true;
 }
 
+function requireMcpBearerToken(expectedToken: string | undefined) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!requireBearerToken(req, res, expectedToken)) return;
+    next();
+  };
+}
+
 export function createServer(): McpServer {
   const server = new McpServer(
     {
@@ -563,7 +570,6 @@ export function createApp() {
 
   app.disable("x-powered-by");
   app.use(hostHeaderValidation(allowedHosts));
-  app.use(express.json({ limit: `${maxBodyBytes}b` }));
 
   app.get("/", (_req: Request, res: Response) => {
     res.type("text/plain").send(`${SERVICE_NAME} MCP server is running. Use POST /mcp for Streamable HTTP.`);
@@ -582,40 +588,42 @@ export function createApp() {
     });
   });
 
-  app.use("/mcp", rateLimitMcpRequests(rateLimitPerMinute));
-  app.use("/mcp", rejectOversizedMcpRequest(maxBodyBytes));
-  app.use("/mcp", requireMcpJsonContentType);
+  app.post(
+    "/mcp",
+    rateLimitMcpRequests(rateLimitPerMinute),
+    rejectOversizedMcpRequest(maxBodyBytes),
+    requireMcpBearerToken(authToken),
+    requireMcpJsonContentType,
+    express.json({ limit: `${maxBodyBytes}b` }),
+    async (req: Request, res: Response) => {
+      const server = createServer();
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined
+      });
 
-  app.post("/mcp", async (req: Request, res: Response) => {
-    if (!requireBearerToken(req, res, authToken)) return;
+      res.on("close", () => {
+        transport.close();
+        server.close();
+      });
 
-    const server = createServer();
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined
-    });
-
-    res.on("close", () => {
-      transport.close();
-      server.close();
-    });
-
-    try {
-      await server.connect(transport);
-      await transport.handleRequest(req, res, req.body);
-    } catch (error) {
-      console.error("Error handling MCP request", error);
-      if (!res.headersSent) {
-        res.status(500).json({
-          jsonrpc: "2.0",
-          error: {
-            code: -32603,
-            message: "Internal server error"
-          },
-          id: null
-        });
+      try {
+        await server.connect(transport);
+        await transport.handleRequest(req, res, req.body);
+      } catch (error) {
+        console.error("Error handling MCP request", error);
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: "2.0",
+            error: {
+              code: -32603,
+              message: "Internal server error"
+            },
+            id: null
+          });
+        }
       }
     }
-  });
+  );
 
   app.get("/mcp", (_req: Request, res: Response) => {
     methodNotAllowedForMcp(res, "Method not allowed. Use POST /mcp for Streamable HTTP requests.");
