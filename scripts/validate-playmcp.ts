@@ -240,8 +240,19 @@ assert(/supportedPlayMcpProtocolVersions/.test(smoke), "smoke must verify protoc
 assert(/getServerVersion/.test(smoke), "smoke must verify server identity");
 assert(/3-10 tools/.test(smoke), "smoke must verify tool count");
 assert(/MCP_AUTH_TOKEN/.test(smoke), "smoke must support bearer-token MCP endpoints");
+assert(/offlineToolSmokeCases/.test(smoke), "smoke must cover offline MCP tool output quality");
 assert(/assertToolOutputQuality/.test(smoke), "smoke must verify MCP tool output quality");
 assert(/tool_output_chars/.test(smoke), "smoke must report validated tool output size");
+for (const offlineTool of [
+  "check_lease_red_flags",
+  "build_move_in_protection_plan",
+  "prepare_contract_questions",
+  "route_official_help",
+  "explain_dispute_prevention",
+  "explain_data_availability"
+]) {
+  assert(smoke.includes(`name: "${offlineTool}"`), `smoke must call offline tool ${offlineTool}`);
+}
 assert(/readResource/.test(smoke), "smoke must read the official source registry resource");
 assert(/official_sources/.test(smoke), "smoke must report validated official source count");
 assert(/nts-tax/.test(smoke), "smoke must require the national tax source registry entry");
