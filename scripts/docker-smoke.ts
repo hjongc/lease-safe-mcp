@@ -139,6 +139,12 @@ function assertSecurityHeaders(response: Response, label: string): void {
   if (response.headers.get("x-content-type-options") !== "nosniff") {
     throw new Error(`${label} response must set X-Content-Type-Options: nosniff.`);
   }
+  if (response.headers.get("x-frame-options") !== "DENY") {
+    throw new Error(`${label} response must set X-Frame-Options: DENY.`);
+  }
+  if (response.headers.get("content-security-policy") !== "default-src 'none'; base-uri 'none'; frame-ancestors 'none'") {
+    throw new Error(`${label} response must set a restrictive Content-Security-Policy.`);
+  }
   if (response.headers.get("referrer-policy") !== "no-referrer") {
     throw new Error(`${label} response must set Referrer-Policy: no-referrer.`);
   }

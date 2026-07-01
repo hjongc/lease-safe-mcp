@@ -104,6 +104,8 @@ for (const required of [
   "unsupported-content-type rejection",
   "WWW-Authenticate",
   "Cache-Control",
+  "X-Frame-Options",
+  "Content-Security-Policy",
   "minimal liveness metadata",
   "underscores",
   "every supported housing type",
@@ -201,6 +203,9 @@ assert(!/publicDataTimeoutMs/.test(healthzRoute), "healthz must not expose publi
 assert(/SIGTERM/.test(server), "server must handle SIGTERM for container shutdown");
 assert(/x-powered-by/.test(server), "server must disable x-powered-by");
 assert(/X-Content-Type-Options/.test(server), "server must set X-Content-Type-Options");
+assert(/X-Frame-Options/.test(server), "server must set X-Frame-Options");
+assert(/Content-Security-Policy/.test(server), "server must set Content-Security-Policy");
+assert(/frame-ancestors 'none'/.test(server), "server CSP must prevent framing");
 assert(/Referrer-Policy/.test(server), "server must set Referrer-Policy");
 assert(/Cache-Control/.test(server), "server must set Cache-Control");
 assert(/name:\s*"lease-safe"/.test(server), "MCP server name must be lease-safe");
