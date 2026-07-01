@@ -586,39 +586,41 @@ function contractDateFromTags(xml: string, label: string): string {
 
 function extractItems(xml: string, specNameField?: string): RentRecord[] {
   const items = extractBlocks(xml, "item");
-  return items
-    .map(item => {
-      const deposit = publicDataNumberFromRequiredTag(item, ["deposit", "보증금액", "보증금"], "국토교통부 전월세 실거래 API");
-      const monthlyRent = publicDataNumberFromRequiredTag(item, ["monthlyRent", "월세금액", "월세"], "국토교통부 전월세 실거래 API");
-      return {
-        name: publicDataTextFromOptionalTag(item, [specNameField, "aptNm", "아파트", "mhouseNm", "연립다세대", "offiNm", "단지"].filter((tag): tag is string => Boolean(tag)), "국토교통부 전월세 실거래 API"),
-        legalDong: publicDataTextFromOptionalTag(item, ["umdNm", "법정동"], "국토교통부 전월세 실거래 API"),
-        area: publicDataNumberFromOptionalTag(item, ["excluUseAr", "totalFloorAr", "전용면적", "계약면적"], "국토교통부 전월세 실거래 API"),
-        depositManwon: deposit,
-        monthlyRentManwon: monthlyRent,
-        contractDate: contractDateFromTags(item, "국토교통부 전월세 실거래 API"),
-        floor: publicDataTextFromOptionalTag(item, ["floor", "층"], "국토교통부 전월세 실거래 API"),
-        contractType: publicDataTextFromOptionalTag(item, ["contractType", "전월세구분"], "국토교통부 전월세 실거래 API")
-      };
-    })
-    .filter(item => item.depositManwon > 0 || item.monthlyRentManwon > 0);
+  return items.map(item => {
+    const deposit = publicDataNumberFromRequiredTag(item, ["deposit", "보증금액", "보증금"], "국토교통부 전월세 실거래 API");
+    const monthlyRent = publicDataNumberFromRequiredTag(item, ["monthlyRent", "월세금액", "월세"], "국토교통부 전월세 실거래 API");
+    if (deposit === 0 && monthlyRent === 0) {
+      throw new Error("국토교통부 전월세 실거래 API returned invalid all-zero rent money fields.");
+    }
+    return {
+      name: publicDataTextFromOptionalTag(item, [specNameField, "aptNm", "아파트", "mhouseNm", "연립다세대", "offiNm", "단지"].filter((tag): tag is string => Boolean(tag)), "국토교통부 전월세 실거래 API"),
+      legalDong: publicDataTextFromOptionalTag(item, ["umdNm", "법정동"], "국토교통부 전월세 실거래 API"),
+      area: publicDataNumberFromOptionalTag(item, ["excluUseAr", "totalFloorAr", "전용면적", "계약면적"], "국토교통부 전월세 실거래 API"),
+      depositManwon: deposit,
+      monthlyRentManwon: monthlyRent,
+      contractDate: contractDateFromTags(item, "국토교통부 전월세 실거래 API"),
+      floor: publicDataTextFromOptionalTag(item, ["floor", "층"], "국토교통부 전월세 실거래 API"),
+      contractType: publicDataTextFromOptionalTag(item, ["contractType", "전월세구분"], "국토교통부 전월세 실거래 API")
+    };
+  });
 }
 
 function extractSaleItems(xml: string, specNameField?: string): SaleRecord[] {
   const items = extractBlocks(xml, "item");
-  return items
-    .map(item => {
-      const dealAmount = publicDataNumberFromRequiredTag(item, ["dealAmount", "거래금액"], "국토교통부 매매 실거래 API");
-      return {
-        name: publicDataTextFromOptionalTag(item, [specNameField, "aptNm", "아파트", "mhouseNm", "연립다세대", "offiNm", "단지"].filter((tag): tag is string => Boolean(tag)), "국토교통부 매매 실거래 API"),
-        legalDong: publicDataTextFromOptionalTag(item, ["umdNm", "법정동"], "국토교통부 매매 실거래 API"),
-        area: publicDataNumberFromOptionalTag(item, ["excluUseAr", "totalArea", "전용면적", "대지면적"], "국토교통부 매매 실거래 API"),
-        dealAmountManwon: dealAmount,
-        contractDate: contractDateFromTags(item, "국토교통부 매매 실거래 API"),
-        floor: publicDataTextFromOptionalTag(item, ["floor", "층"], "국토교통부 매매 실거래 API")
-      };
-    })
-    .filter(item => item.dealAmountManwon > 0);
+  return items.map(item => {
+    const dealAmount = publicDataNumberFromRequiredTag(item, ["dealAmount", "거래금액"], "국토교통부 매매 실거래 API");
+    if (dealAmount === 0) {
+      throw new Error("국토교통부 매매 실거래 API returned invalid zero sale amount field.");
+    }
+    return {
+      name: publicDataTextFromOptionalTag(item, [specNameField, "aptNm", "아파트", "mhouseNm", "연립다세대", "offiNm", "단지"].filter((tag): tag is string => Boolean(tag)), "국토교통부 매매 실거래 API"),
+      legalDong: publicDataTextFromOptionalTag(item, ["umdNm", "법정동"], "국토교통부 매매 실거래 API"),
+      area: publicDataNumberFromOptionalTag(item, ["excluUseAr", "totalArea", "전용면적", "대지면적"], "국토교통부 매매 실거래 API"),
+      dealAmountManwon: dealAmount,
+      contractDate: contractDateFromTags(item, "국토교통부 매매 실거래 API"),
+      floor: publicDataTextFromOptionalTag(item, ["floor", "층"], "국토교통부 매매 실거래 API")
+    };
+  });
 }
 
 async function fetchRentMarketSnapshot(input: {

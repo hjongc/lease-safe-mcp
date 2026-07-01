@@ -992,6 +992,46 @@ test("rent market comparison separates reported records from deposit median samp
   }
 });
 
+test("rent market comparison rejects all-zero official rent money fields", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악영전월세</aptNm>
+            <umdNm>봉천동</umdNm>
+            <deposit>0</deposit>
+            <monthlyRent>0</monthlyRent>
+            <dealYear>2026</dealYear>
+            <dealMonth>5</dealMonth>
+            <dealDay>13</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    await assert.rejects(
+      compareRentMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605"
+      }),
+      /국토교통부 전월세 실거래 API returned invalid all-zero rent money fields/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
 test("rent market comparison rejects missing official date fields", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
@@ -1887,6 +1927,46 @@ test("deposit-to-sale comparison requires official result code", async () => {
         depositManwon: 30000
       }),
       /국토교통부 매매 실거래 API returned XML without resultCode/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
+test("deposit-to-sale comparison rejects zero official sale amount fields", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => new Response(`
+      <response>
+        <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
+        <body><items>
+          <item>
+            <aptNm>관악영매매</aptNm>
+            <umdNm>봉천동</umdNm>
+            <dealAmount>0</dealAmount>
+            <dealYear>2026</dealYear>
+            <dealMonth>5</dealMonth>
+            <dealDay>10</dealDay>
+          </item>
+        </items></body>
+      </response>
+    `);
+
+    await assert.rejects(
+      compareDepositToSaleMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: 30000
+      }),
+      /국토교통부 매매 실거래 API returned invalid zero sale amount field/
     );
   } finally {
     globalThis.fetch = previousFetch;
