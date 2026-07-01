@@ -69,10 +69,24 @@ for (const required of [
   "MCP_RATE_LIMIT_PER_MINUTE",
   "PUBLIC_DATA_TIMEOUT_MS",
   "fails at startup",
+  "unsupported `/mcp` methods",
+  "non-JSON MCP POST bodies",
+  "WWW-Authenticate",
   "npm run preflight:registration",
   "npm run preflight"
 ]) {
   assert(submission.includes(required), `submission pack missing: ${required}`);
+}
+
+for (const required of [
+  "unsupported-method rejection",
+  "invalid-JSON rejection",
+  "unsupported-content-type rejection",
+  "WWW-Authenticate",
+  "official source registry access",
+  "Docker runtime smoke"
+]) {
+  assert(operations.includes(required), `operations runbook missing: ${required}`);
 }
 
 const server = readFileSync("src/server.ts", "utf8");

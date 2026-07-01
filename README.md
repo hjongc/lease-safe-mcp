@@ -23,7 +23,7 @@ It uses official public data and reviewed official guidance to help users:
 - Required tool annotations included
 - Compact Korean markdown outputs
 - Dockerfile included for PlayMCP in KC Git source build
-- GitHub Actions CI runs secret scan, tests, PlayMCP validation, local MCP HTTP smoke, bearer-auth rejection smoke, production dependency audit, Docker build, and Docker runtime smoke
+- GitHub Actions CI runs secret scan, tests, PlayMCP validation, local MCP HTTP smoke, MCP boundary rejection smoke, rate-limit smoke, production dependency audit, Docker build, and Docker runtime smoke
 
 ## Data Sources
 
@@ -136,7 +136,7 @@ Release preflight:
 npm run preflight
 ```
 
-`npm run preflight` runs secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke with bearer-auth rejection, MCP rate-limit smoke, production dependency audit, Docker build, Docker runtime smoke with bearer-auth rejection, and live public-data smoke when `DATA_GO_KR_SERVICE_KEY` is set.
+`npm run preflight` runs secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke with unsupported-method, invalid-JSON, unsupported-content-type, bearer-auth, and oversized-request rejection checks, MCP rate-limit smoke, production dependency audit, Docker build, Docker runtime smoke with the same MCP boundary checks, and live public-data smoke when `DATA_GO_KR_SERVICE_KEY` is set.
 
 Registration preflight:
 
