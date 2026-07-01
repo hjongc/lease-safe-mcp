@@ -13,7 +13,7 @@ import {
   routeOfficialHelp
 } from "./domain.js";
 import { createApp, mcpMaxBodyBytes, mcpRateLimitPerMinute } from "./server.js";
-import { positiveSampleCount } from "../scripts/public-data-smoke.js";
+import { positiveSampleCount, publicDataSmokeDepositManwon } from "../scripts/public-data-smoke.js";
 import { scanLine } from "../scripts/secret-scan.js";
 
 test("data availability names automatic APIs and no fake fallback", () => {
@@ -52,6 +52,29 @@ test("public-data smoke requires positive live sample counts", () => {
     () => positiveSampleCount("매매가 대비 보증금 비율: 계산 불가", "sale", /매매 표본 수:\s*([\d,]+)/),
     /parseable sample count/
   );
+});
+
+test("public-data smoke requires a positive demo deposit", () => {
+  const previousDeposit = process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON;
+  try {
+    delete process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON;
+    assert.equal(publicDataSmokeDepositManwon(), 30000);
+
+    process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON = "42000";
+    assert.equal(publicDataSmokeDepositManwon(), 42000);
+
+    process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON = "0";
+    assert.throws(() => publicDataSmokeDepositManwon(), /positive number/);
+
+    process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON = "-1";
+    assert.throws(() => publicDataSmokeDepositManwon(), /positive number/);
+  } finally {
+    if (previousDeposit === undefined) {
+      delete process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON;
+    } else {
+      process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON = previousDeposit;
+    }
+  }
 });
 
 test("legal dong helper calls official API and exposes LAWD code", async () => {

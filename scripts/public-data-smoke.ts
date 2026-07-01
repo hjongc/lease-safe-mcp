@@ -30,10 +30,10 @@ export function publicDataSmokeHousingTypes(): HousingType[] {
   return requested as HousingType[];
 }
 
-function depositManwon(): number {
+export function publicDataSmokeDepositManwon(): number {
   const value = Number(process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON ?? 30000);
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error("PUBLIC_DATA_SMOKE_DEPOSIT_MANWON must be a non-negative number.");
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error("PUBLIC_DATA_SMOKE_DEPOSIT_MANWON must be a positive number for registration-ready deposit-to-sale evidence.");
   }
   return value;
 }
@@ -47,7 +47,7 @@ async function main() {
   const lawdCd = process.env.PUBLIC_DATA_SMOKE_LAWD_CD ?? "11620";
   const dealYmd = process.env.PUBLIC_DATA_SMOKE_DEAL_YMD ?? "202605";
   const housingTypes = publicDataSmokeHousingTypes();
-  const deposit = depositManwon();
+  const deposit = publicDataSmokeDepositManwon();
 
   const legalDong = await resolveLegalDongCode({ region });
   if (!legalDong.includes("LAWD_CD")) {

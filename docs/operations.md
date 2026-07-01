@@ -39,7 +39,7 @@ Collect this evidence before registering or updating the PlayMCP build:
 - GitHub Actions `Live public-data smoke` is passed, not skipped, after the repository secret is configured.
 - Docker runtime smoke passes after image build.
 - Demo tool is `assess_lease_safety`.
-- Demo input uses a verified `lawdCd`, `dealYmd`, and `housingType` with positive live rent and sale sample counts.
+- Demo input uses a positive `depositManwon` plus a verified `lawdCd`, `dealYmd`, and `housingType` with positive live rent and sale sample counts.
 
 Recommended demo input:
 
@@ -61,7 +61,7 @@ Recommended demo input:
 - `npm run smoke:http` verifies local HTTP MCP handshake, tool metadata, bearer-auth rejection, a lightweight tool call, and oversized request rejection.
 - `npm run smoke:rate-limit` verifies the MCP POST rate limiter returns `429` with `Retry-After`.
 - `npm run smoke:docker` verifies the built image starts in production mode, answers `/healthz`, rejects unauthenticated and oversized MCP requests, and completes MCP handshake/list-tools.
-- `npm run smoke:public-data` verifies legal-dong lookup, all rent APIs, all sale APIs, and the flagship assessment against live official APIs. It fails when a rent or sale API returns zero samples, because registration evidence must prove a real demo data path.
+- `npm run smoke:public-data` verifies legal-dong lookup, all rent APIs, all sale APIs, and the flagship assessment against live official APIs. It fails when `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` is not positive or when a rent or sale API returns zero samples, because registration evidence must prove a real demo data path.
 - `npm run preflight:registration` runs the full release preflight and fails if live public-data smoke cannot run.
 
 ## Incident Response
