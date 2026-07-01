@@ -150,7 +150,10 @@ const security = readFileSync("SECURITY.md", "utf8");
 assert(/Dependabot monitors npm packages, GitHub Actions, and Docker base images weekly/.test(operations), "operations runbook must describe all Dependabot ecosystems");
 assert(/Dependabot ignores semver-major version updates before registration/.test(operations), "operations runbook must document major dependency update policy");
 assert(!/submission branch/i.test(readme), "README must not tell operators to register a vague submission branch");
+assert(!/this repository URL/.test(readme), "README PlayMCP build instructions must not use a vague repository URL placeholder");
+assert(/Git URL:\s*`https:\/\/github\.com\/hjongc\/lease-safe-mcp\.git`/.test(readme), "README PlayMCP build instructions must include the exact Git URL");
 assert(/Branch\/ref:\s*`main`/.test(readme), "README PlayMCP build instructions must point Branch/ref at main");
+assert(/Git URL:\s*`https:\/\/github\.com\/hjongc\/lease-safe-mcp\.git`/.test(submission), "submission pack must include the exact Git URL");
 for (const required of [
   "Lease Safe(전월세안전내비)",
   "lease-safe",

@@ -204,7 +204,7 @@ Before registering in PlayMCP:
 
 PlayMCP in KC Git-source build:
 
-- Git URL: this repository URL
+- Git URL: `https://github.com/hjongc/lease-safe-mcp.git`
 - Branch/ref: `main`
 - Dockerfile path: `Dockerfile`
 - PAT: empty if the repository is public
