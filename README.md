@@ -63,6 +63,12 @@ Production requires DNS rebinding protection:
 MCP_ALLOWED_HOSTS=your.playmcp.host,your.custom.domain
 ```
 
+Production also requires the official public-data key at startup because the flagship tool depends on live legal-dong, rent, and sale APIs:
+
+```bash
+DATA_GO_KR_SERVICE_KEY=your-data-go-kr-service-key
+```
+
 Optional bearer-token protection is available for direct deployments:
 
 ```bash

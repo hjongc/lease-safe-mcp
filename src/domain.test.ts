@@ -293,9 +293,11 @@ test("one-shot lease assessment combines rent, sale, red flags, and actions", as
 test("production app requires host allowlist", () => {
   const previousNodeEnv = process.env.NODE_ENV;
   const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
   try {
     process.env.NODE_ENV = "production";
     delete process.env.MCP_ALLOWED_HOSTS;
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
 
     assert.throws(() => createApp(), /MCP_ALLOWED_HOSTS is required in production/);
   } finally {
@@ -308,6 +310,69 @@ test("production app requires host allowlist", () => {
       delete process.env.MCP_ALLOWED_HOSTS;
     } else {
       process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
+    }
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
+test("production app requires public-data key", () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  try {
+    process.env.NODE_ENV = "production";
+    process.env.MCP_ALLOWED_HOSTS = "127.0.0.1,localhost";
+    delete process.env.DATA_GO_KR_SERVICE_KEY;
+
+    assert.throws(() => createApp(), /DATA_GO_KR_SERVICE_KEY is required in production/);
+  } finally {
+    if (previousNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+    if (previousAllowedHosts === undefined) {
+      delete process.env.MCP_ALLOWED_HOSTS;
+    } else {
+      process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
+    }
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+  }
+});
+
+test("production app starts when required runtime configuration is present", () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  try {
+    process.env.NODE_ENV = "production";
+    process.env.MCP_ALLOWED_HOSTS = "127.0.0.1,localhost";
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+
+    assert.doesNotThrow(() => createApp());
+  } finally {
+    if (previousNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+    if (previousAllowedHosts === undefined) {
+      delete process.env.MCP_ALLOWED_HOSTS;
+    } else {
+      process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
+    }
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
     }
   }
 });

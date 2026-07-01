@@ -47,6 +47,7 @@ for (const required of [
   "assess_lease_safety",
   "DATA_GO_KR_SERVICE_KEY",
   "MCP_ALLOWED_HOSTS",
+  "fails at startup",
   "npm run preflight"
 ]) {
   assert(submission.includes(required), `submission pack missing: ${required}`);
@@ -54,6 +55,7 @@ for (const required of [
 
 const server = readFileSync("src/server.ts", "utf8");
 assert(/MCP_ALLOWED_HOSTS/.test(server), "server must support MCP_ALLOWED_HOSTS");
+assert(/DATA_GO_KR_SERVICE_KEY is required in production/.test(server), "server must fail fast without DATA_GO_KR_SERVICE_KEY in production");
 assert(/name:\s*"lease-safe"/.test(server), "MCP server name must be lease-safe");
 assert(!/name:\s*"[^"]*kakao[^"]*"/i.test(server), "MCP server name must not include kakao");
 assert(/StreamableHTTPServerTransport/.test(server), "server must use Streamable HTTP");

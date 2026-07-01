@@ -71,6 +71,12 @@ function requiredAllowedHosts(): string[] {
   return ["127.0.0.1", "localhost"];
 }
 
+function requireProductionDataKey(): void {
+  if (process.env.NODE_ENV !== "production") return;
+  if (process.env.DATA_GO_KR_SERVICE_KEY?.trim()) return;
+  throw new Error("DATA_GO_KR_SERVICE_KEY is required in production for official public-data tools.");
+}
+
 function requireBearerToken(req: Request, res: Response): boolean {
   const expectedToken = process.env.MCP_AUTH_TOKEN?.trim();
   if (!expectedToken) return true;
@@ -314,6 +320,7 @@ export function createServer(): McpServer {
 
 export function createApp() {
   const allowedHosts = requiredAllowedHosts();
+  requireProductionDataKey();
   const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts });
 
   app.get("/", (_req: Request, res: Response) => {

@@ -29,6 +29,8 @@ Optional:
 
 Do not commit runtime secrets. Configure them in PlayMCP or deployment environment settings.
 
+The production server fails at startup if `MCP_ALLOWED_HOSTS` or `DATA_GO_KR_SERVICE_KEY` is missing. This is intentional: missing official-data configuration should be fixed before the demo, not hidden until a user calls the flagship tool.
+
 ## Demo Scenario
 
 Use `assess_lease_safety` first.
