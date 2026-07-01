@@ -61,6 +61,7 @@ for (const required of [
   "DATA_GO_KR_SERVICE_KEY",
   "MCP_ALLOWED_HOSTS",
   "MCP_MAX_BODY_BYTES",
+  "MCP_RATE_LIMIT_PER_MINUTE",
   "PUBLIC_DATA_TIMEOUT_MS",
   "fails at startup",
   "npm run preflight:registration",
@@ -74,6 +75,7 @@ const domain = readFileSync("src/domain.ts", "utf8");
 assert(/MCP_ALLOWED_HOSTS/.test(server), "server must support MCP_ALLOWED_HOSTS");
 assert(/DATA_GO_KR_SERVICE_KEY is required in production/.test(server), "server must fail fast without DATA_GO_KR_SERVICE_KEY in production");
 assert(/MCP_MAX_BODY_BYTES/.test(server), "server must support a bounded MCP request body size");
+assert(/MCP_RATE_LIMIT_PER_MINUTE/.test(server), "server must support MCP request rate limiting");
 assert(/PUBLIC_DATA_TIMEOUT_MS/.test(domain), "domain must support a bounded public-data timeout");
 assert(/publicDataTimeoutMs/.test(server), "server must validate the public-data timeout at startup");
 assert(/SIGTERM/.test(server), "server must handle SIGTERM for container shutdown");
@@ -129,12 +131,14 @@ assert(/3-10 tools/.test(smoke), "smoke must verify tool count");
 
 const httpSmoke = readFileSync("scripts/http-smoke.ts", "utf8");
 assert(/healthz/.test(httpSmoke), "HTTP smoke must verify healthz");
+assert(/rateLimitPerMinute/.test(httpSmoke), "HTTP smoke must verify rate limit health metadata");
 assert(/oversized_request/.test(httpSmoke), "HTTP smoke must verify oversized MCP request rejection");
 assert(/dist\/scripts\/smoke\.js/.test(httpSmoke), "HTTP smoke must run the MCP client smoke");
 
 const dockerSmoke = readFileSync("scripts/docker-smoke.ts", "utf8");
 assert(/docker/.test(dockerSmoke), "Docker smoke must run a container");
 assert(/healthz/.test(dockerSmoke), "Docker smoke must verify healthz");
+assert(/rateLimitPerMinute/.test(dockerSmoke), "Docker smoke must verify rate limit health metadata");
 assert(/docker_oversized_request/.test(dockerSmoke), "Docker smoke must verify oversized MCP request rejection");
 assert(/dist\/scripts\/smoke\.js/.test(dockerSmoke), "Docker smoke must run the MCP client smoke");
 

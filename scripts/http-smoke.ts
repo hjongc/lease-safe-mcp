@@ -35,8 +35,13 @@ async function waitForHealth(port: number, server: ChildProcess): Promise<number
     try {
       const response = await fetch(healthUrl);
       if (response.ok) {
-        const body = await response.json() as { ok?: unknown; service?: unknown; maxBodyBytes?: unknown };
-        if (body.ok === true && body.service === "lease-safe" && Number.isSafeInteger(body.maxBodyBytes)) {
+        const body = await response.json() as { ok?: unknown; service?: unknown; maxBodyBytes?: unknown; rateLimitPerMinute?: unknown };
+        if (
+          body.ok === true &&
+          body.service === "lease-safe" &&
+          Number.isSafeInteger(body.maxBodyBytes) &&
+          Number.isSafeInteger(body.rateLimitPerMinute)
+        ) {
           return Number(body.maxBodyBytes);
         }
       }

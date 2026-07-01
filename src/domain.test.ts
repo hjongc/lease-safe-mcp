@@ -12,7 +12,7 @@ import {
   resolveLegalDongCode,
   routeOfficialHelp
 } from "./domain.js";
-import { createApp, mcpMaxBodyBytes } from "./server.js";
+import { createApp, mcpMaxBodyBytes, mcpRateLimitPerMinute } from "./server.js";
 
 test("data availability names automatic APIs and no fake fallback", () => {
   const text = explainDataAvailability();
@@ -500,6 +500,32 @@ test("MCP body limit is explicit and fails fast on invalid configuration", () =>
       delete process.env.MCP_MAX_BODY_BYTES;
     } else {
       process.env.MCP_MAX_BODY_BYTES = previousLimit;
+    }
+  }
+});
+
+test("MCP rate limit is explicit and fails fast on invalid configuration", () => {
+  const previousLimit = process.env.MCP_RATE_LIMIT_PER_MINUTE;
+  try {
+    delete process.env.MCP_RATE_LIMIT_PER_MINUTE;
+    assert.equal(mcpRateLimitPerMinute(), 120);
+
+    process.env.MCP_RATE_LIMIT_PER_MINUTE = "0";
+    assert.equal(mcpRateLimitPerMinute(), 0);
+
+    process.env.MCP_RATE_LIMIT_PER_MINUTE = "30";
+    assert.equal(mcpRateLimitPerMinute(), 30);
+
+    process.env.MCP_RATE_LIMIT_PER_MINUTE = "-1";
+    assert.throws(() => mcpRateLimitPerMinute(), /non-negative integer/);
+
+    process.env.MCP_RATE_LIMIT_PER_MINUTE = "fast";
+    assert.throws(() => mcpRateLimitPerMinute(), /non-negative integer/);
+  } finally {
+    if (previousLimit === undefined) {
+      delete process.env.MCP_RATE_LIMIT_PER_MINUTE;
+    } else {
+      process.env.MCP_RATE_LIMIT_PER_MINUTE = previousLimit;
     }
   }
 });

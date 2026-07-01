@@ -86,6 +86,14 @@ MCP_MAX_BODY_BYTES=262144
 
 The default MCP request body limit is 262144 bytes. Invalid values fail at startup instead of silently changing runtime behavior.
 
+Optional MCP request rate limiting is available for public deployments:
+
+```bash
+MCP_RATE_LIMIT_PER_MINUTE=120
+```
+
+The default MCP POST rate limit is 120 requests per client per minute. Set `MCP_RATE_LIMIT_PER_MINUTE=0` to disable it when an upstream gateway already enforces stricter limits.
+
 Optional public-data timeout tuning is available when the deployment ingress has a tighter request budget:
 
 ```bash

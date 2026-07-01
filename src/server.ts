@@ -22,6 +22,7 @@ import {
 const SERVICE_NAME = "Lease Safe(전월세안전내비)";
 const VERSION = "0.1.0";
 const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
+const DEFAULT_MCP_RATE_LIMIT_PER_MINUTE = 120;
 
 type ToolAnnotations = {
   title: string;
@@ -91,6 +92,17 @@ export function mcpMaxBodyBytes(): number {
   return parsed;
 }
 
+export function mcpRateLimitPerMinute(): number {
+  const rawLimit = process.env.MCP_RATE_LIMIT_PER_MINUTE?.trim();
+  if (!rawLimit) return DEFAULT_MCP_RATE_LIMIT_PER_MINUTE;
+
+  const parsed = Number(rawLimit);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error("MCP_RATE_LIMIT_PER_MINUTE must be a non-negative integer.");
+  }
+  return parsed;
+}
+
 function jsonRpcError(res: Response, httpStatus: number, code: number, message: string): void {
   res.status(httpStatus).json({
     jsonrpc: "2.0",
@@ -100,6 +112,44 @@ function jsonRpcError(res: Response, httpStatus: number, code: number, message: 
     },
     id: null
   });
+}
+
+function clientKey(req: Request): string {
+  return req.ip || req.socket.remoteAddress || "unknown";
+}
+
+function rateLimitMcpRequests(limitPerMinute: number) {
+  const windows = new Map<string, { count: number; resetAt: number }>();
+  const windowMs = 60_000;
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== "POST" || limitPerMinute === 0) {
+      next();
+      return;
+    }
+
+    const now = Date.now();
+    const key = clientKey(req);
+    const current = windows.get(key);
+    const window = current && current.resetAt > now ? current : { count: 0, resetAt: now + windowMs };
+    window.count += 1;
+    windows.set(key, window);
+
+    if (window.count > limitPerMinute) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((window.resetAt - now) / 1000));
+      res.setHeader("Retry-After", String(retryAfterSeconds));
+      jsonRpcError(res, 429, -32002, "Too many MCP requests. Try again later.");
+      return;
+    }
+
+    if (windows.size > 1000) {
+      for (const [entryKey, entryWindow] of windows) {
+        if (entryWindow.resetAt <= now) windows.delete(entryKey);
+      }
+    }
+
+    next();
+  };
 }
 
 function rejectOversizedMcpRequest(maxBodyBytes: number) {
@@ -394,6 +444,7 @@ export function createApp() {
   const allowedHosts = requiredAllowedHosts();
   requireProductionDataKey();
   const maxBodyBytes = mcpMaxBodyBytes();
+  const rateLimitPerMinute = mcpRateLimitPerMinute();
   const publicDataTimeout = publicDataTimeoutMs();
   const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts });
 
@@ -411,10 +462,12 @@ export function createApp() {
       transport: "streamable-http",
       stateless: true,
       maxBodyBytes,
+      rateLimitPerMinute,
       publicDataTimeoutMs: publicDataTimeout
     });
   });
 
+  app.use("/mcp", rateLimitMcpRequests(rateLimitPerMinute));
   app.use("/mcp", rejectOversizedMcpRequest(maxBodyBytes));
 
   app.post("/mcp", async (req: Request, res: Response) => {
