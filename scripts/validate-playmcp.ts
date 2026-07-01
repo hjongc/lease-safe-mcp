@@ -11,7 +11,7 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   dependencies?: Record<string, string>;
 };
 
-for (const file of ["Dockerfile", "README.md", "docs/data-design.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts"]) {
+for (const file of ["Dockerfile", ".github/workflows/ci.yml", "README.md", "docs/data-design.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts"]) {
   readFileSync(file, "utf8");
 }
 
@@ -26,6 +26,12 @@ assert(/COPY package\*\.json \.\//.test(dockerfile), "Dockerfile must copy packa
 assert(/RUN npm ci/.test(dockerfile), "Dockerfile must use npm ci");
 assert(/EXPOSE 3000/.test(dockerfile), "Dockerfile must expose port 3000");
 assert(/CMD \["node", "dist\/src\/server\.js"\]/.test(dockerfile), "Dockerfile CMD must start built server");
+
+const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+for (const command of ["npm ci", "npm test", "npm run validate:playmcp", "npm audit --omit=dev", "docker build"]) {
+  assert(ci.includes(command), `CI must run ${command}`);
+}
+assert(/DATA_GO_KR_SERVICE_KEY/.test(ci), "CI must support optional live public-data smoke through DATA_GO_KR_SERVICE_KEY");
 
 const server = readFileSync("src/server.ts", "utf8");
 assert(/MCP_ALLOWED_HOSTS/.test(server), "server must support MCP_ALLOWED_HOSTS");

@@ -23,6 +23,7 @@ It uses official public data and reviewed official guidance to help users:
 - Required tool annotations included
 - Compact Korean markdown outputs
 - Dockerfile included for PlayMCP in KC Git source build
+- GitHub Actions CI runs tests, PlayMCP validation, production dependency audit, and Docker build
 
 ## Data Sources
 
@@ -109,6 +110,17 @@ To narrow the live smoke while debugging one source:
 ```bash
 PUBLIC_DATA_SMOKE_HOUSING_TYPES=apartment,rowhouse DATA_GO_KR_SERVICE_KEY=... npm run smoke:public-data
 ```
+
+## CI Gate
+
+The repository includes `.github/workflows/ci.yml` for the submission branch. It runs:
+
+- `npm test`
+- `npm run validate:playmcp`
+- `npm audit --omit=dev`
+- `docker build -t lease-safe-mcp-ci .`
+
+If the GitHub repository has a `DATA_GO_KR_SERVICE_KEY` secret, CI also runs the live public-data smoke against all supported housing types. Without that secret, the live API smoke is skipped and local pre-submission smoke should be run with the key.
 
 PlayMCP in KC Git-source build:
 
