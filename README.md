@@ -141,6 +141,7 @@ If the GitHub repository has a `DATA_GO_KR_SERVICE_KEY` secret, CI also runs the
 
 Before registering in PlayMCP:
 
+- Review `docs/submission.md`
 - Run `npm run preflight` locally with `DATA_GO_KR_SERVICE_KEY` set
 - Confirm the latest GitHub Actions CI run is green
 - Configure the same `DATA_GO_KR_SERVICE_KEY` as a PlayMCP runtime environment variable
