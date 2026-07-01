@@ -1184,6 +1184,9 @@ test("public-data timeout is explicit and fails fast on invalid configuration", 
 
     process.env.PUBLIC_DATA_TIMEOUT_MS = "slow";
     assert.throws(() => publicDataTimeoutMs(), /PUBLIC_DATA_TIMEOUT_MS/);
+
+    process.env.PUBLIC_DATA_TIMEOUT_MS = "1e3";
+    assert.throws(() => publicDataTimeoutMs(), /PUBLIC_DATA_TIMEOUT_MS/);
   } finally {
     if (previousTimeout === undefined) {
       delete process.env.PUBLIC_DATA_TIMEOUT_MS;

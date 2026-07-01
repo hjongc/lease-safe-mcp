@@ -206,11 +206,16 @@ export function publicDataTimeoutMs(): number {
   const rawTimeout = process.env.PUBLIC_DATA_TIMEOUT_MS?.trim();
   if (!rawTimeout) return DEFAULT_PUBLIC_DATA_TIMEOUT_MS;
 
-  const parsed = Number(rawTimeout);
+  const parsed = parsePlainInteger(rawTimeout);
   if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > MAX_PUBLIC_DATA_TIMEOUT_MS) {
     throw new Error(`PUBLIC_DATA_TIMEOUT_MS must be a positive integer no greater than ${MAX_PUBLIC_DATA_TIMEOUT_MS}.`);
   }
   return parsed;
+}
+
+function parsePlainInteger(value: string): number {
+  if (!/^(0|[1-9]\d*)$/.test(value)) return Number.NaN;
+  return Number(value);
 }
 
 export function isFutureDealYmd(dealYmd: string, now = new Date()): boolean {
