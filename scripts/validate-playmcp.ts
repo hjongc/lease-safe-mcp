@@ -245,7 +245,7 @@ assert(/Retry-After/.test(rateLimitSmoke), "rate-limit smoke must verify Retry-A
 assert(/429/.test(rateLimitSmoke), "rate-limit smoke must verify 429 rejection");
 
 const secretScan = readFileSync("scripts/secret-scan.ts", "utf8");
-for (const required of ["DATA_GO_KR_SERVICE_KEY", "MCP_AUTH_TOKEN", "Secret scan failed"]) {
+for (const required of ["DATA_GO_KR_SERVICE_KEY", "MCP_AUTH_TOKEN", "decoded data.go.kr", "Secret scan failed"]) {
   assert(secretScan.includes(required), `secret scan missing ${required}`);
 }
 

@@ -66,6 +66,15 @@ test("secret scan allows exact placeholders but rejects hidden values beside the
     scanLine("README.md", dataKeyName + "=... " + "AAAABBBBCCCCDDDDEEEEFFFF" + "%2F" + "GGGGHHHHIIIIJJJJKKKKLLLL" + "%3D%3D", 1).length,
     1
   );
+
+  const decodedPublicDataKey = [
+    "AAAABBBBCCCCDDDDEEEEFFFF",
+    "/",
+    "GGGGHHHHIIIIJJJJKKKKLLLL",
+    "=="
+  ].join("");
+  assert.equal(scanLine("README.md", decodedPublicDataKey, 1).length, 1);
+  assert.deepEqual(scanLine("src/domain.test.ts", VALID_TEST_SERVICE_KEY, 1), []);
 });
 
 test("public-data smoke requires positive live sample counts", () => {
