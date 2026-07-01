@@ -99,7 +99,7 @@ Do not remove the old key until both CI and the runtime smoke have passed with t
 
 ## Dependency Maintenance
 
-- Dependabot monitors npm packages and GitHub Actions weekly.
+- Dependabot monitors npm packages, GitHub Actions, and Docker base images weekly.
 - Do not merge dependency PRs unless GitHub Actions CI is green.
 - For production dependencies, also check `npm audit --omit=dev` and `npm run validate:playmcp`.
 
