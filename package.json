@@ -9,6 +9,7 @@
     "dev": "tsx watch src/server.ts",
     "start": "node dist/src/server.js",
     "test": "npm run build && node --test dist/src/*.test.js",
+    "scan:secrets": "npm run build && node dist/scripts/secret-scan.js",
     "smoke": "npm run build && node dist/scripts/smoke.js",
     "smoke:http": "npm run build && node dist/scripts/http-smoke.js",
     "smoke:public-data": "npm run build && node dist/scripts/public-data-smoke.js",

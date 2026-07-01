@@ -14,6 +14,11 @@ const hasPublicDataKey = Boolean(process.env.DATA_GO_KR_SERVICE_KEY?.trim());
 
 const steps: Step[] = [
   {
+    name: "Secret scan",
+    command: "npm",
+    args: ["run", "scan:secrets"]
+  },
+  {
     name: "Unit and domain tests",
     command: "npm",
     args: ["test"]

@@ -23,7 +23,7 @@ It uses official public data and reviewed official guidance to help users:
 - Required tool annotations included
 - Compact Korean markdown outputs
 - Dockerfile included for PlayMCP in KC Git source build
-- GitHub Actions CI runs tests, PlayMCP validation, local MCP HTTP smoke, production dependency audit, and Docker build
+- GitHub Actions CI runs secret scan, tests, PlayMCP validation, local MCP HTTP smoke, production dependency audit, and Docker build
 
 ## Data Sources
 
@@ -110,7 +110,7 @@ Release preflight:
 npm run preflight
 ```
 
-`npm run preflight` runs unit tests, PlayMCP validation, local MCP HTTP smoke, production dependency audit, Docker build, and live public-data smoke when `DATA_GO_KR_SERVICE_KEY` is set.
+`npm run preflight` runs secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke, production dependency audit, Docker build, and live public-data smoke when `DATA_GO_KR_SERVICE_KEY` is set.
 
 Live public-data smoke before production rollout:
 
@@ -137,6 +137,7 @@ PUBLIC_DATA_SMOKE_HOUSING_TYPES=apartment,rowhouse DATA_GO_KR_SERVICE_KEY=... np
 The repository includes `.github/workflows/ci.yml` for the submission branch. It runs:
 
 - `npm test`
+- `npm run scan:secrets`
 - `npm run validate:playmcp`
 - `npm run smoke:http`
 - `npm audit --omit=dev`

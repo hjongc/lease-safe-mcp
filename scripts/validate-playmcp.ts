@@ -19,6 +19,7 @@ assert(!/kakao/i.test(packageJson.name), "package name must not include kakao");
 assert(packageJson.dependencies?.["@modelcontextprotocol/sdk"] === "1.29.0", "MCP SDK version must be pinned");
 assert(packageJson.scripts?.build, "build script is required");
 assert(packageJson.scripts?.test, "test script is required");
+assert(packageJson.scripts?.["scan:secrets"], "secret scan script is required");
 assert(packageJson.scripts?.smoke, "smoke script is required");
 assert(packageJson.scripts?.["smoke:http"], "HTTP smoke script is required");
 assert(packageJson.scripts?.preflight, "preflight script is required");
@@ -37,7 +38,7 @@ for (const pattern of [".git", ".env", ".env.*", "node_modules", "dist"]) {
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
 assert(/actions\/checkout@v5/.test(ci), "CI must use actions/checkout@v5");
 assert(/actions\/setup-node@v5/.test(ci), "CI must use actions/setup-node@v5");
-for (const command of ["npm ci", "npm test", "npm run validate:playmcp", "npm run smoke:http", "npm audit --omit=dev", "docker build"]) {
+for (const command of ["npm ci", "npm run scan:secrets", "npm test", "npm run validate:playmcp", "npm run smoke:http", "npm audit --omit=dev", "docker build"]) {
   assert(ci.includes(command), `CI must run ${command}`);
 }
 assert(/DATA_GO_KR_SERVICE_KEY/.test(ci), "CI must support optional live public-data smoke through DATA_GO_KR_SERVICE_KEY");
@@ -115,6 +116,11 @@ const httpSmoke = readFileSync("scripts/http-smoke.ts", "utf8");
 assert(/healthz/.test(httpSmoke), "HTTP smoke must verify healthz");
 assert(/dist\/scripts\/smoke\.js/.test(httpSmoke), "HTTP smoke must run the MCP client smoke");
 
+const secretScan = readFileSync("scripts/secret-scan.ts", "utf8");
+for (const required of ["DATA_GO_KR_SERVICE_KEY", "MCP_AUTH_TOKEN", "Secret scan failed"]) {
+  assert(secretScan.includes(required), `secret scan missing ${required}`);
+}
+
 const publicDataSmoke = readFileSync("scripts/public-data-smoke.ts", "utf8");
 for (const housingType of ["apartment", "rowhouse", "single_multi", "officetel"]) {
   assert(publicDataSmoke.includes(`"${housingType}"`), `public-data smoke must cover ${housingType}`);
@@ -122,6 +128,7 @@ for (const housingType of ["apartment", "rowhouse", "single_multi", "officetel"]
 assert(/assessLeaseSafety/.test(publicDataSmoke), "public-data smoke must verify the flagship assessment tool");
 
 const releasePreflight = readFileSync("scripts/release-preflight.ts", "utf8");
+assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"scan:secrets"\]/.test(releasePreflight), "release preflight must include npm run scan:secrets");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["test"\]/.test(releasePreflight), "release preflight must include npm test");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"validate:playmcp"\]/.test(releasePreflight), "release preflight must include npm run validate:playmcp");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"smoke:http"\]/.test(releasePreflight), "release preflight must include npm run smoke:http");
