@@ -31,6 +31,20 @@ function getFreePort(): Promise<number> {
   });
 }
 
+function smokePortFromEnv(name: string): number | undefined {
+  const rawPort = process.env[name]?.trim();
+  if (!rawPort) return undefined;
+  if (!/^(0|[1-9]\d*)$/.test(rawPort)) {
+    throw new Error(`${name} must be an integer between 1 and 65535.`);
+  }
+
+  const port = Number(rawPort);
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`${name} must be an integer between 1 and 65535.`);
+  }
+  return port;
+}
+
 function collectOutput(command: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
@@ -164,7 +178,7 @@ async function stopContainer(containerId: string): Promise<void> {
 }
 
 async function main() {
-  const port = Number(process.env.DOCKER_SMOKE_PORT || await getFreePort());
+  const port = smokePortFromEnv("DOCKER_SMOKE_PORT") ?? await getFreePort();
   const endpoint = `http://127.0.0.1:${port}/mcp`;
   const authToken = process.env.DOCKER_SMOKE_MCP_AUTH_TOKEN ?? "smoke-token-for-preflight";
 

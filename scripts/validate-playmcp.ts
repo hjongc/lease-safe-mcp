@@ -165,6 +165,7 @@ assert(/official_sources/.test(smoke), "smoke must report validated official sou
 
 const httpSmoke = readFileSync("scripts/http-smoke.ts", "utf8");
 assert(/healthz/.test(httpSmoke), "HTTP smoke must verify healthz");
+assert(/smokePortFromEnv/.test(httpSmoke), "HTTP smoke must fail fast on invalid port env values");
 assert(/auth_rejection/.test(httpSmoke), "HTTP smoke must verify bearer auth rejection");
 assert(/rateLimitPerMinute/.test(httpSmoke), "HTTP smoke must verify rate limit health metadata");
 assert(/oversized_request/.test(httpSmoke), "HTTP smoke must verify oversized MCP request rejection");
@@ -173,6 +174,7 @@ assert(/dist\/scripts\/smoke\.js/.test(httpSmoke), "HTTP smoke must run the MCP 
 const dockerSmoke = readFileSync("scripts/docker-smoke.ts", "utf8");
 assert(/docker/.test(dockerSmoke), "Docker smoke must run a container");
 assert(/healthz/.test(dockerSmoke), "Docker smoke must verify healthz");
+assert(/smokePortFromEnv/.test(dockerSmoke), "Docker smoke must fail fast on invalid port env values");
 assert(/docker_auth_rejection/.test(dockerSmoke), "Docker smoke must verify bearer auth rejection");
 assert(/rateLimitPerMinute/.test(dockerSmoke), "Docker smoke must verify rate limit health metadata");
 assert(/docker_oversized_request/.test(dockerSmoke), "Docker smoke must verify oversized MCP request rejection");
@@ -180,6 +182,7 @@ assert(/dist\/scripts\/smoke\.js/.test(dockerSmoke), "Docker smoke must run the 
 
 const rateLimitSmoke = readFileSync("scripts/rate-limit-smoke.ts", "utf8");
 assert(/MCP_RATE_LIMIT_PER_MINUTE/.test(rateLimitSmoke), "rate-limit smoke must force a low rate limit");
+assert(/smokePortFromEnv/.test(rateLimitSmoke), "rate-limit smoke must fail fast on invalid port env values");
 assert(/Retry-After/.test(rateLimitSmoke), "rate-limit smoke must verify Retry-After");
 assert(/429/.test(rateLimitSmoke), "rate-limit smoke must verify 429 rejection");
 
