@@ -42,6 +42,9 @@ jobs:
       - name: Validate PlayMCP readiness
         run: npm run validate:playmcp
 
+      - name: Smoke local MCP HTTP server
+        run: npm run smoke:http
+
       - name: Audit production dependencies
         run: npm audit --omit=dev
 

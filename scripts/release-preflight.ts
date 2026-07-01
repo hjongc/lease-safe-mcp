@@ -24,6 +24,11 @@ const steps: Step[] = [
     args: ["run", "validate:playmcp"]
   },
   {
+    name: "Local MCP HTTP smoke",
+    command: "npm",
+    args: ["run", "smoke:http"]
+  },
+  {
     name: "Production dependency audit",
     command: "npm",
     args: ["audit", "--omit=dev"]
