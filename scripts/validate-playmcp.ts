@@ -16,8 +16,13 @@ function assertIncludesInOrder(text: string, values: string[], message: string):
 
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   name: string;
+  packageManager?: string;
   scripts?: Record<string, string>;
+  engines?: Record<string, string>;
   dependencies?: Record<string, string>;
+};
+const packageLockJson = JSON.parse(readFileSync("package-lock.json", "utf8")) as {
+  packages?: Record<string, { engines?: Record<string, string> }>;
 };
 
 for (const file of ["Dockerfile", ".dockerignore", ".gitignore", ".github/workflows/ci.yml", ".github/workflows/registration-preflight.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/docker-image-reference.ts", "scripts/registration-preflight.ts", "scripts/require-registration-env.mjs", "scripts/rate-limit-smoke.ts"]) {
@@ -25,6 +30,11 @@ for (const file of ["Dockerfile", ".dockerignore", ".gitignore", ".github/workfl
 }
 
 assert(!/kakao/i.test(packageJson.name), "package name must not include kakao");
+assert(packageJson.packageManager === "npm@10.8.2", "package manager must be pinned for reproducible npm ci behavior");
+assert(packageJson.engines?.node === ">=20", "Node engine must require Node 20 or newer");
+assert(packageJson.engines?.npm === ">=10", "npm engine must require npm 10 or newer");
+assert(packageLockJson.packages?.[""]?.engines?.node === packageJson.engines.node, "package-lock root Node engine must match package.json");
+assert(packageLockJson.packages?.[""]?.engines?.npm === packageJson.engines.npm, "package-lock root npm engine must match package.json");
 assert(packageJson.dependencies?.["@modelcontextprotocol/sdk"] === "1.29.0", "MCP SDK version must be pinned");
 assert(packageJson.scripts?.build, "build script is required");
 assert(packageJson.scripts?.test, "test script is required");
@@ -156,6 +166,7 @@ assert(/Dependabot monitors npm packages, GitHub Actions, and Docker base images
 assert(/Dependabot ignores semver-major version updates before registration/.test(operations), "operations runbook must document major dependency update policy");
 assert(!/submission branch/i.test(readme), "README must not tell operators to register a vague submission branch");
 assert(!/npm install/.test(readme), "README must use npm ci for lockfile-reproducible local setup");
+assert(/Use Node\.js 20 or newer with npm 10 or newer\./.test(readme), "README local setup must state the supported Node and npm versions");
 assert(/npm ci[\s\S]*npm run build[\s\S]*MCP_ALLOWED_HOSTS=127\.0\.0\.1,localhost npm start/.test(readme), "README local setup must use npm ci before build and start");
 assert(!/this repository URL/.test(readme), "README PlayMCP build instructions must not use a vague repository URL placeholder");
 assert(/Git URL:\s*`https:\/\/github\.com\/hjongc\/lease-safe-mcp\.git`/.test(readme), "README PlayMCP build instructions must include the exact Git URL");

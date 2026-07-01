@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "npm@10.8.2",
   "description": "PlayMCP-compatible MCP server for Korean lease and moving safety guidance.",
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -20,7 +21,8 @@
     "validate:playmcp": "npm run build && node dist/scripts/validate-playmcp.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20",
+    "npm": ">=10"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",

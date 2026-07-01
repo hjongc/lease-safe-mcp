@@ -108,6 +108,8 @@ The default official public-data API timeout is 8000ms, with a maximum accepted 
 
 ## Run Locally
 
+Use Node.js 20 or newer with npm 10 or newer.
+
 ```bash
 npm ci
 npm run build
