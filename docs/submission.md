@@ -12,6 +12,7 @@ Lease Safe(전월세안전내비) is a Korean lease-safety MCP server for people
 - Endpoint path: `/mcp`
 - Health path: `/healthz` with minimal liveness metadata and Docker `HEALTHCHECK`
 - Source build: Git repository + `Dockerfile`
+- Git URL: `https://github.com/hjongc/lease-safe-mcp.git`
 - Container runtime user: non-root `node`
 - Container smoke: image starts in production mode and passes `/healthz` plus MCP handshake/list-tools
 - Branch: `main`
@@ -22,7 +23,7 @@ Lease Safe(전월세안전내비) is a Korean lease-safety MCP server for people
 Required:
 
 - `DATA_GO_KR_SERVICE_KEY`: data.go.kr service key for legal-dong, rent, and sale transaction APIs
-- `MCP_ALLOWED_HOSTS`: PlayMCP host or deployment domain for DNS rebinding protection, using plain hostnames only; URL schemes, ports, paths, userinfo, query strings, fragments, wildcards, backslashes, whitespace, underscores, empty labels, and labels that start or end with `-` are rejected
+- `MCP_ALLOWED_HOSTS`: PlayMCP host or deployment domain for DNS rebinding protection, using unique plain hostnames only; URL schemes, ports, paths, userinfo, query strings, fragments, wildcards, backslashes, whitespace, blank comma-separated entries, underscores, empty labels, and labels that start or end with `-` are rejected
 
 Optional:
 
@@ -35,6 +36,8 @@ Optional:
 Do not commit runtime secrets. Configure them in PlayMCP or deployment environment settings.
 
 The production server fails at startup if `MCP_ALLOWED_HOSTS` or `DATA_GO_KR_SERVICE_KEY` is missing. This is intentional: missing official-data configuration should be fixed before the demo, not hidden until a user calls the flagship tool.
+
+The Docker `HEALTHCHECK` connects to loopback but sends the first configured `MCP_ALLOWED_HOSTS` value as the `Host` header, so a production allowlist containing only the PlayMCP host can still pass container liveness checks.
 
 The server also rejects unknown and odd encoded routes with JSON `404`, bounds unexpected Express bad requests with JSON `400`, rejects unsupported `/mcp` methods with `Allow: POST`, rejects invalid JSON, compressed request bodies, and non-JSON MCP POST bodies before transport handling, advertises bearer authentication failures with `WWW-Authenticate` when `MCP_AUTH_TOKEN` is set, rejects oversized MCP request bodies, rate-limits MCP POST traffic, fails clearly on public-data timeout, disables `x-powered-by`, emits `X-Request-Id` for log correlation, sets `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Content-Security-Policy: default-src 'none'; base-uri 'none'; frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`, and handles container shutdown signals so PlayMCP can stop the image cleanly.
 
@@ -90,7 +93,7 @@ DATA_GO_KR_SERVICE_KEY=... npm run preflight:registration
 
 Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_KEY` is configured as a GitHub repository secret, CI also runs the live public-data smoke in registration mode.
 
-For shareable registration evidence, trigger the manual GitHub Actions **Registration Preflight** workflow on the submitted commit. This workflow runs `npm run preflight:registration`, fails when `DATA_GO_KR_SERVICE_KEY` is missing instead of treating live public-data smoke as optional, and publishes a GitHub Actions job summary with the commit, workflow run URL, required command, live public-data requirement, and Docker runtime smoke coverage.
+For shareable registration evidence, trigger the manual GitHub Actions **Registration Preflight** workflow on the submitted commit. This workflow runs `npm run preflight:registration`, includes working-tree, staged, and committed whitespace diff checks, fails when `DATA_GO_KR_SERVICE_KEY` is missing instead of treating live public-data smoke as optional, and publishes a GitHub Actions job summary with the commit, workflow run URL, required command, live public-data requirement, sanitized, length-limited demo smoke input values, and Docker runtime smoke coverage.
 
 CI also runs `npm run smoke:docker` after building the image, so registration should use a commit whose Docker image has been proven to boot and answer MCP requests before the optional live API smoke.
 

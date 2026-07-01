@@ -1,8 +1,9 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { request } from "node:http";
+import { request, type IncomingHttpHeaders } from "node:http";
 import { createServer } from "node:net";
+import { dockerImageReferenceFromEnv } from "./docker-image-reference.js";
 
-const imageTag = process.env.DOCKER_SMOKE_IMAGE ?? process.env.PREFLIGHT_DOCKER_TAG ?? "lease-safe-mcp-preflight";
+const imageTag = dockerImageReferenceFromEnv("DOCKER_SMOKE_IMAGE", "PREFLIGHT_DOCKER_TAG", "lease-safe-mcp-preflight");
 const containerName = `lease-safe-mcp-smoke-${process.pid}`;
 const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
 const publicDataSmokeKey = [
@@ -100,6 +101,63 @@ async function containerLogs(containerId: string): Promise<string> {
   }
 }
 
+async function verifyContainerRunsAsNonRoot(containerId: string): Promise<void> {
+  const uid = await collectOutput("docker", ["exec", containerId, "id", "-u"]);
+  if (uid === "0") {
+    throw new Error("Docker runtime must not run the MCP server as root.");
+  }
+  if (!/^\d+$/.test(uid)) {
+    throw new Error(`Docker runtime returned an invalid numeric uid: ${uid}`);
+  }
+}
+
+async function imageHealthcheckCommand(): Promise<string[]> {
+  const rawHealthcheck = await collectOutput("docker", ["inspect", "-f", "{{json .Config.Healthcheck.Test}}", imageTag]);
+  const parsed = JSON.parse(rawHealthcheck) as unknown;
+  if (!Array.isArray(parsed) || parsed[0] !== "CMD" || !parsed.slice(1).every(value => typeof value === "string")) {
+    throw new Error("Docker image must define an exec-form HEALTHCHECK command.");
+  }
+  return parsed.slice(1) as string[];
+}
+
+async function verifyHealthcheckWithExternalAllowedHost(): Promise<void> {
+  const healthcheckContainerName = `${containerName}-health`;
+  const healthcheckArgs = await imageHealthcheckCommand();
+  const healthcheckContainerId = await collectOutput("docker", [
+    "run",
+    "--rm",
+    "-d",
+    "--name",
+    healthcheckContainerName,
+    "-e",
+    "MCP_ALLOWED_HOSTS=lease-safe.example.com",
+    "-e",
+    `${publicDataKeyEnvName}=${publicDataSmokeKey}`,
+    imageTag
+  ]);
+  const startedAt = Date.now();
+  let lastError: unknown;
+
+  try {
+    while (Date.now() - startedAt < 12000) {
+      if (!(await containerIsRunning(healthcheckContainerId))) {
+        throw new Error(`Healthcheck-only container exited before Docker healthcheck passed.\n${await containerLogs(healthcheckContainerId)}`);
+      }
+
+      try {
+        await collectOutput("docker", ["exec", healthcheckContainerId, ...healthcheckArgs]);
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+      await delay(300);
+    }
+    throw new Error(`Docker HEALTHCHECK did not pass with an external-only MCP_ALLOWED_HOSTS value: ${(lastError as Error | undefined)?.message ?? "no response"}`);
+  } finally {
+    await stopContainer(healthcheckContainerId);
+  }
+}
+
 async function waitForHealth(port: number, containerId: string): Promise<void> {
   const healthUrl = `http://127.0.0.1:${port}/healthz`;
   const startedAt = Date.now();
@@ -155,6 +213,39 @@ function assertSecurityHeaders(response: Response, label: string): void {
   if (response.headers.get("cache-control") !== "no-store") {
     throw new Error(`${label} response must set Cache-Control: no-store.`);
   }
+  if (response.headers.has("x-powered-by")) {
+    throw new Error(`${label} response must not expose X-Powered-By.`);
+  }
+}
+
+function headerValue(headers: IncomingHttpHeaders, name: string): string | undefined {
+  const value = headers[name];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function assertRawSecurityHeaders(headers: IncomingHttpHeaders, label: string): void {
+  const requestId = headerValue(headers, "x-request-id");
+  if (!requestId || !/^[A-Za-z0-9._-]{1,64}$/.test(requestId)) {
+    throw new Error(`${label} response must set a safe X-Request-Id.`);
+  }
+  if (headerValue(headers, "x-content-type-options") !== "nosniff") {
+    throw new Error(`${label} response must set X-Content-Type-Options: nosniff.`);
+  }
+  if (headerValue(headers, "x-frame-options") !== "DENY") {
+    throw new Error(`${label} response must set X-Frame-Options: DENY.`);
+  }
+  if (headerValue(headers, "content-security-policy") !== "default-src 'none'; base-uri 'none'; frame-ancestors 'none'") {
+    throw new Error(`${label} response must set a restrictive Content-Security-Policy.`);
+  }
+  if (headerValue(headers, "referrer-policy") !== "no-referrer") {
+    throw new Error(`${label} response must set Referrer-Policy: no-referrer.`);
+  }
+  if (headerValue(headers, "cache-control") !== "no-store") {
+    throw new Error(`${label} response must set Cache-Control: no-store.`);
+  }
+  if (headerValue(headers, "x-powered-by") !== undefined) {
+    throw new Error(`${label} response must not expose X-Powered-By.`);
+  }
 }
 
 async function verifyRequestIdPropagation(endpoint: string): Promise<void> {
@@ -190,7 +281,7 @@ async function verifyUnknownRoute(endpoint: string): Promise<void> {
 
 async function verifyEncodedOddPathRejected(endpoint: string): Promise<void> {
   const target = new URL(endpoint);
-  const response = await new Promise<{ statusCode: number; body: string; contentType: string | string[] | undefined; requestId: string | string[] | undefined }>((resolve, reject) => {
+  const response = await new Promise<{ statusCode: number; body: string; contentType: string | string[] | undefined; requestId: string | string[] | undefined; headers: IncomingHttpHeaders }>((resolve, reject) => {
     const req = request({
       hostname: target.hostname,
       port: target.port,
@@ -207,7 +298,8 @@ async function verifyEncodedOddPathRejected(endpoint: string): Promise<void> {
           statusCode: res.statusCode ?? 0,
           body,
           contentType: res.headers["content-type"],
-          requestId: res.headers["x-request-id"]
+          requestId: res.headers["x-request-id"],
+          headers: res.headers
         });
       });
     });
@@ -215,6 +307,7 @@ async function verifyEncodedOddPathRejected(endpoint: string): Promise<void> {
     req.end();
   });
 
+  assertRawSecurityHeaders(response.headers, "encoded odd Docker path");
   if (response.statusCode !== 404) {
     throw new Error(`Expected encoded odd Docker path to return 404, got ${response.statusCode}: ${response.body}`);
   }
@@ -240,6 +333,7 @@ async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): P
     body: "x".repeat(maxBodyBytes + 1)
   });
 
+  assertSecurityHeaders(response, "docker oversized request rejection");
   if (response.status !== 413) {
     const text = await response.text();
     throw new Error(`Expected oversized MCP request to return 413, got ${response.status}: ${text}`);
@@ -248,7 +342,7 @@ async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): P
 
 async function verifyRejectedHost(endpoint: string): Promise<void> {
   const target = new URL(endpoint.replace(/\/mcp$/, "/healthz"));
-  const response = await new Promise<{ statusCode: number; body: string; requestId: string | string[] | undefined }>((resolve, reject) => {
+  const response = await new Promise<{ statusCode: number; body: string; requestId: string | string[] | undefined; headers: IncomingHttpHeaders }>((resolve, reject) => {
     const req = request({
       hostname: target.hostname,
       port: target.port,
@@ -264,13 +358,14 @@ async function verifyRejectedHost(endpoint: string): Promise<void> {
         body += chunk;
       });
       res.on("end", () => {
-        resolve({ statusCode: res.statusCode ?? 0, body, requestId: res.headers["x-request-id"] });
+        resolve({ statusCode: res.statusCode ?? 0, body, requestId: res.headers["x-request-id"], headers: res.headers });
       });
     });
     req.on("error", reject);
     req.end();
   });
 
+  assertRawSecurityHeaders(response.headers, "disallowed Docker Host header");
   if (response.statusCode !== 403) {
     throw new Error(`Expected disallowed Docker Host header to return 403, got ${response.statusCode}: ${response.body}`);
   }
@@ -287,6 +382,7 @@ async function verifyRejectedHost(endpoint: string): Promise<void> {
 async function verifyMethodNotAllowed(endpoint: string, method: "GET" | "DELETE" | "OPTIONS" | "PUT", expectedMessage: string): Promise<void> {
   const response = await fetch(endpoint, { method });
 
+  assertSecurityHeaders(response, `${method} Docker method rejection`);
   if (response.status !== 405) {
     const text = await response.text();
     throw new Error(`Expected ${method} Docker MCP request to return 405, got ${response.status}: ${text}`);
@@ -306,6 +402,7 @@ async function verifyMethodNotAllowed(endpoint: string, method: "GET" | "DELETE"
 async function verifyHeadMethodNotAllowed(endpoint: string): Promise<void> {
   const response = await fetch(endpoint, { method: "HEAD" });
 
+  assertSecurityHeaders(response, "HEAD Docker method rejection");
   if (response.status !== 405) {
     throw new Error(`Expected HEAD Docker MCP request to return 405, got ${response.status}.`);
   }
@@ -326,6 +423,7 @@ async function verifyInvalidJsonRequest(endpoint: string, authToken: string): Pr
     body: "{"
   });
 
+  assertSecurityHeaders(response, "docker invalid JSON rejection");
   if (response.status !== 400) {
     const text = await response.text();
     throw new Error(`Expected invalid JSON Docker MCP request to return 400, got ${response.status}: ${text}`);
@@ -346,6 +444,7 @@ async function verifyUnauthorizedInvalidJsonRequest(endpoint: string): Promise<v
     body: "{"
   });
 
+  assertSecurityHeaders(response, "docker unauthorized invalid JSON rejection");
   if (response.status !== 401) {
     const text = await response.text();
     throw new Error(`Expected unauthenticated invalid JSON Docker MCP request to return 401 before parsing, got ${response.status}: ${text}`);
@@ -376,6 +475,7 @@ async function verifyUnsupportedContentTypeRequest(endpoint: string, authToken: 
     })
   });
 
+  assertSecurityHeaders(response, "docker unsupported content-type rejection");
   if (response.status !== 415) {
     const text = await response.text();
     throw new Error(`Expected unsupported content-type Docker MCP request to return 415, got ${response.status}: ${text}`);
@@ -427,6 +527,7 @@ async function verifyUnauthorizedRequest(endpoint: string): Promise<void> {
     })
   });
 
+  assertSecurityHeaders(response, "docker auth rejection");
   if (response.status !== 401) {
     const text = await response.text();
     throw new Error(`Expected unauthenticated Docker MCP request to return 401, got ${response.status}: ${text}`);
@@ -457,6 +558,7 @@ async function verifyOversizedBearerTokenRejected(endpoint: string): Promise<voi
     })
   });
 
+  assertSecurityHeaders(response, "docker oversized bearer rejection");
   if (response.status !== 401) {
     const text = await response.text();
     throw new Error(`Expected oversized bearer Docker MCP request to return 401, got ${response.status}: ${text}`);
@@ -505,6 +607,8 @@ async function main() {
   ]);
 
   try {
+    await verifyContainerRunsAsNonRoot(containerId);
+    console.log("docker_non_root_user=ok");
     await waitForHealth(port, containerId);
     console.log("docker_healthz=ok");
     await verifyRequestIdPropagation(endpoint);
@@ -544,6 +648,8 @@ async function main() {
   } finally {
     await stopContainer(containerId);
   }
+  await verifyHealthcheckWithExternalAllowedHost();
+  console.log("docker_healthcheck_external_host=ok");
 }
 
 main().catch(error => {

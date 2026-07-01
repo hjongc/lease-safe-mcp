@@ -285,6 +285,17 @@ export const KNOWN_LAWD_CODES = [
 
 export function renderSources(ids?: string[]): string {
   const selected = ids ? SOURCES.filter(source => ids.includes(source.id)) : SOURCES;
+  if (ids) {
+    const duplicateIds = ids.filter((id, index) => ids.indexOf(id) !== index);
+    if (duplicateIds.length > 0) {
+      throw new Error(`Duplicate official source id: ${[...new Set(duplicateIds)].join(", ")}`);
+    }
+    const knownIds = new Set(SOURCES.map(source => source.id));
+    const missingIds = ids.filter(id => !knownIds.has(id));
+    if (missingIds.length > 0) {
+      throw new Error(`Unknown official source id: ${missingIds.join(", ")}`);
+    }
+  }
   return selected
     .map(source => `- [${source.confidence}] ${source.sourceName}: ${source.url} (검토일: ${source.reviewedAt})`)
     .join("\n");

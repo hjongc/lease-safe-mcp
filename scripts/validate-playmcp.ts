@@ -5,17 +5,41 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
+function assertIncludesInOrder(text: string, values: string[], message: string): void {
+  let cursor = -1;
+  for (const value of values) {
+    const next = text.indexOf(value, cursor + 1);
+    assert(next > cursor, `${message}: ${value}`);
+    cursor = next;
+  }
+}
+
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   name: string;
+  packageManager?: string;
   scripts?: Record<string, string>;
+  engines?: Record<string, string>;
   dependencies?: Record<string, string>;
 };
+const packageLockJson = JSON.parse(readFileSync("package-lock.json", "utf8")) as {
+  packages?: Record<string, { engines?: Record<string, string> }>;
+};
 
-for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", ".github/workflows/registration-preflight.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/registration-preflight.ts", "scripts/require-registration-env.mjs", "scripts/rate-limit-smoke.ts"]) {
+for (const file of ["Dockerfile", ".dockerignore", ".gitignore", ".npmrc", ".github/workflows/ci.yml", ".github/workflows/registration-preflight.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/docker-image-reference.ts", "scripts/registration-preflight.ts", "scripts/require-registration-env.mjs", "scripts/rate-limit-smoke.ts"]) {
   readFileSync(file, "utf8");
 }
 
 assert(!/kakao/i.test(packageJson.name), "package name must not include kakao");
+assert(packageJson.packageManager === "npm@10.8.2", "package manager must be pinned for reproducible npm ci behavior");
+assert(packageJson.engines?.node === ">=20", "Node engine must require Node 20 or newer");
+assert(packageJson.engines?.npm === ">=10", "npm engine must require npm 10 or newer");
+assert(packageLockJson.packages?.[""]?.engines?.node === packageJson.engines.node, "package-lock root Node engine must match package.json");
+assert(packageLockJson.packages?.[""]?.engines?.npm === packageJson.engines.npm, "package-lock root npm engine must match package.json");
+const npmrcLines = readFileSync(".npmrc", "utf8").split(/\r?\n/);
+assert(npmrcLines.includes("engine-strict=true"), ".npmrc must fail npm installs on unsupported engines");
+assert(npmrcLines.includes("fund=false"), ".npmrc must keep npm install logs focused on actionable output");
+assert(npmrcLines.includes("ignore-scripts=true"), ".npmrc must disable dependency lifecycle scripts during npm ci");
+assert(npmrcLines.includes("update-notifier=false"), ".npmrc must suppress npm update-notifier noise in CI and Docker logs");
 assert(packageJson.dependencies?.["@modelcontextprotocol/sdk"] === "1.29.0", "MCP SDK version must be pinned");
 assert(packageJson.scripts?.build, "build script is required");
 assert(packageJson.scripts?.test, "test script is required");
@@ -29,13 +53,21 @@ assert(packageJson.scripts?.["preflight:registration"], "registration preflight 
 assert(/require-registration-env\.mjs/.test(packageJson.scripts?.["preflight:registration"] ?? ""), "registration preflight must check required live-data env before building");
 assert(packageJson.scripts?.["validate:playmcp"], "PlayMCP validation script is required");
 
+const registrationEnvCheck = readFileSync("scripts/require-registration-env.mjs", "utf8");
+assert(/decodeURIComponent/.test(registrationEnvCheck), "registration env check must accept encoded data.go.kr service keys");
+assert(/not a placeholder/.test(registrationEnvCheck), "registration env check must reject placeholder public-data keys before build");
+assert(/must look like a real data\.go\.kr service key/.test(registrationEnvCheck), "registration env check must reject malformed public-data keys before build");
+
 const dockerfile = readFileSync("Dockerfile", "utf8");
 assert((dockerfile.match(/^FROM node:20-bookworm-slim@sha256:[a-f0-9]{64}/gm) ?? []).length === 3, "Dockerfile must pin every Node base image stage by digest");
-assert(/COPY package\*\.json \.\//.test(dockerfile), "Dockerfile must copy package-lock.json for reproducible builds");
-assert(/RUN npm ci/.test(dockerfile), "Dockerfile must use npm ci");
+assert((dockerfile.match(/COPY package\*\.json \.npmrc \.\//g) ?? []).length === 2, "Dockerfile deps and runtime stages must copy package-lock.json and .npmrc for reproducible npm ci behavior");
+assert(/COPY package\*\.json \.npmrc tsconfig\.json \.\//.test(dockerfile), "Dockerfile build stage must copy .npmrc for consistent npm run behavior");
+assert(/RUN npm ci --ignore-scripts/.test(dockerfile), "Dockerfile deps stage must disable dependency lifecycle scripts during npm ci");
+assert(/RUN npm ci --omit=dev --ignore-scripts/.test(dockerfile), "Dockerfile runtime stage must disable dependency lifecycle scripts during production npm ci");
 assert(/EXPOSE 3000/.test(dockerfile), "Dockerfile must expose port 3000");
 assert(/USER node/.test(dockerfile), "Dockerfile runtime must use the non-root node user");
 assert(/HEALTHCHECK[\s\S]*\/healthz/.test(dockerfile), "Dockerfile must healthcheck /healthz");
+assert(/HEALTHCHECK[\s\S]*MCP_ALLOWED_HOSTS[\s\S]*headers:\{Host:host\}/.test(dockerfile), "Dockerfile healthcheck must use an allowed Host header while dialing loopback");
 assert(/CMD \["node", "dist\/src\/server\.js"\]/.test(dockerfile), "Dockerfile CMD must start built server");
 
 const dockerignore = readFileSync(".dockerignore", "utf8");
@@ -43,8 +75,17 @@ for (const pattern of [".git", ".env", ".env.*", "node_modules", "dist"]) {
   assert(dockerignore.split(/\r?\n/).includes(pattern), `.dockerignore must exclude ${pattern}`);
 }
 
+const gitignore = readFileSync(".gitignore", "utf8");
+for (const pattern of [".env", ".env.*", "node_modules/", "dist/", "coverage/", "*.tsbuildinfo"]) {
+  assert(gitignore.split(/\r?\n/).includes(pattern), `.gitignore must exclude ${pattern}`);
+}
+
 const secretScanSource = readFileSync("scripts/secret-scan.ts", "utf8");
 assert(/"\.mjs"/.test(secretScanSource), "secret scan must cover checked-in ESM helper scripts");
+assert(/"Dockerfile"/.test(secretScanSource), "secret scan must cover Dockerfile");
+assert(/"\.npmrc"/.test(secretScanSource), "secret scan must cover npm config files");
+assert(/fileName === "\.env"/.test(secretScanSource), "secret scan must cover committed .env files");
+assert(/fileName\.startsWith\("\.env\."\)/.test(secretScanSource), "secret scan must cover committed .env.* files");
 
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
 const registrationWorkflow = readFileSync(".github/workflows/registration-preflight.yml", "utf8");
@@ -54,36 +95,103 @@ for (const workflow of [ci, registrationWorkflow]) {
   assert(/actions\/setup-node@[a-f0-9]{40}/.test(workflow), "GitHub workflows must pin actions/setup-node by commit SHA");
   assert(!/actions\/(?:checkout|setup-node)@v\d+/.test(workflow), "GitHub workflows must not use mutable action version tags");
 }
-for (const command of ["npm ci", "npm run scan:secrets", "npm test", "npm run validate:playmcp", "npm run smoke:http", "npm run smoke:rate-limit", "npm audit --omit=dev", "docker build", "npm run smoke:docker"]) {
+for (const command of ["npm ci --ignore-scripts", "git diff --check", "git diff --cached --check", "git diff-tree --check --root --no-commit-id -r HEAD", "npm run scan:secrets", "npm test", "npm run validate:playmcp", "npm run smoke:http", "npm run smoke:rate-limit", "npm audit --omit=dev", "docker build", "npm run smoke:docker"]) {
   assert(ci.includes(command), `CI must run ${command}`);
 }
+assert(registrationWorkflow.includes("npm ci --ignore-scripts"), "registration preflight workflow must disable dependency lifecycle scripts during npm ci");
+assertIncludesInOrder(ci, [
+  "Check whitespace diffs",
+  "Scan for committed secrets",
+  "Test",
+  "Validate PlayMCP readiness",
+  "Smoke local MCP HTTP server",
+  "Smoke MCP rate limit",
+  "Audit production dependencies",
+  "Build Docker image",
+  "Smoke Docker runtime",
+  "Live public-data smoke",
+  "Publish live public-data status"
+], "CI evidence gates must run in release-risk order");
 assert(/DATA_GO_KR_SERVICE_KEY/.test(ci), "CI must support optional live public-data smoke through DATA_GO_KR_SERVICE_KEY");
 assert(/REQUIRE_LIVE_PUBLIC_DATA:\s*"1"/.test(ci), "CI live public-data smoke must use registration-mode coverage rules when a key is configured");
 assert(/Publish live public-data status/.test(ci), "CI must publish whether live public-data smoke executed or skipped");
 assert(/skipped because DATA_GO_KR_SERVICE_KEY is not configured/.test(ci), "CI summary must make skipped live public-data evidence explicit");
 assert(/Registration Preflight workflow to pass/.test(ci), "CI summary must point operators to required registration evidence");
+assert(/Whitespace diff checks: working tree, staged diff, and submitted commit executed/.test(ci), "CI summary must publish whitespace diff evidence");
+assert(/Docker non-root runtime check: executed/.test(ci), "CI summary must publish non-root Docker runtime evidence");
+assert(/Dependency lifecycle scripts: disabled during npm ci/.test(ci), "CI summary must publish scriptless npm install evidence");
 assert(/workflow_dispatch/.test(registrationWorkflow), "registration preflight workflow must be manually dispatchable");
+for (const input of [
+  "public_data_smoke_region",
+  "public_data_smoke_lawd_cd",
+  "public_data_smoke_deal_ymd",
+  "public_data_smoke_deposit_manwon"
+]) {
+  assert(registrationWorkflow.includes(input), `registration preflight workflow must expose input: ${input}`);
+}
 assert(/DATA_GO_KR_SERVICE_KEY/.test(registrationWorkflow), "registration preflight workflow must inject DATA_GO_KR_SERVICE_KEY from secrets");
+for (const envName of [
+  "PUBLIC_DATA_SMOKE_REGION",
+  "PUBLIC_DATA_SMOKE_LAWD_CD",
+  "PUBLIC_DATA_SMOKE_DEAL_YMD",
+  "PUBLIC_DATA_SMOKE_DEPOSIT_MANWON"
+]) {
+  assert(registrationWorkflow.includes(envName), `registration preflight workflow must pass demo env: ${envName}`);
+  assert(registrationWorkflow.includes(`SAFE_${envName}`), `registration preflight summary must use sanitized demo env: ${envName}`);
+}
 assert(/Verify live public-data secret/.test(registrationWorkflow), "registration preflight workflow must fail fast when the live public-data secret is missing");
 assert(/repository secret is required for registration evidence/.test(registrationWorkflow), "registration preflight workflow must explain the missing secret clearly");
 assert(/npm run preflight:registration/.test(registrationWorkflow), "registration preflight workflow must run npm run preflight:registration");
 assert(/GITHUB_STEP_SUMMARY/.test(registrationWorkflow), "registration preflight workflow must publish a shareable evidence summary");
+assert(/sanitize_summary_value\(\)/.test(registrationWorkflow), "registration preflight summary must sanitize workflow-dispatch inputs");
+assert(/local max_length=120/.test(registrationWorkflow), "registration preflight summary must bound workflow-dispatch input length");
+assert(/\$\{#value\}/.test(registrationWorkflow), "registration preflight summary must measure sanitized input length before publishing");
+assert(/\$\{value:0:\$max_length\}\.\.\./.test(registrationWorkflow), "registration preflight summary must truncate long workflow-dispatch inputs");
+assert(/\$\{value\/\/\$'\\r'\/ \}/.test(registrationWorkflow), "registration preflight summary must neutralize carriage returns");
+assert(/\$\{value\/\/\$'\\n'\/ \}/.test(registrationWorkflow), "registration preflight summary must neutralize line breaks");
+assert(/\$\{value\/\/\$'\\t'\/ \}/.test(registrationWorkflow), "registration preflight summary must neutralize tabs");
+assert(/\$\{value\/\/\\`\/ \}/.test(registrationWorkflow), "registration preflight summary must neutralize Markdown backticks");
 assert(/Lease Safe Registration Evidence/.test(registrationWorkflow), "registration preflight summary must be clearly titled");
 assert(/GITHUB_SHA/.test(registrationWorkflow), "registration preflight summary must include the submitted commit");
+assert(/SAFE_GITHUB_REF_NAME="\$\(sanitize_summary_value "\$\{GITHUB_REF_NAME\}"\)"/.test(registrationWorkflow), "registration preflight summary must sanitize the submitted ref name");
+assert(/Branch\/ref: \\`\$\{SAFE_GITHUB_REF_NAME\}\\`/.test(registrationWorkflow), "registration preflight summary must render the sanitized ref name");
 assert(/GITHUB_RUN_ID/.test(registrationWorkflow), "registration preflight summary must include the workflow run URL");
 assert(/Live public-data smoke: required by registration preflight/.test(registrationWorkflow), "registration preflight summary must state live public-data evidence is required");
+assert(/Demo smoke region/.test(registrationWorkflow), "registration preflight summary must include the demo smoke region");
+assert(/Demo smoke LAWD_CD/.test(registrationWorkflow), "registration preflight summary must include the demo smoke LAWD_CD");
+assert(/Demo smoke deal month/.test(registrationWorkflow), "registration preflight summary must include the demo smoke deal month");
+assert(/Demo smoke deposit/.test(registrationWorkflow), "registration preflight summary must include the demo smoke deposit");
+assert(/Whitespace diff checks: working tree, staged diff, and submitted commit included/.test(registrationWorkflow), "registration preflight summary must state all whitespace diff evidence is included");
 assert(/Docker runtime smoke: included in registration preflight/.test(registrationWorkflow), "registration preflight summary must state Docker runtime evidence is included");
+assert(/Docker non-root runtime check: included in registration preflight/.test(registrationWorkflow), "registration preflight summary must state non-root Docker runtime evidence is included");
+assert(/Dependency lifecycle scripts: disabled during npm ci/.test(registrationWorkflow), "registration preflight summary must state scriptless npm install evidence is included");
+assertIncludesInOrder(registrationWorkflow, [
+  "Verify live public-data secret",
+  "Checkout",
+  "Setup Node.js",
+  "Install dependencies",
+  "Run registration preflight",
+  "Publish registration evidence summary"
+], "registration workflow must fail fast before expensive setup and publish evidence last");
 assert(/package-ecosystem:\s*npm/.test(dependabot), "Dependabot must monitor npm dependencies");
 assert(/package-ecosystem:\s*github-actions/.test(dependabot), "Dependabot must monitor GitHub Actions");
 assert(/package-ecosystem:\s*docker/.test(dependabot), "Dependabot must monitor Docker base images");
+assert((dependabot.match(/version-update:semver-major/g) ?? []).length === 3, "Dependabot must ignore semver-major version update noise before registration");
 
 const submission = readFileSync("docs/submission.md", "utf8");
 const operations = readFileSync("docs/operations.md", "utf8");
 const readme = readFileSync("README.md", "utf8");
 const security = readFileSync("SECURITY.md", "utf8");
 assert(/Dependabot monitors npm packages, GitHub Actions, and Docker base images weekly/.test(operations), "operations runbook must describe all Dependabot ecosystems");
+assert(/Dependabot ignores semver-major version updates before registration/.test(operations), "operations runbook must document major dependency update policy");
 assert(!/submission branch/i.test(readme), "README must not tell operators to register a vague submission branch");
+assert(!/npm install/.test(readme), "README must use npm ci for lockfile-reproducible local setup");
+assert(/Use Node\.js 20 or newer with npm 10 or newer\.[\s\S]*engine-strict=true[\s\S]*ignore-scripts=true[\s\S]*npm ci --ignore-scripts/.test(readme), "README local setup must state engine-strict and ignore-scripts npm ci behavior");
+assert(/npm ci --ignore-scripts[\s\S]*npm run build[\s\S]*MCP_ALLOWED_HOSTS=127\.0\.0\.1,localhost npm start/.test(readme), "README local setup must use npm ci --ignore-scripts before build and start");
+assert(!/this repository URL/.test(readme), "README PlayMCP build instructions must not use a vague repository URL placeholder");
+assert(/Git URL:\s*`https:\/\/github\.com\/hjongc\/lease-safe-mcp\.git`/.test(readme), "README PlayMCP build instructions must include the exact Git URL");
 assert(/Branch\/ref:\s*`main`/.test(readme), "README PlayMCP build instructions must point Branch/ref at main");
+assert(/Git URL:\s*`https:\/\/github\.com\/hjongc\/lease-safe-mcp\.git`/.test(submission), "submission pack must include the exact Git URL");
 for (const required of [
   "Lease Safe(전월세안전내비)",
   "lease-safe",
@@ -95,6 +203,7 @@ for (const required of [
   "overall risk level",
   "DATA_GO_KR_SERVICE_KEY",
   "MCP_ALLOWED_HOSTS",
+  "Docker `HEALTHCHECK` connects to loopback",
   "underscores",
   "MCP_MAX_BODY_BYTES",
   "MCP_RATE_LIMIT_PER_MINUTE",
@@ -131,17 +240,33 @@ for (const required of [
   "Registration Preflight",
   "job summary",
   "official source registry access",
-  "Docker runtime smoke"
+  "Docker runtime smoke",
+  "Docker `HEALTHCHECK`",
+  "external deployment host",
+  "working-tree/staged/committed whitespace diff check coverage",
+  "unique plain hostnames",
+  "blank comma-separated entries",
+  "non-root runtime evidence",
+  "scriptless npm install evidence"
 ]) {
   assert(operations.includes(required), `operations runbook missing: ${required}`);
 }
+assert(/sanitized and length-limited/.test(operations), "operations runbook must document sanitized registration summary inputs");
+assert(/non-root runtime evidence/.test(operations), "operations runbook must document non-root runtime summary evidence");
+assert(/scriptless npm install evidence/.test(operations), "operations runbook must document scriptless npm install summary evidence");
+assert(/working-tree, staged, and committed whitespace diff checks/.test(readme), "README must document all release preflight whitespace checks");
+assert(/working-tree, staged, and committed whitespace diff checks/.test(submission), "submission pack must document all registration preflight whitespace checks");
+assert(/sanitized, length-limited demo smoke input values/.test(submission), "submission pack must document sanitized registration evidence inputs");
 
 const server = readFileSync("src/server.ts", "utf8");
 const domain = readFileSync("src/domain.ts", "utf8");
+const sources = readFileSync("src/sources.ts", "utf8");
 const healthzRoute = server.match(/app\.get\("\/healthz"[\s\S]*?\n  \}\);/)?.[0] ?? "";
 assert(/MCP_ALLOWED_HOSTS/.test(server), "server must support MCP_ALLOWED_HOSTS");
 assert(/plain hostnames, not URLs, ports/.test(server), "server must reject unsafe MCP_ALLOWED_HOSTS entries");
 assert(/userinfo, query strings, fragments/.test(server), "server must reject URL userinfo/query/fragment host allowlist entries");
+assert(/unique hostnames/.test(server), "server must reject duplicate MCP_ALLOWED_HOSTS entries after hostname normalization");
+assert(/entries must not be empty/.test(server), "server must reject blank MCP_ALLOWED_HOSTS entries instead of silently dropping them");
 assert(/isValidAllowedHost/.test(server), "server must validate MCP_ALLOWED_HOSTS hostname label syntax");
 assert(/isValidIpv4Host/.test(server), "server must allow validated IPv4 host allowlist entries");
 assert(/isValidDnsHost/.test(server), "server must allow validated DNS host allowlist entries");
@@ -216,6 +341,8 @@ assert(/dealYmdSchema[\s\S]*\.refine\(value => !isFutureDealYmd\(value\)/.test(s
 assert(/PUBLIC_DATA_TIMEOUT_MS/.test(domain), "domain must support a bounded public-data timeout");
 assert(/parsePlainInteger/.test(domain), "domain must parse public-data timeout as a plain integer");
 assert(/MAX_PUBLIC_DATA_RESPONSE_BYTES/.test(domain), "domain must bound official public-data response sizes");
+assert(/Unknown official source id/.test(sources), "source renderer must fail fast on unknown official source ids");
+assert(/Duplicate official source id/.test(sources), "source renderer must fail fast on duplicate source ids");
 assert(/publicDataTimeoutMs/.test(server), "server must validate the public-data timeout at startup");
 assert(/ok:\s*true[\s\S]*service:\s*"lease-safe"[\s\S]*version:\s*VERSION/.test(healthzRoute), "healthz must expose only minimal liveness metadata");
 assert(!/maxBodyBytes/.test(healthzRoute), "healthz must not expose MCP body-size tuning");
@@ -227,6 +354,9 @@ assert(/X-Request-Id/.test(server), "server must set X-Request-Id");
 assert(/app\.use\(setRequestId\)[\s\S]*app\.use\(hostHeaderValidation\(allowedHosts\)\)/.test(server), "server must assign request IDs before host validation");
 assert(/REQUEST_ID_PATTERN/.test(server), "server must validate incoming request IDs before echoing them");
 assert(/compactLogError/.test(server), "server must log compact internal error summaries");
+assert(/LOG_SECRET_ENV_NAMES/.test(server), "server log compaction must know runtime secret env names");
+assert(/redactLogSecrets/.test(server), "server log compaction must redact configured runtime secrets");
+assert(/DATA_GO_KR_SERVICE_KEY/.test(server) && /MCP_AUTH_TOKEN/.test(server), "server log redaction must cover public-data and bearer secrets");
 assert(/X-Content-Type-Options/.test(server), "server must set X-Content-Type-Options");
 assert(/X-Frame-Options/.test(server), "server must set X-Frame-Options");
 assert(/Content-Security-Policy/.test(server), "server must set Content-Security-Policy");
@@ -334,6 +464,11 @@ assert(/국세청/.test(smoke) && /위택스/.test(smoke), "smoke output quality
 const httpSmoke = readFileSync("scripts/http-smoke.ts", "utf8");
 assert(/healthz/.test(httpSmoke), "HTTP smoke must verify healthz");
 assert(/assertSecurityHeaders/.test(httpSmoke), "HTTP smoke must verify security headers");
+assert(/assertRawSecurityHeaders/.test(httpSmoke), "HTTP smoke must verify security headers on raw node:http boundary responses");
+assert(/must not expose X-Powered-By/.test(httpSmoke), "HTTP smoke must verify X-Powered-By is not exposed");
+for (const requiredBoundary of ["method rejection", "invalid JSON rejection", "auth rejection", "unsupported content-type rejection", "oversized request rejection"]) {
+  assert(httpSmoke.includes(requiredBoundary), `HTTP smoke must verify security headers on ${requiredBoundary}`);
+}
 assert(/request_id=ok/.test(httpSmoke), "HTTP smoke must verify request ID propagation");
 assert(/safe X-Request-Id/.test(httpSmoke), "HTTP smoke must verify safe request IDs on boundary responses");
 assert(/unknown_route=ok/.test(httpSmoke), "HTTP smoke must verify unknown-route rejection");
@@ -366,9 +501,18 @@ assert(/dist\/scripts\/smoke\.js/.test(httpSmoke), "HTTP smoke must run the MCP 
 
 const dockerSmoke = readFileSync("scripts/docker-smoke.ts", "utf8");
 assert(/docker/.test(dockerSmoke), "Docker smoke must run a container");
+assert(/verifyContainerRunsAsNonRoot/.test(dockerSmoke), "Docker smoke must verify the runtime container user is non-root");
+assert(/docker_non_root_user=ok/.test(dockerSmoke), "Docker smoke must report non-root runtime evidence");
 assert(/healthz/.test(dockerSmoke), "Docker smoke must verify healthz");
 assert(/assertSecurityHeaders/.test(dockerSmoke), "Docker smoke must verify security headers");
+assert(/assertRawSecurityHeaders/.test(dockerSmoke), "Docker smoke must verify security headers on raw node:http boundary responses");
+assert(/must not expose X-Powered-By/.test(dockerSmoke), "Docker smoke must verify X-Powered-By is not exposed");
+for (const requiredBoundary of ["Docker method rejection", "docker invalid JSON rejection", "docker auth rejection", "docker unsupported content-type rejection", "docker oversized request rejection"]) {
+  assert(dockerSmoke.includes(requiredBoundary), `Docker smoke must verify security headers on ${requiredBoundary}`);
+}
 assert(/docker_request_id=ok/.test(dockerSmoke), "Docker smoke must verify request ID propagation");
+assert(/verifyHealthcheckWithExternalAllowedHost/.test(dockerSmoke), "Docker smoke must verify Docker HEALTHCHECK with an external-only allowed host");
+assert(/docker_healthcheck_external_host=ok/.test(dockerSmoke), "Docker smoke must report external-host healthcheck evidence");
 assert(/safe X-Request-Id/.test(dockerSmoke), "Docker smoke must verify safe request IDs on boundary responses");
 assert(/docker_unknown_route=ok/.test(dockerSmoke), "Docker smoke must verify unknown-route rejection");
 assert(/default HTML response/.test(dockerSmoke), "Docker smoke must reject default HTML not-found responses");
@@ -400,6 +544,8 @@ const rateLimitSmoke = readFileSync("scripts/rate-limit-smoke.ts", "utf8");
 assert(/MCP_RATE_LIMIT_PER_MINUTE/.test(rateLimitSmoke), "rate-limit smoke must force a low rate limit");
 assert(/smokePortFromEnv/.test(rateLimitSmoke), "rate-limit smoke must fail fast on invalid port env values");
 assert(/listen\(0,\s*"0\.0\.0\.0"/.test(rateLimitSmoke), "rate-limit smoke free-port probe must match the server bind address");
+assert(/assertSecurityHeaders/.test(rateLimitSmoke), "rate-limit smoke must verify security headers on health and rejection responses");
+assert(/must not expose X-Powered-By/.test(rateLimitSmoke), "rate-limit smoke must verify X-Powered-By is not exposed");
 assert(/Retry-After/.test(rateLimitSmoke), "rate-limit smoke must verify Retry-After");
 assert(/429/.test(rateLimitSmoke), "rate-limit smoke must verify 429 rejection");
 
@@ -415,15 +561,27 @@ for (const housingType of ["apartment", "rowhouse", "single_multi", "officetel"]
 assert(/assessLeaseSafety/.test(publicDataSmoke), "public-data smoke must verify the flagship assessment tool");
 assert(/MONEY_INPUT_LIMITS\.depositManwon/.test(publicDataSmoke), "public-data smoke must reuse the bounded deposit input limit");
 assert(/plain positive integer/.test(publicDataSmoke), "public-data smoke must require a plain integer deposit value");
+assert(/control characters, line breaks, tabs, or Markdown backticks/.test(publicDataSmoke), "public-data smoke must reject summary-breaking region characters");
 assert(/payment account details/.test(publicDataSmoke), "public-data smoke must reject account-number-like region inputs");
 assert(/household unit details/.test(publicDataSmoke), "public-data smoke must reject household-unit region inputs");
 assert(/isAllZeroLawdCd/.test(publicDataSmoke), "public-data smoke must reject all-zero LAWD_CD values before API calls");
 assert(/isFutureDealYmd/.test(publicDataSmoke), "public-data smoke must reject future deal months before API calls");
 assert(/REQUIRE_LIVE_PUBLIC_DATA/.test(publicDataSmoke), "public-data smoke must know when registration preflight requires live evidence");
 assert(/must include all supported housing types in registration preflight/.test(publicDataSmoke), "registration preflight must reject narrowed public-data housing smoke");
+assert(/publicDataSmokeConfigLine/.test(publicDataSmoke), "public-data smoke must log non-secret demo configuration");
+assert(/public_data_smoke_config/.test(publicDataSmoke), "public-data smoke config log must be easy to grep in CI logs");
+assert(/registration_mode/.test(publicDataSmoke), "public-data smoke config log must distinguish registration coverage from narrowed debugging runs");
 
 const releasePreflight = readFileSync("scripts/release-preflight.ts", "utf8");
 const registrationPreflight = readFileSync("scripts/registration-preflight.ts", "utf8");
+const dockerImageReference = readFileSync("scripts/docker-image-reference.ts", "utf8");
+assert(/DOCKER_IMAGE_REFERENCE_PATTERN/.test(dockerImageReference), "preflight scripts must define a Docker image reference allowlist");
+assert(/plain Docker image reference/.test(dockerImageReference), "preflight scripts must fail clearly on unsafe Docker image references");
+assert(/dockerImageReferenceFromEnv/.test(releasePreflight), "release preflight must validate PREFLIGHT_DOCKER_TAG before Docker build");
+assert(/dockerImageReferenceFromEnv/.test(dockerSmoke), "Docker smoke must validate DOCKER_SMOKE_IMAGE before Docker run");
+assert(/command:\s*"git"[\s\S]*args:\s*\["diff",\s*"--check"\]/.test(releasePreflight), "release preflight must include working tree git diff --check");
+assert(/command:\s*"git"[\s\S]*args:\s*\["diff",\s*"--cached",\s*"--check"\]/.test(releasePreflight), "release preflight must include staged git diff --cached --check");
+assert(/command:\s*"git"[\s\S]*args:\s*\["diff-tree",\s*"--check",\s*"--root",\s*"--no-commit-id",\s*"-r",\s*"HEAD"\]/.test(releasePreflight), "release preflight must include committed git diff-tree --check");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"scan:secrets"\]/.test(releasePreflight), "release preflight must include npm run scan:secrets");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["test"\]/.test(releasePreflight), "release preflight must include npm test");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"validate:playmcp"\]/.test(releasePreflight), "release preflight must include npm run validate:playmcp");

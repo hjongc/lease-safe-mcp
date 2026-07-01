@@ -36,6 +36,31 @@ function smokePortFromEnv(name: string): number | undefined {
   return port;
 }
 
+function assertSecurityHeaders(response: Response, label: string): void {
+  const requestId = response.headers.get("x-request-id");
+  if (!requestId || !/^[A-Za-z0-9._-]{1,64}$/.test(requestId)) {
+    throw new Error(`${label} response must set a safe X-Request-Id.`);
+  }
+  if (response.headers.get("x-content-type-options") !== "nosniff") {
+    throw new Error(`${label} response must set X-Content-Type-Options: nosniff.`);
+  }
+  if (response.headers.get("x-frame-options") !== "DENY") {
+    throw new Error(`${label} response must set X-Frame-Options: DENY.`);
+  }
+  if (response.headers.get("content-security-policy") !== "default-src 'none'; base-uri 'none'; frame-ancestors 'none'") {
+    throw new Error(`${label} response must set a restrictive Content-Security-Policy.`);
+  }
+  if (response.headers.get("referrer-policy") !== "no-referrer") {
+    throw new Error(`${label} response must set Referrer-Policy: no-referrer.`);
+  }
+  if (response.headers.get("cache-control") !== "no-store") {
+    throw new Error(`${label} response must set Cache-Control: no-store.`);
+  }
+  if (response.headers.has("x-powered-by")) {
+    throw new Error(`${label} response must not expose X-Powered-By.`);
+  }
+}
+
 async function waitForHealth(port: number, server: ChildProcess): Promise<void> {
   const healthUrl = `http://127.0.0.1:${port}/healthz`;
   const startedAt = Date.now();
@@ -49,6 +74,7 @@ async function waitForHealth(port: number, server: ChildProcess): Promise<void> 
     try {
       const response = await fetch(healthUrl);
       if (response.ok) {
+        assertSecurityHeaders(response, "rate-limit healthz");
         const body = await response.json() as { ok?: unknown; service?: unknown; version?: unknown; rateLimitPerMinute?: unknown };
         if (
           body.ok === true &&
@@ -116,12 +142,14 @@ async function main() {
     console.log("rate_limit_healthz=ok");
 
     const first = await postProbe(endpoint);
+    assertSecurityHeaders(first, "first rate-limit probe");
     await first.text();
     if (first.status === 429) {
       throw new Error("First MCP POST was unexpectedly rate limited.");
     }
 
     const second = await postProbe(endpoint);
+    assertSecurityHeaders(second, "rate-limit rejection");
     const retryAfter = second.headers.get("retry-after");
     const body = await second.text();
     if (second.status !== 429 || !retryAfter) {

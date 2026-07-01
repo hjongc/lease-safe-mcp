@@ -68,6 +68,9 @@ export function publicDataSmokeRegion(): string {
   if (region.length < 2) {
     throw new Error("PUBLIC_DATA_SMOKE_REGION must include at least 2 meaningful characters.");
   }
+  if (/[\u0000-\u001F\u007F`]/.test(region)) {
+    throw new Error("PUBLIC_DATA_SMOKE_REGION must not include control characters, line breaks, tabs, or Markdown backticks.");
+  }
   if (/\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b/.test(region) || /\b\d{6}[\s.-]?[1-4]\d{6}\b/.test(region) || /\b01[016789][\s.-]?\d{3,4}[\s.-]?\d{4}\b/.test(region) || /\b0(?:2|[3-6][1-5]|70|80)[\s.-]?\d{3,4}[\s.-]?\d{4}\b/.test(region) || /(?:계좌(?:번호)?|입금\s*계좌|송금\s*계좌)\s*(?:은|는|:)?\s*\d{2,6}[\s-]\d{2,6}[\s-]\d{2,8}/.test(region) || /\b\d{1,4}\s*동\s*\d{1,4}\s*호/.test(region) || /\b\d{1,3}\s*층\s*\d{1,4}\s*호/.test(region) || /\b\d{2,4}\s*호/.test(region)) {
     throw new Error("PUBLIC_DATA_SMOKE_REGION must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details.");
   }
@@ -111,6 +114,10 @@ export function assertLegalDongSmokeMatchesLawdCd(text: string, lawdCd: string):
   }
 }
 
+export function publicDataSmokeConfigLine(region: string, lawdCd: string, dealYmd: string, housingTypes: HousingType[], depositManwon: number, registrationMode: boolean): string {
+  return `public_data_smoke_config registration_mode=${registrationMode ? "true" : "false"} region=${JSON.stringify(region)} lawd_cd=${lawdCd} deal_ymd=${dealYmd} housing_types=${housingTypes.join(",")} deposit_manwon=${depositManwon}`;
+}
+
 async function main() {
   if (!process.env.DATA_GO_KR_SERVICE_KEY?.trim()) {
     throw new Error("DATA_GO_KR_SERVICE_KEY is required for live public-data smoke.");
@@ -121,6 +128,8 @@ async function main() {
   const dealYmd = publicDataSmokeDealYmd();
   const housingTypes = publicDataSmokeHousingTypes();
   const deposit = publicDataSmokeDepositManwon();
+
+  console.log(publicDataSmokeConfigLine(region, lawdCd, dealYmd, housingTypes, deposit, process.env.REQUIRE_LIVE_PUBLIC_DATA === "1"));
 
   const legalDong = await resolveLegalDongCode({ region });
   assertLegalDongSmokeMatchesLawdCd(legalDong, lawdCd);

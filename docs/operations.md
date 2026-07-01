@@ -23,10 +23,21 @@ gh workflow run CI --repo hjongc/lease-safe-mcp --ref main
 gh workflow run "Registration Preflight" --repo hjongc/lease-safe-mcp --ref main
 ```
 
+If the default live demo region or month returns zero official samples, rerun the manual `Registration Preflight` workflow with verified public demo inputs:
+
+```bash
+gh workflow run "Registration Preflight" --repo hjongc/lease-safe-mcp --ref main \
+  -f public_data_smoke_region="서울 관악구" \
+  -f public_data_smoke_lawd_cd=11620 \
+  -f public_data_smoke_deal_ymd=202605 \
+  -f public_data_smoke_deposit_manwon=30000
+```
+
 PlayMCP runtime:
 
 - Set `DATA_GO_KR_SERVICE_KEY` in the PlayMCP runtime environment.
-- Set `MCP_ALLOWED_HOSTS` to the PlayMCP host or custom deployment domain. Use plain hostnames only; do not include `https://`, ports, paths, wildcards, userinfo, query strings, fragments, backslashes, whitespace, underscores, empty labels, or labels that start or end with `-`.
+- Set `MCP_ALLOWED_HOSTS` to the PlayMCP host or custom deployment domain. Use unique plain hostnames only; do not include `https://`, ports, paths, wildcards, userinfo, query strings, fragments, backslashes, whitespace, blank comma-separated entries, underscores, empty labels, or labels that start or end with `-`.
+- Put the primary PlayMCP host first in `MCP_ALLOWED_HOSTS`; the Docker `HEALTHCHECK` dials loopback but sends that first allowed host as the `Host` header, so DNS rebinding protection and container liveness checks do not conflict.
 - Leave `MCP_AUTH_TOKEN` unset unless the deployment is private and the client can send bearer auth. If set, use a real token, not a placeholder, with at least 16 characters.
 
 Never paste secrets into issues, commits, README examples, screenshots, or CI logs.
@@ -37,8 +48,8 @@ Collect this evidence before registering or updating the PlayMCP build:
 
 - `npm run preflight:registration` passes with `DATA_GO_KR_SERVICE_KEY` set locally.
 - GitHub Actions `Registration Preflight` workflow passes on the submitted commit.
-- GitHub Actions `Registration Preflight` job summary shows the submitted commit, workflow run URL, required command, live public-data requirement, and Docker runtime smoke coverage.
-- Latest GitHub Actions `CI` run is green.
+- GitHub Actions `Registration Preflight` job summary shows the submitted commit, workflow run URL, required command, live public-data requirement, sanitized and length-limited demo smoke input values, working-tree/staged/committed whitespace diff check coverage, Docker runtime smoke coverage, non-root runtime evidence, and scriptless npm install evidence.
+- Latest GitHub Actions `CI` run is green and its summary shows working-tree/staged/committed whitespace diff checks.
 - GitHub Actions `Live public-data smoke` is passed, not skipped, after the repository secret is configured.
 - Docker runtime smoke passes after image build.
 - Demo tool is `assess_lease_safety`.
@@ -61,12 +72,12 @@ Recommended demo input:
 ## Health And Smoke Checks
 
 - `GET /healthz` must return only minimal liveness metadata: `ok: true`, `service: lease-safe`, and `version`. It must not expose request-size, rate-limit, or public-data timeout tuning values.
-- HTTP responses must set `X-Request-Id` for log correlation plus `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Content-Security-Policy: default-src 'none'; base-uri 'none'; frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`.
+- HTTP responses must set `X-Request-Id` for log correlation plus `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Content-Security-Policy: default-src 'none'; base-uri 'none'; frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`; they must not expose `X-Powered-By`.
 - `npm run smoke:http` verifies local HTTP MCP handshake, tool metadata, DNS-rebinding Host rejection, unknown-route rejection and encoded-path rejection with JSON `404`, unsupported-method rejection with `Allow: POST`, invalid-JSON rejection, unsupported-content-type rejection, compressed-request rejection, bearer-auth rejection with `WWW-Authenticate`, oversized request rejection, a lightweight tool call, and official source registry access.
-- `npm run smoke:rate-limit` verifies the MCP POST rate limiter returns `429` with `Retry-After`.
-- `npm run smoke:docker` verifies the built image starts in production mode, answers `/healthz`, rejects disallowed Host headers, unknown routes, encoded paths, unsupported methods, invalid JSON, unsupported content types, compressed requests, unauthenticated requests, and oversized MCP requests, then completes MCP handshake/list-tools and official source registry access.
-- `npm run smoke:public-data` verifies legal-dong lookup, all rent APIs, all sale APIs, and the flagship assessment against live official APIs. It fails when `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` is not positive or when a rent or sale API returns zero samples, because registration evidence must prove a real demo data path.
-- `npm run preflight:registration` runs the full release preflight and fails if live public-data smoke cannot run for every supported housing type. The Docker build step retries transient Docker or registry failures up to 3 times, then still fails if the image cannot be built.
+- `npm run smoke:rate-limit` verifies the MCP POST rate limiter returns `429` with `Retry-After` while preserving the same security headers used by normal responses.
+- `npm run smoke:docker` verifies the built image starts in production mode as a non-root runtime user, answers `/healthz`, proves the Docker `HEALTHCHECK` still works when `MCP_ALLOWED_HOSTS` contains only an external deployment host, rejects disallowed Host headers, unknown routes, encoded paths, unsupported methods, invalid JSON, unsupported content types, compressed requests, unauthenticated requests, and oversized MCP requests, then completes MCP handshake/list-tools and official source registry access.
+- `npm run smoke:public-data` verifies legal-dong lookup, all rent APIs, all sale APIs, and the flagship assessment against live official APIs. It prints a `public_data_smoke_config` line with `registration_mode` plus the non-secret demo region, LAWD code, deal month, housing types, and deposit used for evidence. It fails when `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` is not positive or when a rent or sale API returns zero samples, because registration evidence must prove a real demo data path.
+- `npm run preflight:registration` runs the full release preflight, including working-tree, staged, and committed whitespace diff checks, and fails if live public-data smoke cannot run for every supported housing type. The Docker build step retries transient Docker or registry failures up to 3 times, then still fails if the image cannot be built.
 - GitHub Actions `Registration Preflight` runs `npm run preflight:registration` manually and fails when `DATA_GO_KR_SERVICE_KEY` is missing, so use it as shareable registration evidence.
 
 ## Incident Response
@@ -100,6 +111,7 @@ Do not remove the old key until both CI and the runtime smoke have passed with t
 ## Dependency Maintenance
 
 - Dependabot monitors npm packages, GitHub Actions, and Docker base images weekly.
+- Dependabot ignores semver-major version updates before registration; review major upgrades as planned release work after the contest submission is stable.
 - Do not merge dependency PRs unless GitHub Actions CI is green.
 - For production dependencies, also check `npm audit --omit=dev` and `npm run validate:playmcp`.
 

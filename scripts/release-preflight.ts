@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { dockerImageReferenceFromEnv } from "./docker-image-reference.js";
 
 interface Step {
   name: string;
@@ -10,11 +11,26 @@ interface Step {
   attempts?: number;
 }
 
-const dockerTag = process.env.PREFLIGHT_DOCKER_TAG ?? "lease-safe-mcp-preflight";
+const dockerTag = dockerImageReferenceFromEnv("PREFLIGHT_DOCKER_TAG", undefined, "lease-safe-mcp-preflight");
 const hasPublicDataKey = Boolean(process.env.DATA_GO_KR_SERVICE_KEY?.trim());
 const requireLivePublicData = process.env.REQUIRE_LIVE_PUBLIC_DATA === "1";
 
 const steps: Step[] = [
+  {
+    name: "Working tree whitespace diff check",
+    command: "git",
+    args: ["diff", "--check"]
+  },
+  {
+    name: "Staged whitespace diff check",
+    command: "git",
+    args: ["diff", "--cached", "--check"]
+  },
+  {
+    name: "Committed whitespace diff check",
+    command: "git",
+    args: ["diff-tree", "--check", "--root", "--no-commit-id", "-r", "HEAD"]
+  },
   {
     name: "Secret scan",
     command: "npm",

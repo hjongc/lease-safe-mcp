@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { request } from "node:http";
+import { request, type IncomingHttpHeaders } from "node:http";
 import { createServer } from "node:net";
 
 const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
@@ -108,6 +108,39 @@ function assertSecurityHeaders(response: Response, label: string): void {
   if (response.headers.get("cache-control") !== "no-store") {
     throw new Error(`${label} response must set Cache-Control: no-store.`);
   }
+  if (response.headers.has("x-powered-by")) {
+    throw new Error(`${label} response must not expose X-Powered-By.`);
+  }
+}
+
+function headerValue(headers: IncomingHttpHeaders, name: string): string | undefined {
+  const value = headers[name];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function assertRawSecurityHeaders(headers: IncomingHttpHeaders, label: string): void {
+  const requestId = headerValue(headers, "x-request-id");
+  if (!requestId || !/^[A-Za-z0-9._-]{1,64}$/.test(requestId)) {
+    throw new Error(`${label} response must set a safe X-Request-Id.`);
+  }
+  if (headerValue(headers, "x-content-type-options") !== "nosniff") {
+    throw new Error(`${label} response must set X-Content-Type-Options: nosniff.`);
+  }
+  if (headerValue(headers, "x-frame-options") !== "DENY") {
+    throw new Error(`${label} response must set X-Frame-Options: DENY.`);
+  }
+  if (headerValue(headers, "content-security-policy") !== "default-src 'none'; base-uri 'none'; frame-ancestors 'none'") {
+    throw new Error(`${label} response must set a restrictive Content-Security-Policy.`);
+  }
+  if (headerValue(headers, "referrer-policy") !== "no-referrer") {
+    throw new Error(`${label} response must set Referrer-Policy: no-referrer.`);
+  }
+  if (headerValue(headers, "cache-control") !== "no-store") {
+    throw new Error(`${label} response must set Cache-Control: no-store.`);
+  }
+  if (headerValue(headers, "x-powered-by") !== undefined) {
+    throw new Error(`${label} response must not expose X-Powered-By.`);
+  }
 }
 
 async function verifyRequestIdPropagation(endpoint: string): Promise<void> {
@@ -143,7 +176,7 @@ async function verifyUnknownRoute(endpoint: string): Promise<void> {
 
 async function verifyEncodedOddPathRejected(endpoint: string): Promise<void> {
   const target = new URL(endpoint);
-  const response = await new Promise<{ statusCode: number; body: string; contentType: string | string[] | undefined; requestId: string | string[] | undefined }>((resolve, reject) => {
+  const response = await new Promise<{ statusCode: number; body: string; contentType: string | string[] | undefined; requestId: string | string[] | undefined; headers: IncomingHttpHeaders }>((resolve, reject) => {
     const req = request({
       hostname: target.hostname,
       port: target.port,
@@ -160,7 +193,8 @@ async function verifyEncodedOddPathRejected(endpoint: string): Promise<void> {
           statusCode: res.statusCode ?? 0,
           body,
           contentType: res.headers["content-type"],
-          requestId: res.headers["x-request-id"]
+          requestId: res.headers["x-request-id"],
+          headers: res.headers
         });
       });
     });
@@ -168,6 +202,7 @@ async function verifyEncodedOddPathRejected(endpoint: string): Promise<void> {
     req.end();
   });
 
+  assertRawSecurityHeaders(response.headers, "encoded odd path");
   if (response.statusCode !== 404) {
     throw new Error(`Expected encoded odd path to return 404, got ${response.statusCode}: ${response.body}`);
   }
@@ -193,6 +228,7 @@ async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): P
     body: "x".repeat(maxBodyBytes + 1)
   });
 
+  assertSecurityHeaders(response, "oversized request rejection");
   if (response.status !== 413) {
     const text = await response.text();
     throw new Error(`Expected oversized MCP request to return 413, got ${response.status}: ${text}`);
@@ -201,7 +237,7 @@ async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): P
 
 async function verifyRejectedHost(endpoint: string): Promise<void> {
   const target = new URL(endpoint.replace(/\/mcp$/, "/healthz"));
-  const response = await new Promise<{ statusCode: number; body: string; requestId: string | string[] | undefined }>((resolve, reject) => {
+  const response = await new Promise<{ statusCode: number; body: string; requestId: string | string[] | undefined; headers: IncomingHttpHeaders }>((resolve, reject) => {
     const req = request({
       hostname: target.hostname,
       port: target.port,
@@ -217,13 +253,14 @@ async function verifyRejectedHost(endpoint: string): Promise<void> {
         body += chunk;
       });
       res.on("end", () => {
-        resolve({ statusCode: res.statusCode ?? 0, body, requestId: res.headers["x-request-id"] });
+        resolve({ statusCode: res.statusCode ?? 0, body, requestId: res.headers["x-request-id"], headers: res.headers });
       });
     });
     req.on("error", reject);
     req.end();
   });
 
+  assertRawSecurityHeaders(response.headers, "disallowed Host header");
   if (response.statusCode !== 403) {
     throw new Error(`Expected disallowed Host header to return 403, got ${response.statusCode}: ${response.body}`);
   }
@@ -240,6 +277,7 @@ async function verifyRejectedHost(endpoint: string): Promise<void> {
 async function verifyMethodNotAllowed(endpoint: string, method: "GET" | "DELETE" | "OPTIONS" | "PUT", expectedMessage: string): Promise<void> {
   const response = await fetch(endpoint, { method });
 
+  assertSecurityHeaders(response, `${method} method rejection`);
   if (response.status !== 405) {
     const text = await response.text();
     throw new Error(`Expected ${method} MCP request to return 405, got ${response.status}: ${text}`);
@@ -259,6 +297,7 @@ async function verifyMethodNotAllowed(endpoint: string, method: "GET" | "DELETE"
 async function verifyHeadMethodNotAllowed(endpoint: string): Promise<void> {
   const response = await fetch(endpoint, { method: "HEAD" });
 
+  assertSecurityHeaders(response, "HEAD method rejection");
   if (response.status !== 405) {
     throw new Error(`Expected HEAD MCP request to return 405, got ${response.status}.`);
   }
@@ -279,6 +318,7 @@ async function verifyInvalidJsonRequest(endpoint: string, authToken: string): Pr
     body: "{"
   });
 
+  assertSecurityHeaders(response, "invalid JSON rejection");
   if (response.status !== 400) {
     const text = await response.text();
     throw new Error(`Expected invalid JSON MCP request to return 400, got ${response.status}: ${text}`);
@@ -299,6 +339,7 @@ async function verifyUnauthorizedInvalidJsonRequest(endpoint: string): Promise<v
     body: "{"
   });
 
+  assertSecurityHeaders(response, "unauthorized invalid JSON rejection");
   if (response.status !== 401) {
     const text = await response.text();
     throw new Error(`Expected unauthenticated invalid JSON MCP request to return 401 before parsing, got ${response.status}: ${text}`);
@@ -329,6 +370,7 @@ async function verifyUnsupportedContentTypeRequest(endpoint: string, authToken: 
     })
   });
 
+  assertSecurityHeaders(response, "unsupported content-type rejection");
   if (response.status !== 415) {
     const text = await response.text();
     throw new Error(`Expected unsupported content-type MCP request to return 415, got ${response.status}: ${text}`);
@@ -380,6 +422,7 @@ async function verifyUnauthorizedRequest(endpoint: string): Promise<void> {
     })
   });
 
+  assertSecurityHeaders(response, "auth rejection");
   if (response.status !== 401) {
     const text = await response.text();
     throw new Error(`Expected unauthenticated MCP request to return 401, got ${response.status}: ${text}`);
@@ -410,6 +453,7 @@ async function verifyOversizedBearerTokenRejected(endpoint: string): Promise<voi
     })
   });
 
+  assertSecurityHeaders(response, "oversized bearer rejection");
   if (response.status !== 401) {
     const text = await response.text();
     throw new Error(`Expected oversized bearer MCP request to return 401, got ${response.status}: ${text}`);

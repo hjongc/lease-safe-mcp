@@ -66,7 +66,7 @@ Production requires DNS rebinding protection:
 MCP_ALLOWED_HOSTS=your.playmcp.host,your.custom.domain
 ```
 
-Use plain hostnames only. Do not include `https://`, ports, paths, whitespace, wildcards, underscores, empty labels, or labels that start or end with `-`.
+Use unique plain hostnames only. Do not include `https://`, ports, paths, whitespace, wildcards, blank comma-separated entries, underscores, empty labels, or labels that start or end with `-`.
 
 Production also requires the official public-data key at startup because the flagship tool depends on live legal-dong, rent, and sale APIs:
 
@@ -108,8 +108,10 @@ The default official public-data API timeout is 8000ms, with a maximum accepted 
 
 ## Run Locally
 
+Use Node.js 20 or newer with npm 10 or newer. `.npmrc` enables `engine-strict=true`, so unsupported runtimes fail during `npm ci`. It also sets `ignore-scripts=true`, so dependency lifecycle scripts do not run during install.
+
 ```bash
-npm install
+npm ci --ignore-scripts
 npm run build
 MCP_ALLOWED_HOSTS=127.0.0.1,localhost npm start
 ```
@@ -138,7 +140,7 @@ Release preflight:
 npm run preflight
 ```
 
-`npm run preflight` runs secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke with DNS-rebinding Host rejection, unsupported-method, invalid-JSON, unsupported-content-type, bearer-auth, and oversized-request rejection checks, MCP rate-limit smoke, production dependency audit, Docker build, Docker runtime smoke with the same MCP boundary checks, and live public-data smoke when `DATA_GO_KR_SERVICE_KEY` is set.
+`npm run preflight` runs working-tree, staged, and committed whitespace diff checks, secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke with DNS-rebinding Host rejection, unsupported-method, invalid-JSON, unsupported-content-type, bearer-auth, and oversized-request rejection checks, MCP rate-limit smoke, production dependency audit, Docker build, Docker runtime smoke with the same MCP boundary checks, and live public-data smoke when `DATA_GO_KR_SERVICE_KEY` is set.
 
 Registration preflight:
 
@@ -176,6 +178,7 @@ Do not use a narrowed `PUBLIC_DATA_SMOKE_HOUSING_TYPES` list as registration evi
 
 The repository includes `.github/workflows/ci.yml` for `main`. It runs:
 
+- `npm ci --ignore-scripts`
 - `npm test`
 - `npm run scan:secrets`
 - `npm run validate:playmcp`
@@ -204,7 +207,7 @@ Before registering in PlayMCP:
 
 PlayMCP in KC Git-source build:
 
-- Git URL: this repository URL
+- Git URL: `https://github.com/hjongc/lease-safe-mcp.git`
 - Branch/ref: `main`
 - Dockerfile path: `Dockerfile`
 - PAT: empty if the repository is public

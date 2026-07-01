@@ -34,7 +34,13 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+
+      - name: Check whitespace diffs
+        run: |
+          git diff --check
+          git diff --cached --check
+          git diff-tree --check --root --no-commit-id -r HEAD
 
       - name: Scan for committed secrets
         run: npm run scan:secrets
@@ -89,5 +95,8 @@ jobs:
               echo "- Live public-data smoke: skipped because DATA_GO_KR_SERVICE_KEY is not configured"
               echo "- Registration evidence still requires the manual Registration Preflight workflow to pass"
             fi
+            echo "- Whitespace diff checks: working tree, staged diff, and submitted commit executed"
             echo "- Docker runtime smoke: executed"
+            echo "- Docker non-root runtime check: executed"
+            echo "- Dependency lifecycle scripts: disabled during npm ci"
           } >> "$GITHUB_STEP_SUMMARY"

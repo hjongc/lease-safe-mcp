@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 
 const root = process.cwd();
 const includeExtensions = new Set([".ts", ".js", ".mjs", ".json", ".md", ".yml", ".yaml", ".dockerignore", ".gitignore"]);
+const includeFileNames = new Set(["Dockerfile", ".npmrc"]);
 const ignoredDirectories = new Set([".git", "node_modules", "dist", "coverage"]);
 const allowedPlaceholders = [
   "DATA_GO_KR_SERVICE_KEY=...",
@@ -24,6 +25,10 @@ function extensionOf(file: string): string {
   return index >= 0 ? file.slice(index) : "";
 }
 
+export function shouldScanFileName(fileName: string): boolean {
+  return fileName === ".env" || fileName.startsWith(".env.") || includeFileNames.has(fileName) || includeExtensions.has(extensionOf(fileName));
+}
+
 function listFiles(directory: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(directory)) {
@@ -34,7 +39,7 @@ function listFiles(directory: string): string[] {
       files.push(...listFiles(fullPath));
       continue;
     }
-    if (includeExtensions.has(extensionOf(entry))) {
+    if (shouldScanFileName(entry)) {
       files.push(fullPath);
     }
   }
@@ -59,13 +64,13 @@ function isAllowedPlaceholder(line: string): boolean {
   return allowedPlaceholders.includes(normalizePlaceholderLine(line));
 }
 
-function isAllowedSyntheticSecret(line: string): boolean {
-  return line.includes("LeaseSafePublicDataSmokeKey");
+function lineWithoutAllowedSyntheticSecrets(line: string): string {
+  return line.replace(/LeaseSafePublicDataSmokeKey[A-Za-z0-9+/]*={0,2}/g, "");
 }
 
 function scanStandalonePublicDataKey(line: string): boolean {
-  if (line.includes("\"integrity\"") || isAllowedSyntheticSecret(line)) return false;
-  return /(?:^|[^A-Za-z0-9+/])(?=[A-Za-z0-9+/=]{40,})(?=[A-Za-z0-9+/=]*\/)[A-Za-z0-9+/]{40,}={1,2}(?:$|[^A-Za-z0-9+/=])/.test(line);
+  if (line.includes("\"integrity\"")) return false;
+  return /(?:^|[^A-Za-z0-9+/])(?=[A-Za-z0-9+/=]{40,})(?=[A-Za-z0-9+/=]*\/)[A-Za-z0-9+/]{40,}={1,2}(?:$|[^A-Za-z0-9+/=])/.test(lineWithoutAllowedSyntheticSecrets(line));
 }
 
 export function scanLine(file: string, line: string, lineNumber: number): Finding[] {

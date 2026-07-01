@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
   assessLeaseSafety,
   buildMoveInProtectionPlan,
@@ -16,9 +17,10 @@ import {
   resolveLegalDongCode,
   routeOfficialHelp
 } from "./domain.js";
-import { MCP_TEXT_LIMITS, createApp, createServer, httpPort, mcpMaxBodyBytes, mcpRateLimitPerMinute, pruneExpiredRateLimitWindows } from "./server.js";
-import { assertLegalDongSmokeMatchesLawdCd, positiveSampleCount, publicDataSmokeDealYmd, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes, publicDataSmokeLawdCd, publicDataSmokeRegion } from "../scripts/public-data-smoke.js";
-import { scanLine } from "../scripts/secret-scan.js";
+import { MCP_TEXT_LIMITS, compactLogError, createApp, createServer, httpPort, mcpMaxBodyBytes, mcpRateLimitPerMinute, pruneExpiredRateLimitWindows } from "./server.js";
+import { renderSources } from "./sources.js";
+import { assertLegalDongSmokeMatchesLawdCd, positiveSampleCount, publicDataSmokeConfigLine, publicDataSmokeDealYmd, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes, publicDataSmokeLawdCd, publicDataSmokeRegion } from "../scripts/public-data-smoke.js";
+import { scanLine, shouldScanFileName } from "../scripts/secret-scan.js";
 
 const PUBLIC_DATA_KEY_ENV_NAME = ["DATA_GO_KR", "SERVICE_KEY"].join("_");
 const VALID_TEST_SERVICE_KEY = [
@@ -40,6 +42,30 @@ function registeredToolSchema(toolName: string): ToolInputSchema {
   const tool = server._registeredTools[toolName];
   assert.ok(tool, `registered tool missing: ${toolName}`);
   return tool.inputSchema;
+}
+
+function runRegistrationEnvCheck(value?: string): ReturnType<typeof spawnSync> {
+  const env = { ...process.env };
+  delete env[PUBLIC_DATA_KEY_ENV_NAME];
+  if (value !== undefined) env[PUBLIC_DATA_KEY_ENV_NAME] = value;
+
+  return spawnSync(process.execPath, ["scripts/require-registration-env.mjs"], {
+    cwd: process.cwd(),
+    env,
+    encoding: "utf8"
+  });
+}
+
+function processStderr(result: ReturnType<typeof spawnSync>): string {
+  return typeof result.stderr === "string" ? result.stderr : result.stderr.toString("utf8");
+}
+
+function runBuiltScript(scriptPath: string, envPatch: Record<string, string>): ReturnType<typeof spawnSync> {
+  return spawnSync(process.execPath, [scriptPath], {
+    cwd: process.cwd(),
+    env: { ...process.env, ...envPatch },
+    encoding: "utf8"
+  });
 }
 
 test("data availability names automatic APIs and no fake fallback", () => {
@@ -75,6 +101,58 @@ test("secret scan allows exact placeholders but rejects hidden values beside the
   ].join("");
   assert.equal(scanLine("README.md", decodedPublicDataKey, 1).length, 1);
   assert.deepEqual(scanLine("src/domain.test.ts", VALID_TEST_SERVICE_KEY, 1), []);
+  assert.equal(scanLine("src/domain.test.ts", `${VALID_TEST_SERVICE_KEY} ${decodedPublicDataKey}`, 1).length, 1);
+});
+
+test("secret scan covers production configuration file names", () => {
+  assert.equal(shouldScanFileName(".env"), true);
+  assert.equal(shouldScanFileName(".env.production"), true);
+  assert.equal(shouldScanFileName("Dockerfile"), true);
+  assert.equal(shouldScanFileName(".npmrc"), true);
+  assert.equal(shouldScanFileName("README.md"), true);
+  assert.equal(shouldScanFileName("notes.txt"), false);
+});
+
+test("official source rendering fails fast on unknown source ids", () => {
+  assert.match(renderSources(["gov24"]), /정부24/);
+  assert.throws(() => renderSources(["gov24", "gov24"]), /Duplicate official source id: gov24/);
+  assert.throws(() => renderSources(["gov24", "missing-source"]), /Unknown official source id: missing-source/);
+});
+
+test("registration preflight env check rejects bad public-data keys before build", () => {
+  const missing = runRegistrationEnvCheck();
+  assert.notEqual(missing.status, 0);
+  assert.match(processStderr(missing), /DATA_GO_KR_SERVICE_KEY is required/);
+
+  const placeholder = runRegistrationEnvCheck("your-data-go-kr-service-key");
+  assert.notEqual(placeholder.status, 0);
+  assert.match(processStderr(placeholder), /not a placeholder/);
+
+  const malformed = runRegistrationEnvCheck("short-key");
+  assert.notEqual(malformed.status, 0);
+  assert.match(processStderr(malformed), /must look like a real data\.go\.kr service key/);
+
+  const invalidEncoding = runRegistrationEnvCheck("%E0%A4%A");
+  assert.notEqual(invalidEncoding.status, 0);
+  assert.match(processStderr(invalidEncoding), /valid percent-encoded or decoded/);
+
+  const encoded = runRegistrationEnvCheck(VALID_TEST_SERVICE_KEY_ENCODED);
+  assert.equal(encoded.status, 0);
+  assert.equal(processStderr(encoded), "");
+});
+
+test("preflight scripts reject unsafe Docker image references before running Docker", () => {
+  const releasePreflight = runBuiltScript("dist/scripts/release-preflight.js", {
+    PREFLIGHT_DOCKER_TAG: "lease-safe\nspoof"
+  });
+  assert.notEqual(releasePreflight.status, 0);
+  assert.match(processStderr(releasePreflight), /PREFLIGHT_DOCKER_TAG must be a plain Docker image reference/);
+
+  const dockerSmoke = runBuiltScript("dist/scripts/docker-smoke.js", {
+    DOCKER_SMOKE_IMAGE: "lease-safe;rm"
+  });
+  assert.notEqual(dockerSmoke.status, 0);
+  assert.match(processStderr(dockerSmoke), /DOCKER_SMOKE_IMAGE must be a plain Docker image reference/);
 });
 
 test("public-data smoke requires positive live sample counts", () => {
@@ -132,6 +210,12 @@ test("public-data smoke validates demo region before API calls", () => {
 
     process.env.PUBLIC_DATA_SMOKE_REGION = " ";
     assert.throws(() => publicDataSmokeRegion(), /PUBLIC_DATA_SMOKE_REGION must include at least 2 meaningful characters/);
+
+    process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구\n강남구";
+    assert.throws(() => publicDataSmokeRegion(), /must not include control characters, line breaks, tabs, or Markdown backticks/);
+
+    process.env.PUBLIC_DATA_SMOKE_REGION = "서울 `관악구`";
+    assert.throws(() => publicDataSmokeRegion(), /must not include control characters, line breaks, tabs, or Markdown backticks/);
 
     process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 010 1234 5678";
     assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details/);
@@ -266,6 +350,13 @@ test("public-data smoke requires legal-dong proof for configured LAWD code", () 
     () => assertLegalDongSmokeMatchesLawdCd(legalDongText, "00000"),
     /PUBLIC_DATA_SMOKE_LAWD_CD must not be 00000/
   );
+});
+
+test("public-data smoke config line exposes non-secret evidence inputs", () => {
+  const line = publicDataSmokeConfigLine("서울 관악구", "11620", "202605", ["apartment", "rowhouse"], 30000, true);
+  assert.equal(line, 'public_data_smoke_config registration_mode=true region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse deposit_manwon=30000');
+  assert.doesNotMatch(line, /DATA_GO_KR_SERVICE_KEY|serviceKey|secret/i);
+  assert.match(publicDataSmokeConfigLine('서울 "관악구"', "11620", "202605", ["apartment"], 30000, false), /registration_mode=false region="서울 \\"관악구\\""/);
 });
 
 test("legal dong helper calls official API and exposes LAWD code", async () => {
@@ -2592,6 +2683,14 @@ test("production app rejects unsafe host allowlist entries", () => {
       assert.throws(() => createApp(), /plain hostnames/);
     }
 
+    process.env.MCP_ALLOWED_HOSTS = "lease-safe.example.com,LEASE-SAFE.example.com";
+    assert.throws(() => createApp(), /unique hostnames/);
+
+    for (const value of ["lease-safe.example.com,", ",lease-safe.example.com", "lease-safe.example.com,,localhost"]) {
+      process.env.MCP_ALLOWED_HOSTS = value;
+      assert.throws(() => createApp(), /must not be empty/);
+    }
+
     process.env.MCP_ALLOWED_HOSTS = "lease-safe.example.com,127.0.0.1,LOCALHOST";
     assert.doesNotThrow(() => createApp());
   } finally {
@@ -2734,6 +2833,40 @@ test("MCP auth token fails fast when configured too weakly", () => {
     } else {
       process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
     }
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+    if (previousAuthToken === undefined) {
+      delete process.env[authEnvName];
+    } else {
+      process.env[authEnvName] = previousAuthToken;
+    }
+  }
+});
+
+test("compact log error redacts configured runtime secrets", () => {
+  const authEnvName = "MCP_AUTH" + "_TOKEN";
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousAuthToken = process.env[authEnvName];
+  const authToken = ["runtime", "auth", "token", "for", "log", "redaction"].join("-");
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY_ENCODED;
+    process.env[authEnvName] = authToken;
+
+    const error = new Error(`upstream leaked ${VALID_TEST_SERVICE_KEY} and ${VALID_TEST_SERVICE_KEY_ENCODED} with ${authToken}`);
+    error.name = `SecretError ${authToken}`;
+
+    const compact = compactLogError(error);
+    assert.match(compact.name, /\[MCP_AUTH_TOKEN redacted\]/);
+    assert.match(compact.message, /\[DATA_GO_KR_SERVICE_KEY redacted\]/);
+    assert.match(compact.message, /\[MCP_AUTH_TOKEN redacted\]/);
+    assert.doesNotMatch(compact.name, new RegExp(authToken.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(compact.message, new RegExp(VALID_TEST_SERVICE_KEY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(compact.message, new RegExp(VALID_TEST_SERVICE_KEY_ENCODED.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(compact.message, new RegExp(authToken.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  } finally {
     if (previousKey === undefined) {
       delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {
