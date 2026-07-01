@@ -109,7 +109,7 @@ The default official public-data API timeout is 8000ms, with a maximum accepted 
 ## Run Locally
 
 ```bash
-npm install
+npm ci
 npm run build
 MCP_ALLOWED_HOSTS=127.0.0.1,localhost npm start
 ```

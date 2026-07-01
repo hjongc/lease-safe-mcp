@@ -150,6 +150,8 @@ const security = readFileSync("SECURITY.md", "utf8");
 assert(/Dependabot monitors npm packages, GitHub Actions, and Docker base images weekly/.test(operations), "operations runbook must describe all Dependabot ecosystems");
 assert(/Dependabot ignores semver-major version updates before registration/.test(operations), "operations runbook must document major dependency update policy");
 assert(!/submission branch/i.test(readme), "README must not tell operators to register a vague submission branch");
+assert(!/npm install/.test(readme), "README must use npm ci for lockfile-reproducible local setup");
+assert(/npm ci[\s\S]*npm run build[\s\S]*MCP_ALLOWED_HOSTS=127\.0\.0\.1,localhost npm start/.test(readme), "README local setup must use npm ci before build and start");
 assert(!/this repository URL/.test(readme), "README PlayMCP build instructions must not use a vague repository URL placeholder");
 assert(/Git URL:\s*`https:\/\/github\.com\/hjongc\/lease-safe-mcp\.git`/.test(readme), "README PlayMCP build instructions must include the exact Git URL");
 assert(/Branch\/ref:\s*`main`/.test(readme), "README PlayMCP build instructions must point Branch/ref at main");
