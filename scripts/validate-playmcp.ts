@@ -11,7 +11,7 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   dependencies?: Record<string, string>;
 };
 
-for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", "README.md", "docs/data-design.md", "docs/submission.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts"]) {
+for (const file of ["Dockerfile", ".dockerignore", ".github/workflows/ci.yml", "README.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts"]) {
   readFileSync(file, "utf8");
 }
 
@@ -47,6 +47,7 @@ for (const command of ["npm ci", "npm run scan:secrets", "npm test", "npm run va
 assert(/DATA_GO_KR_SERVICE_KEY/.test(ci), "CI must support optional live public-data smoke through DATA_GO_KR_SERVICE_KEY");
 
 const submission = readFileSync("docs/submission.md", "utf8");
+const operations = readFileSync("docs/operations.md", "utf8");
 for (const required of [
   "Lease Safe(전월세안전내비)",
   "lease-safe",
@@ -155,5 +156,16 @@ assert(/command:\s*"docker"[\s\S]*args:\s*\["build"/.test(releasePreflight), "re
 assert(/command:\s*"node"[\s\S]*args:\s*\["dist\/scripts\/docker-smoke\.js"\]/.test(releasePreflight), "release preflight must include Docker runtime smoke");
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"smoke:public-data"\]/.test(releasePreflight), "release preflight must include npm run smoke:public-data");
 assert(/DATA_GO_KR_SERVICE_KEY/.test(releasePreflight), "release preflight must gate live public-data smoke on DATA_GO_KR_SERVICE_KEY");
+
+for (const required of [
+  "Secret Setup",
+  "Pre-Registration Evidence",
+  "Live public-data smoke",
+  "Incident Response",
+  "Key Rotation",
+  "Do not store secrets"
+]) {
+  assert(operations.includes(required), `operations runbook missing: ${required}`);
+}
 
 console.log("Lease Safe PlayMCP validation passed");

@@ -167,8 +167,10 @@ If the GitHub repository has a `DATA_GO_KR_SERVICE_KEY` secret, CI also runs the
 Before registering in PlayMCP:
 
 - Review `docs/submission.md`
+- Review `docs/operations.md`
 - Run `npm run preflight` locally with `DATA_GO_KR_SERVICE_KEY` set
 - Confirm the latest GitHub Actions CI run is green
+- Confirm GitHub Actions live public-data smoke is passed, not skipped
 - Configure the same `DATA_GO_KR_SERVICE_KEY` as a PlayMCP runtime environment variable
 - Set `MCP_ALLOWED_HOSTS` to the PlayMCP host or deployment domain
 - Use `assess_lease_safety` as the demo entry tool
