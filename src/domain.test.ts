@@ -2947,11 +2947,14 @@ test("red flag checker redacts household unit details from rendered region", () 
 
 test("contract questions normalize user text before rendering markdown", () => {
   const text = prepareContractQuestions({
-    concerns: "전세 보증금이 큽니다\n\n## 임의 섹션\n- 그대로 보이면 안 됩니다"
+    concerns: "전세 보증금이 큽니다\n\n## 임의 섹션\n- 그대로 보이면 안 됩니다 [악성링크](https://evil.example) ![추적](https://evil.example/pixel.png) <script>alert(1)</script>"
   });
 
-  assert.match(text, /핵심 고민: 전세 보증금이 큽니다 ## 임의 섹션 - 그대로 보이면 안 됩니다/);
+  assert.match(text, /핵심 고민: 전세 보증금이 큽니다 ## 임의 섹션 - 그대로 보이면 안 됩니다 악성링크 추적 alert\(1\)/);
   assert.doesNotMatch(text, /\n## 임의 섹션/);
+  assert.doesNotMatch(text, /\[악성링크\]\(https:\/\/evil\.example\)/);
+  assert.doesNotMatch(text, /!\[추적\]\(https:\/\/evil\.example\/pixel\.png\)/);
+  assert.doesNotMatch(text, /<script>/);
 });
 
 test("official help router maps lease report to RTMS", () => {

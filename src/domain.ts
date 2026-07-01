@@ -101,6 +101,10 @@ function cleanText(value: string | undefined, fallback = "미확인"): string {
   const trimmed = value?.trim();
   if (!trimmed || ["unknown", "undefined", "null", "미상", "미정", "모름"].includes(trimmed.toLowerCase())) return fallback;
   return trimmed
+    .replace(/!\[([^\]\r\n]{0,120})\]\([^) \r\n]{1,500}\)/g, "$1")
+    .replace(/\[([^\]\r\n]{1,120})\]\([^) \r\n]{1,500}\)/g, "$1")
+    .replace(/<\/?[A-Za-z][^>\r\n]{0,200}>/g, "")
+    .replace(/[<>]/g, "")
     .replace(/\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b/g, "[이메일 생략]")
     .replace(/\b\d{6}[\s.-]?[1-4]\d{6}\b/g, "[민감번호 생략]")
     .replace(/\b01[016789][\s.-]?\d{3,4}[\s.-]?\d{4}\b/g, "[연락처 생략]")
