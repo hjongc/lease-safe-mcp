@@ -411,13 +411,16 @@ test("production app starts when required runtime configuration is present", () 
   const previousNodeEnv = process.env.NODE_ENV;
   const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
   const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousTimeout = process.env.PUBLIC_DATA_TIMEOUT_MS;
   try {
     process.env.NODE_ENV = "production";
     process.env.MCP_ALLOWED_HOSTS = "127.0.0.1,localhost";
     process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env.PUBLIC_DATA_TIMEOUT_MS = "7000";
 
     const app = createApp();
     assert.equal(app.enabled("x-powered-by"), false);
+    assert.doesNotThrow(() => createApp());
   } finally {
     if (previousNodeEnv === undefined) {
       delete process.env.NODE_ENV;
@@ -433,6 +436,47 @@ test("production app starts when required runtime configuration is present", () 
       delete process.env.DATA_GO_KR_SERVICE_KEY;
     } else {
       process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+    if (previousTimeout === undefined) {
+      delete process.env.PUBLIC_DATA_TIMEOUT_MS;
+    } else {
+      process.env.PUBLIC_DATA_TIMEOUT_MS = previousTimeout;
+    }
+  }
+});
+
+test("production app fails fast on invalid public-data timeout configuration", () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
+  const previousKey = process.env.DATA_GO_KR_SERVICE_KEY;
+  const previousTimeout = process.env.PUBLIC_DATA_TIMEOUT_MS;
+  try {
+    process.env.NODE_ENV = "production";
+    process.env.MCP_ALLOWED_HOSTS = "127.0.0.1,localhost";
+    process.env.DATA_GO_KR_SERVICE_KEY = "test-key";
+    process.env.PUBLIC_DATA_TIMEOUT_MS = "60001";
+
+    assert.throws(() => createApp(), /PUBLIC_DATA_TIMEOUT_MS/);
+  } finally {
+    if (previousNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+    if (previousAllowedHosts === undefined) {
+      delete process.env.MCP_ALLOWED_HOSTS;
+    } else {
+      process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
+    }
+    if (previousKey === undefined) {
+      delete process.env.DATA_GO_KR_SERVICE_KEY;
+    } else {
+      process.env.DATA_GO_KR_SERVICE_KEY = previousKey;
+    }
+    if (previousTimeout === undefined) {
+      delete process.env.PUBLIC_DATA_TIMEOUT_MS;
+    } else {
+      process.env.PUBLIC_DATA_TIMEOUT_MS = previousTimeout;
     }
   }
 });

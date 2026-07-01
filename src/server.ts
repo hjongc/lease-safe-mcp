@@ -13,6 +13,7 @@ import {
   explainDataAvailability,
   explainDisputePrevention,
   prepareContractQuestions,
+  publicDataTimeoutMs,
   resolveLegalDongCode,
   routeOfficialHelp,
   sourceRegistry
@@ -393,6 +394,7 @@ export function createApp() {
   const allowedHosts = requiredAllowedHosts();
   requireProductionDataKey();
   const maxBodyBytes = mcpMaxBodyBytes();
+  const publicDataTimeout = publicDataTimeoutMs();
   const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts });
 
   app.disable("x-powered-by");
@@ -408,7 +410,8 @@ export function createApp() {
       version: VERSION,
       transport: "streamable-http",
       stateless: true,
-      maxBodyBytes
+      maxBodyBytes,
+      publicDataTimeoutMs: publicDataTimeout
     });
   });
 
