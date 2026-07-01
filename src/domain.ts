@@ -248,7 +248,8 @@ async function fetchPublicDataText(label: string, url: URL): Promise<string> {
     if (isAbortLikeError(error)) {
       throw new Error(`${label} request timed out after ${timeoutMs}ms.`);
     }
-    throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${label} request failed before receiving a response: ${message}`, { cause: error });
   }
 
   const body = await response.text();

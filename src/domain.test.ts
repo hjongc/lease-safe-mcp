@@ -944,6 +944,29 @@ test("public-data timeout errors identify the official source boundary", async (
   }
 });
 
+test("public-data network errors identify the official source boundary", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async () => {
+      throw new TypeError("fetch failed");
+    };
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "관악구" }),
+      /행정표준코드 법정동코드 API request failed before receiving a response: fetch failed/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
 test("deposit-to-sale comparison parses sale XML and flags high ratio", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
