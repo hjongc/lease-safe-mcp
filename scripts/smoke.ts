@@ -20,7 +20,9 @@ const requiredOfficialSourceIds = [
   "easylaw-lease",
   "law-lease",
   "adr-lease-dispute",
-  "hug-deposit-guarantee"
+  "hug-deposit-guarantee",
+  "nts-tax",
+  "wetax-local-tax"
 ] as const;
 
 function hasKorean(text: unknown): boolean {
@@ -52,7 +54,7 @@ function assertToolOutputQuality(toolName: string, text: string) {
   for (const required of ["## 계약 위험 신호 점검", "## 공식 출처", "## 확인 필요", "전월세안전내비"]) {
     if (!text.includes(required)) throw new Error(`Tool ${toolName} output missing required phrase: ${required}`);
   }
-  for (const requiredSource of ["인터넷등기소", "법제처", "국가법령정보센터", "HUG"]) {
+  for (const requiredSource of ["인터넷등기소", "법제처", "국가법령정보센터", "HUG", "국세청", "위택스"]) {
     if (!text.includes(requiredSource)) throw new Error(`Tool ${toolName} output missing official source: ${requiredSource}`);
   }
   if (/kakao/i.test(text)) throw new Error(`Tool ${toolName} output contains forbidden kakao string`);

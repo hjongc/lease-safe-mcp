@@ -235,6 +235,9 @@ assert(/assertToolOutputQuality/.test(smoke), "smoke must verify MCP tool output
 assert(/tool_output_chars/.test(smoke), "smoke must report validated tool output size");
 assert(/readResource/.test(smoke), "smoke must read the official source registry resource");
 assert(/official_sources/.test(smoke), "smoke must report validated official source count");
+assert(/nts-tax/.test(smoke), "smoke must require the national tax source registry entry");
+assert(/wetax-local-tax/.test(smoke), "smoke must require the local tax source registry entry");
+assert(/국세청/.test(smoke) && /위택스/.test(smoke), "smoke output quality must require tax official sources");
 
 const httpSmoke = readFileSync("scripts/http-smoke.ts", "utf8");
 assert(/healthz/.test(httpSmoke), "HTTP smoke must verify healthz");
