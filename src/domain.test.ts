@@ -2053,6 +2053,15 @@ test("contract questions redact contact details from user text", () => {
   assert.doesNotMatch(text, /900101 1234567/);
 });
 
+test("contract questions normalize user text before rendering markdown", () => {
+  const text = prepareContractQuestions({
+    concerns: "전세 보증금이 큽니다\n\n## 임의 섹션\n- 그대로 보이면 안 됩니다"
+  });
+
+  assert.match(text, /핵심 고민: 전세 보증금이 큽니다 ## 임의 섹션 - 그대로 보이면 안 됩니다/);
+  assert.doesNotMatch(text, /\n## 임의 섹션/);
+});
+
 test("official help router maps lease report to RTMS", () => {
   const text = routeOfficialHelp({ issueType: "lease_report" });
   assert.match(text, /RTMS/);
