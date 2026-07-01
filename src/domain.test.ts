@@ -14,7 +14,7 @@ import {
   routeOfficialHelp
 } from "./domain.js";
 import { createApp, httpPort, mcpMaxBodyBytes, mcpRateLimitPerMinute, pruneExpiredRateLimitWindows } from "./server.js";
-import { assertLegalDongSmokeMatchesLawdCd, positiveSampleCount, publicDataSmokeDealYmd, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes, publicDataSmokeLawdCd } from "../scripts/public-data-smoke.js";
+import { assertLegalDongSmokeMatchesLawdCd, positiveSampleCount, publicDataSmokeDealYmd, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes, publicDataSmokeLawdCd, publicDataSmokeRegion } from "../scripts/public-data-smoke.js";
 import { scanLine } from "../scripts/secret-scan.js";
 
 test("data availability names automatic APIs and no fake fallback", () => {
@@ -77,6 +77,29 @@ test("public-data smoke requires a positive demo deposit", () => {
       delete process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON;
     } else {
       process.env.PUBLIC_DATA_SMOKE_DEPOSIT_MANWON = previousDeposit;
+    }
+  }
+});
+
+test("public-data smoke validates demo region before API calls", () => {
+  const previousRegion = process.env.PUBLIC_DATA_SMOKE_REGION;
+  try {
+    delete process.env.PUBLIC_DATA_SMOKE_REGION;
+    assert.equal(publicDataSmokeRegion(), "서울 관악구");
+
+    process.env.PUBLIC_DATA_SMOKE_REGION = " 서울 종로구 ";
+    assert.equal(publicDataSmokeRegion(), "서울 종로구");
+
+    process.env.PUBLIC_DATA_SMOKE_REGION = " ";
+    assert.throws(() => publicDataSmokeRegion(), /PUBLIC_DATA_SMOKE_REGION must include at least 2 meaningful characters/);
+
+    process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 010-1234-5678";
+    assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers or phone numbers/);
+  } finally {
+    if (previousRegion === undefined) {
+      delete process.env.PUBLIC_DATA_SMOKE_REGION;
+    } else {
+      process.env.PUBLIC_DATA_SMOKE_REGION = previousRegion;
     }
   }
 });
@@ -342,6 +365,11 @@ test("legal dong helper fails fast on empty or placeholder regions", async () =>
     await assert.rejects(
       resolveLegalDongCode({ region: "unknown" }),
       /region must include at least 2 meaningful characters/
+    );
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "서울 관악구 010-1234-5678" }),
+      /region must not include personal identifiers or phone numbers/
     );
   } finally {
     globalThis.fetch = previousFetch;

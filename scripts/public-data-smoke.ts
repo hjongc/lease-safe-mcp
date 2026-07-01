@@ -47,6 +47,20 @@ export function publicDataSmokeDepositManwon(): number {
   return value;
 }
 
+export function publicDataSmokeRegion(): string {
+  const rawRegion = process.env.PUBLIC_DATA_SMOKE_REGION;
+  if (rawRegion === undefined) return "서울 관악구";
+
+  const region = rawRegion.trim();
+  if (region.length < 2) {
+    throw new Error("PUBLIC_DATA_SMOKE_REGION must include at least 2 meaningful characters.");
+  }
+  if (/\b\d{6}-?[1-4]\d{6}\b/.test(region) || /\b01[016789]-?\d{3,4}-?\d{4}\b/.test(region) || /\b0(?:2|[3-6][1-5]|70|80)-?\d{3,4}-?\d{4}\b/.test(region)) {
+    throw new Error("PUBLIC_DATA_SMOKE_REGION must not include personal identifiers or phone numbers.");
+  }
+  return region;
+}
+
 export function publicDataSmokeLawdCd(): string {
   const lawdCd = process.env.PUBLIC_DATA_SMOKE_LAWD_CD?.trim() || "11620";
   if (!/^\d{5}$/.test(lawdCd)) {
@@ -77,7 +91,7 @@ async function main() {
     throw new Error("DATA_GO_KR_SERVICE_KEY is required for live public-data smoke.");
   }
 
-  const region = process.env.PUBLIC_DATA_SMOKE_REGION ?? "서울 관악구";
+  const region = publicDataSmokeRegion();
   const lawdCd = publicDataSmokeLawdCd();
   const dealYmd = publicDataSmokeDealYmd();
   const housingTypes = publicDataSmokeHousingTypes();

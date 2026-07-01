@@ -324,6 +324,9 @@ function legalDongRegionQuery(region: string | undefined): string {
   if (cleaned === "미확인" || cleaned.length < 2) {
     throw new Error("region must include at least 2 meaningful characters for legal-dong lookup.");
   }
+  if (cleaned.includes("[민감번호 생략]") || cleaned.includes("[연락처 생략]")) {
+    throw new Error("region must not include personal identifiers or phone numbers for legal-dong lookup.");
+  }
   return cleaned;
 }
 
