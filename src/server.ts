@@ -302,6 +302,7 @@ function requireBearerToken(req: Request, res: Response, expectedToken: string |
 
   const authorization = req.header("authorization");
   if (!bearerTokenMatches(authorization, expectedToken)) {
+    res.setHeader("WWW-Authenticate", 'Bearer realm="lease-safe"');
     res.status(401).json({
       jsonrpc: "2.0",
       error: {

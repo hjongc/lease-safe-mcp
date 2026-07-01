@@ -141,6 +141,11 @@ async function verifyUnauthorizedRequest(endpoint: string): Promise<void> {
     throw new Error(`Expected unauthenticated MCP request to return 401, got ${response.status}: ${text}`);
   }
 
+  const authenticate = response.headers.get("www-authenticate");
+  if (authenticate !== 'Bearer realm="lease-safe"') {
+    throw new Error(`Expected unauthenticated MCP request to advertise WWW-Authenticate: Bearer, got ${authenticate ?? "missing"}.`);
+  }
+
   const body = await response.json() as { error?: { message?: unknown } };
   if (body.error?.message !== "Unauthorized") {
     throw new Error("Unauthenticated MCP request did not return the expected JSON-RPC error.");
