@@ -29,6 +29,11 @@ assert(packageJson.scripts?.["preflight:registration"], "registration preflight 
 assert(/require-registration-env\.mjs/.test(packageJson.scripts?.["preflight:registration"] ?? ""), "registration preflight must check required live-data env before building");
 assert(packageJson.scripts?.["validate:playmcp"], "PlayMCP validation script is required");
 
+const registrationEnvCheck = readFileSync("scripts/require-registration-env.mjs", "utf8");
+assert(/decodeURIComponent/.test(registrationEnvCheck), "registration env check must accept encoded data.go.kr service keys");
+assert(/not a placeholder/.test(registrationEnvCheck), "registration env check must reject placeholder public-data keys before build");
+assert(/must look like a real data\.go\.kr service key/.test(registrationEnvCheck), "registration env check must reject malformed public-data keys before build");
+
 const dockerfile = readFileSync("Dockerfile", "utf8");
 assert((dockerfile.match(/^FROM node:20-bookworm-slim@sha256:[a-f0-9]{64}/gm) ?? []).length === 3, "Dockerfile must pin every Node base image stage by digest");
 assert(/COPY package\*\.json \.\//.test(dockerfile), "Dockerfile must copy package-lock.json for reproducible builds");
