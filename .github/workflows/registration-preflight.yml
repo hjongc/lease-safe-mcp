@@ -20,6 +20,13 @@ jobs:
       DATA_GO_KR_SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
 
     steps:
+      - name: Verify live public-data secret
+        run: |
+          if [ -z "${DATA_GO_KR_SERVICE_KEY}" ]; then
+            echo "DATA_GO_KR_SERVICE_KEY repository secret is required for registration evidence." >&2
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v5
 
