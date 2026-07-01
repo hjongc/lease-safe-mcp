@@ -30,6 +30,7 @@ assert(/require-registration-env\.mjs/.test(packageJson.scripts?.["preflight:reg
 assert(packageJson.scripts?.["validate:playmcp"], "PlayMCP validation script is required");
 
 const dockerfile = readFileSync("Dockerfile", "utf8");
+assert((dockerfile.match(/^FROM node:20-bookworm-slim@sha256:[a-f0-9]{64}/gm) ?? []).length === 3, "Dockerfile must pin every Node base image stage by digest");
 assert(/COPY package\*\.json \.\//.test(dockerfile), "Dockerfile must copy package-lock.json for reproducible builds");
 assert(/RUN npm ci/.test(dockerfile), "Dockerfile must use npm ci");
 assert(/EXPOSE 3000/.test(dockerfile), "Dockerfile must expose port 3000");
@@ -71,6 +72,7 @@ assert(/Live public-data smoke: required by registration preflight/.test(registr
 assert(/Docker runtime smoke: included in registration preflight/.test(registrationWorkflow), "registration preflight summary must state Docker runtime evidence is included");
 assert(/package-ecosystem:\s*npm/.test(dependabot), "Dependabot must monitor npm dependencies");
 assert(/package-ecosystem:\s*github-actions/.test(dependabot), "Dependabot must monitor GitHub Actions");
+assert(/package-ecosystem:\s*docker/.test(dependabot), "Dependabot must monitor Docker base images");
 
 const submission = readFileSync("docs/submission.md", "utf8");
 const operations = readFileSync("docs/operations.md", "utf8");
