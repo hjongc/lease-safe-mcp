@@ -176,6 +176,24 @@ export const SOURCES: SourceRecord[] = [
     reviewedAt: REVIEWED_AT,
     confidence: "public_agency",
     useFor: "전세보증금반환보증 가입 가능 여부와 서류를 공식 경로에서 확인하도록 안내"
+  },
+  {
+    id: "nts-tax",
+    title: "임대인 국세·납세증명 확인 공식 경로",
+    sourceName: "국세청",
+    url: "https://www.nts.go.kr/",
+    reviewedAt: REVIEWED_AT,
+    confidence: "official_national",
+    useFor: "임대인 국세, 납세증명, 세무서 확인이 필요한 계약 전 질문 경로 안내"
+  },
+  {
+    id: "wetax-local-tax",
+    title: "지방세 납부·증명 공식 경로",
+    sourceName: "위택스",
+    url: "https://www.wetax.go.kr/",
+    reviewedAt: REVIEWED_AT,
+    confidence: "official_national",
+    useFor: "임대인 지방세, 납부·증명 확인이 필요한 계약 전 질문 경로 안내"
   }
 ];
 

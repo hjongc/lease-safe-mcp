@@ -30,6 +30,12 @@ const VERSION = "0.1.0";
 const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
 const DEFAULT_MCP_RATE_LIMIT_PER_MINUTE = 120;
 const MIN_MCP_AUTH_TOKEN_LENGTH = 16;
+const MCP_AUTH_TOKEN_PLACEHOLDERS = new Set([
+  "replace-with-runtime-secret",
+  "your-mcp-auth-token",
+  "mcp-auth-token",
+  "..."
+]);
 
 export const MCP_TEXT_LIMITS = {
   region: 80,
@@ -54,10 +60,12 @@ const housingTypeSchema = z
   .describe("주택 유형입니다. apartment=아파트, rowhouse=연립다세대, single_multi=단독/다가구, officetel=오피스텔, unknown=미확인.");
 const contractTypeSchema = z.enum(["jeonse", "monthly_rent", "unknown"]).optional().describe("계약 유형입니다. jeonse=전세, monthly_rent=월세, unknown=미확인.");
 const depositSchema = z.number().int().nonnegative().max(MONEY_INPUT_LIMITS.depositManwon).optional().describe(`보증금을 만원 단위 정수로 적어주세요. 예: 30000은 3억원입니다. 최대 ${MONEY_INPUT_LIMITS.depositManwon.toLocaleString("ko-KR")}만원까지 입력할 수 있습니다.`);
+const assessmentDepositSchema = z.number().int().positive().max(MONEY_INPUT_LIMITS.depositManwon).describe(`대표 진단에 사용할 보증금을 만원 단위 양의 정수로 적어주세요. 예: 30000은 3억원입니다. 0원 보증금은 종합 안전 진단 대상이 아닙니다. 최대 ${MONEY_INPUT_LIMITS.depositManwon.toLocaleString("ko-KR")}만원까지 입력할 수 있습니다.`);
+const saleComparisonDepositSchema = z.number().int().positive().max(MONEY_INPUT_LIMITS.depositManwon).describe(`매매가 대비 비율을 계산할 보증금을 만원 단위 양의 정수로 적어주세요. 예: 30000은 3억원입니다. 0원 보증금은 매매가 대비 보증금 점검 대상이 아닙니다. 최대 ${MONEY_INPUT_LIMITS.depositManwon.toLocaleString("ko-KR")}만원까지 입력할 수 있습니다.`);
 const monthlyRentSchema = z.number().int().nonnegative().max(MONEY_INPUT_LIMITS.monthlyRentManwon).optional().describe(`월세를 만원 단위 정수로 적어주세요. 예: 80은 월세 80만원입니다. 최대 ${MONEY_INPUT_LIMITS.monthlyRentManwon.toLocaleString("ko-KR")}만원까지 입력할 수 있습니다.`);
 const moveInDateSchema = z.string().max(MCP_TEXT_LIMITS.dateText).optional().describe(`이사 예정일 또는 입주일을 YYYY-MM-DD 형식이나 ${MCP_TEXT_LIMITS.dateText}자 이내 자연어로 적어주세요.`);
 const contractDateSchema = z.string().max(MCP_TEXT_LIMITS.dateText).optional().describe(`계약일을 YYYY-MM-DD 형식이나 ${MCP_TEXT_LIMITS.dateText}자 이내 자연어로 적어주세요.`);
-const concernsSchema = z.string().max(MCP_TEXT_LIMITS.concerns).optional().describe(`가장 걱정되는 점을 ${MCP_TEXT_LIMITS.concerns}자 이내로 짧게 적어주세요. 예: 근저당, 대리계약, 보증보험, 전입신고, 확정일자.`);
+const concernsSchema = z.string().max(MCP_TEXT_LIMITS.concerns).optional().describe(`가장 걱정되는 점을 ${MCP_TEXT_LIMITS.concerns}자 이내로 짧게 적어주세요. 예: 근저당, 대리계약, 보증보험, 임대인 체납, 전입신고, 확정일자.`);
 const lawdCdSchema = z
   .string()
   .regex(/^\d{5}$/)
@@ -95,10 +103,11 @@ function allowedHostsFromEnv(): string[] | undefined {
       host.includes("@") ||
       host.includes("?") ||
       host.includes("#") ||
+      host.includes(":") ||
       /\s/.test(host) ||
       host.length > 253
     ) {
-      throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames or host:port values, not URLs, paths, wildcards, userinfo, query strings, fragments, or whitespace.");
+      throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames, not URLs, ports, paths, wildcards, userinfo, query strings, fragments, or whitespace.");
     }
 
     try {
@@ -106,7 +115,7 @@ function allowedHostsFromEnv(): string[] | undefined {
       if (!hostname) throw new Error("missing hostname");
       return hostname;
     } catch {
-      throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames or host:port values, not URLs, paths, wildcards, userinfo, query strings, fragments, or whitespace.");
+      throw new Error("MCP_ALLOWED_HOSTS entries must be plain hostnames, not URLs, ports, paths, wildcards, userinfo, query strings, fragments, or whitespace.");
     }
   });
   return hosts && hosts.length > 0 ? hosts : undefined;
@@ -136,6 +145,9 @@ function requireProductionDataKey(): void {
 function mcpAuthToken(): string | undefined {
   const token = process.env.MCP_AUTH_TOKEN?.trim();
   if (!token) return undefined;
+  if (MCP_AUTH_TOKEN_PLACEHOLDERS.has(token.toLowerCase())) {
+    throw new Error("MCP_AUTH_TOKEN must be a real bearer token, not a placeholder.");
+  }
   if (token.length < MIN_MCP_AUTH_TOKEN_LENGTH) {
     throw new Error(`MCP_AUTH_TOKEN must be at least ${MIN_MCP_AUTH_TOKEN_LENGTH} characters when set.`);
   }
@@ -361,7 +373,7 @@ export function createServer(): McpServer {
         housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("진단할 주택 유형입니다."),
         lawdCd: lawdCdSchema,
         dealYmd: dealYmdSchema,
-        depositManwon: z.number().int().nonnegative().max(MONEY_INPUT_LIMITS.depositManwon).describe(`보증금을 만원 단위 정수로 적어주세요. 예: 30000은 3억원입니다. 최대 ${MONEY_INPUT_LIMITS.depositManwon.toLocaleString("ko-KR")}만원까지 입력할 수 있습니다.`),
+        depositManwon: assessmentDepositSchema,
         monthlyRentManwon: monthlyRentSchema,
         situation: situationSchema,
         region: regionSchema,
@@ -429,7 +441,7 @@ export function createServer(): McpServer {
         housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("매매 실거래가를 조회할 주택 유형입니다."),
         lawdCd: lawdCdSchema,
         dealYmd: dealYmdSchema,
-        depositManwon: z.number().int().nonnegative().max(MONEY_INPUT_LIMITS.depositManwon).describe(`비교할 보증금을 만원 단위 정수로 적어주세요. 예: 30000은 3억원입니다. 최대 ${MONEY_INPUT_LIMITS.depositManwon.toLocaleString("ko-KR")}만원까지 입력할 수 있습니다.`)
+        depositManwon: saleComparisonDepositSchema
       },
       annotations: readOnlyAnnotations("매매가 대비 보증금 점검")
     },
@@ -461,7 +473,7 @@ export function createServer(): McpServer {
     {
       title: "이사 보호 절차 계획",
       description:
-        "전월세안전내비가 계약 전, 잔금·입주 당일, 입주 후에 확인할 전입신고, 확정일자, 임대차신고, 등기부 재확인 절차를 체크리스트로 정리합니다.",
+        "전월세안전내비가 계약 전, 잔금·입주 당일, 입주 후에 확인할 전입신고, 확정일자, 임대차신고, 등기부 재확인, 임대인 납세·체납 확인 질문을 체크리스트로 정리합니다.",
       inputSchema: {
         situation: situationSchema,
         region: regionSchema,
@@ -482,7 +494,7 @@ export function createServer(): McpServer {
     {
       title: "계약 전 질문 준비",
       description:
-        "전월세안전내비가 공인중개사나 임대인에게 물어볼 등기부, 대리권, 임대차신고, 확정일자, 보증보험, 특약 질문을 준비합니다.",
+        "전월세안전내비가 공인중개사나 임대인에게 물어볼 등기부, 대리권, 임대차신고, 확정일자, 보증보험, 임대인 납세증명·체납, 특약 질문을 준비합니다.",
       inputSchema: {
         situation: situationSchema,
         region: regionSchema,
@@ -502,13 +514,13 @@ export function createServer(): McpServer {
     {
       title: "공식 문의처 연결",
       description:
-        "전월세안전내비가 전입신고, 확정일자, 임대차신고, 보증보험, 등기부, 분쟁 상황을 정부24, RTMS, 인터넷등기소, HUG, 임대차분쟁조정위로 라우팅합니다.",
+        "전월세안전내비가 전입신고, 확정일자, 임대차신고, 보증보험, 임대인 세금 체납, 등기부, 분쟁 상황을 정부24, RTMS, 인터넷등기소, HUG, 국세청·위택스, 임대차분쟁조정위로 라우팅합니다.",
       inputSchema: {
         situation: situationSchema,
         issueType: z
-          .enum(["move_in", "fixed_date", "lease_report", "deposit_guarantee", "dispute", "registry", "unknown"])
+          .enum(["move_in", "fixed_date", "lease_report", "deposit_guarantee", "tax_arrears", "dispute", "registry", "unknown"])
           .optional()
-          .describe("문의 유형입니다. move_in=전입신고, fixed_date=확정일자, lease_report=임대차신고, deposit_guarantee=보증보험, dispute=분쟁, registry=등기부, unknown=미확인."),
+          .describe("문의 유형입니다. move_in=전입신고, fixed_date=확정일자, lease_report=임대차신고, deposit_guarantee=보증보험, tax_arrears=임대인 국세·지방세 체납 확인, dispute=분쟁, registry=등기부, unknown=미확인."),
         region: regionSchema,
         concerns: concernsSchema
       },

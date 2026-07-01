@@ -42,6 +42,8 @@ Reviewed official guidance:
 - 국가법령정보센터
 - 한국부동산원·LH 임대차분쟁조정위원회
 - HUG 주택도시보증공사
+- 국세청
+- 위택스
 
 `DATA_GO_KR_SERVICE_KEY` is required for API-backed tools: `assess_lease_safety`, `resolve_legal_dong_code`, `compare_rent_market`, and `compare_deposit_to_sale_market`. Encoded and decoded data.go.kr keys are both accepted. Missing keys, placeholder values, malformed percent-encoding, short or syntactically invalid keys, or data.go.kr rejections fail clearly instead of using fake sample data.
 
@@ -64,7 +66,7 @@ Production requires DNS rebinding protection:
 MCP_ALLOWED_HOSTS=your.playmcp.host,your.custom.domain
 ```
 
-Use plain hostnames or `host:port` values only. Do not include `https://`, paths, whitespace, or wildcards.
+Use plain hostnames only. Do not include `https://`, ports, paths, whitespace, or wildcards.
 
 Production also requires the official public-data key at startup because the flagship tool depends on live legal-dong, rent, and sale APIs:
 
@@ -78,7 +80,7 @@ Optional bearer-token protection is available for direct deployments:
 MCP_AUTH_TOKEN=replace-with-runtime-secret
 ```
 
-When `MCP_AUTH_TOKEN` is set, it must be at least 16 characters and `POST /mcp` requires `Authorization: Bearer <token>`.
+When `MCP_AUTH_TOKEN` is set, it must be a real token, not a placeholder, and at least 16 characters. `POST /mcp` then requires `Authorization: Bearer <token>`.
 
 Optional request-size hardening is available for deployments with stricter ingress limits:
 
@@ -136,7 +138,7 @@ Release preflight:
 npm run preflight
 ```
 
-`npm run preflight` runs secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke with unsupported-method, invalid-JSON, unsupported-content-type, bearer-auth, and oversized-request rejection checks, MCP rate-limit smoke, production dependency audit, Docker build, Docker runtime smoke with the same MCP boundary checks, and live public-data smoke when `DATA_GO_KR_SERVICE_KEY` is set.
+`npm run preflight` runs secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke with DNS-rebinding Host rejection, unsupported-method, invalid-JSON, unsupported-content-type, bearer-auth, and oversized-request rejection checks, MCP rate-limit smoke, production dependency audit, Docker build, Docker runtime smoke with the same MCP boundary checks, and live public-data smoke when `DATA_GO_KR_SERVICE_KEY` is set.
 
 Registration preflight:
 

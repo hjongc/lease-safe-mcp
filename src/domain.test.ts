@@ -134,10 +134,16 @@ test("public-data smoke validates demo region before API calls", () => {
     assert.throws(() => publicDataSmokeRegion(), /PUBLIC_DATA_SMOKE_REGION must include at least 2 meaningful characters/);
 
     process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 010 1234 5678";
-    assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, or phone numbers/);
+    assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details/);
 
     process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 user@example.com";
-    assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, or phone numbers/);
+    assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details/);
+
+    process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 송금 계좌 110-123-456789";
+    assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details/);
+
+    process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 101동 202호";
+    assert.throws(() => publicDataSmokeRegion(), /must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details/);
 
     process.env.PUBLIC_DATA_SMOKE_REGION = "서울 관악구 ".repeat(12);
     assert.throws(() => publicDataSmokeRegion(), /PUBLIC_DATA_SMOKE_REGION must be 80 characters or fewer/);
@@ -616,12 +622,22 @@ test("legal dong helper fails fast on empty or placeholder regions", async () =>
 
     await assert.rejects(
       resolveLegalDongCode({ region: "서울 관악구 010-1234-5678" }),
-      /region must not include personal identifiers, email addresses, or phone numbers/
+      /region must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details/
     );
 
     await assert.rejects(
       resolveLegalDongCode({ region: "서울 관악구 user@example.com" }),
-      /region must not include personal identifiers, email addresses, or phone numbers/
+      /region must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details/
+    );
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "서울 관악구 계약금 계좌는 110-123-456789" }),
+      /region must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details/
+    );
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "서울 관악구 101동 202호" }),
+      /region must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details/
     );
 
     await assert.rejects(
@@ -892,9 +908,9 @@ test("rent market comparison normalizes official text fields", async () => {
         <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
         <body><items>
           <item>
-            <aptNm>관악전세
+            <aptNm>관악&amp;전세 &#40;테스트&#41;
 - 잘못된 항목</aptNm>
-            <umdNm>봉천동
+            <umdNm>봉천동 &lt;중앙&gt;
 ## 잘못된 제목</umdNm>
             <deposit>30,000</deposit>
             <monthlyRent>80</monthlyRent>
@@ -912,8 +928,9 @@ test("rent market comparison normalizes official text fields", async () => {
       dealYmd: "202605"
     });
 
-    assert.match(text, /관악전세 - 잘못된 항목/);
-    assert.match(text, /봉천동 ## 잘못된 제목/);
+    assert.match(text, /관악&전세 \(테스트\) - 잘못된 항목/);
+    assert.match(text, /봉천동 중앙 ## 잘못된 제목/);
+    assert.doesNotMatch(text, /&amp;|&#40;|&lt;/);
     assert.doesNotMatch(text, /\n- 잘못된 항목/);
     assert.doesNotMatch(text, /\n## 잘못된 제목/);
   } finally {
@@ -1652,6 +1669,37 @@ test("public-data network errors identify the official source boundary", async (
   }
 });
 
+test("public-data network errors redact service keys without attaching raw causes", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY_ENCODED;
+    globalThis.fetch = async () => {
+      throw new TypeError(`fetch failed for ${VALID_TEST_SERVICE_KEY_ENCODED} and ${VALID_TEST_SERVICE_KEY}`);
+    };
+
+    await assert.rejects(
+      resolveLegalDongCode({ region: "관악구" }),
+      error => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /행정표준코드 법정동코드 API request failed before receiving a response/);
+        assert.match(error.message, /\[DATA_GO_KR_SERVICE_KEY 생략\]/);
+        assert.doesNotMatch(error.message, new RegExp(VALID_TEST_SERVICE_KEY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+        assert.doesNotMatch(error.message, new RegExp(VALID_TEST_SERVICE_KEY_ENCODED.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+        assert.equal((error as Error & { cause?: unknown }).cause, undefined);
+        return true;
+      }
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
 test("public-data HTTP errors include a bounded response excerpt", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;
@@ -1894,9 +1942,9 @@ test("deposit-to-sale comparison normalizes official text fields", async () => {
         <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
         <body><items>
           <item>
-            <aptNm>관악매매
+            <aptNm>관악&amp;매매 &#40;테스트&#41;
 - 잘못된 항목</aptNm>
-            <umdNm>봉천동
+            <umdNm>봉천동 &lt;중앙&gt;
 ## 잘못된 제목</umdNm>
             <dealAmount>40,000</dealAmount>
             <dealYear>2026</dealYear>
@@ -1914,8 +1962,9 @@ test("deposit-to-sale comparison normalizes official text fields", async () => {
       depositManwon: 30000
     });
 
-    assert.match(text, /관악매매 - 잘못된 항목/);
-    assert.match(text, /봉천동 ## 잘못된 제목/);
+    assert.match(text, /관악&매매 \(테스트\) - 잘못된 항목/);
+    assert.match(text, /봉천동 중앙 ## 잘못된 제목/);
+    assert.doesNotMatch(text, /&amp;|&#40;|&lt;/);
     assert.doesNotMatch(text, /\n- 잘못된 항목/);
     assert.doesNotMatch(text, /\n## 잘못된 제목/);
   } finally {
@@ -1972,43 +2021,45 @@ test("deposit-to-sale comparison parses Korean public-data XML fields", async ()
   }
 });
 
-test("deposit-to-sale comparison renders zero percent as a calculated ratio", async () => {
-  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+test("deposit-to-sale comparison requires a positive deposit before official API calls", async () => {
   const previousFetch = globalThis.fetch;
   try {
-    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
-    globalThis.fetch = async () => new Response(`
-      <response>
-        <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
-        <body><items>
-          <item>
-            <aptNm>관악매매</aptNm>
-            <umdNm>봉천동</umdNm>
-            <dealAmount>40,000</dealAmount>
-            <dealYear>2026</dealYear>
-            <dealMonth>5</dealMonth>
-            <dealDay>10</dealDay>
-          </item>
-        </items></body>
-      </response>
-    `);
+    globalThis.fetch = async () => {
+      throw new Error("fetch should not be called for zero-deposit sale comparison");
+    };
 
-    const text = await compareDepositToSaleMarket({
-      housingType: "apartment",
-      lawdCd: "11620",
-      dealYmd: "202605",
-      depositManwon: 0
-    });
-
-    assert.match(text, /매매가 대비 보증금 비율: 0%/);
-    assert.doesNotMatch(text, /매매가 대비 보증금 비율: 계산 불가/);
+    await assert.rejects(
+      compareDepositToSaleMarket({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: 0
+      }),
+      /depositManwon must be a positive integer number of manwon for deposit-to-sale comparison/
+    );
   } finally {
     globalThis.fetch = previousFetch;
-    if (previousKey === undefined) {
-      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
-    } else {
-      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
-    }
+  }
+});
+
+test("one-shot lease assessment requires a positive deposit before official API calls", async () => {
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => {
+      throw new Error("fetch should not be called for zero-deposit lease assessment");
+    };
+
+    await assert.rejects(
+      assessLeaseSafety({
+        housingType: "apartment",
+        lawdCd: "11620",
+        dealYmd: "202605",
+        depositManwon: 0
+      }),
+      /depositManwon must be a positive integer number of manwon for lease safety assessment/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
   }
 });
 
@@ -2471,7 +2522,7 @@ test("one-shot lease assessment combines rent, sale, red flags, and actions", as
       region: "서울 관악구",
       contractType: "jeonse",
       depositManwon: 38000,
-      concerns: "대리계약이고 계약금을 빨리 보내라고 합니다"
+      concerns: "대리계약이고 근저당도 있는데 계약금을 빨리 보내라고 합니다"
     });
 
     assert.match(text, /전월세 안전 종합 진단/);
@@ -2479,9 +2530,14 @@ test("one-shot lease assessment combines rent, sale, red flags, and actions", as
     assert.match(text, /위험도 근거:/);
     assert.match(text, /전월세 신고 표본 1건/);
     assert.match(text, /보증금 산출 표본 1건/);
+    assert.match(text, /전월세 표본 신뢰도: 낮음 - 계산 표본 1건뿐/);
     assert.match(text, /매매 신고 표본 1건/);
+    assert.match(text, /매매 표본 신뢰도: 낮음 - 계산 표본 1건뿐/);
     assert.match(text, /매매가 대비 보증금 비율 95%/);
     assert.match(text, /대리계약/);
+    assert.match(text, /등기부·소유자·특약 확인 전에는 계약금·가계약금 송금을 보류/);
+    assert.match(text, /위임장 원본 범위/);
+    assert.match(text, /말소 조건, 잔금 전 등기부 재발급, 보증보험 가능 여부를 특약에 명시/);
     assert.match(text, /계약금 송금을 보류/);
     assert.match(text, /공식 출처/);
   } finally {
@@ -2531,12 +2587,12 @@ test("production app rejects unsafe host allowlist entries", () => {
     process.env.NODE_ENV = "production";
     process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
 
-    for (const value of ["*", "https://example.com", "example.com/path", "bad host.example", "example.com:not-a-port", "user@example.com", "example.com?debug=true", "example.com#fragment", "example.com\\path"]) {
+    for (const value of ["*", "https://example.com", "example.com/path", "bad host.example", "example.com:443", "example.com:not-a-port", "user@example.com", "example.com?debug=true", "example.com#fragment", "example.com\\path"]) {
       process.env.MCP_ALLOWED_HOSTS = value;
-      assert.throws(() => createApp(), /plain hostnames or host:port values/);
+      assert.throws(() => createApp(), /plain hostnames/);
     }
 
-    process.env.MCP_ALLOWED_HOSTS = "lease-safe.example.com,127.0.0.1:3000";
+    process.env.MCP_ALLOWED_HOSTS = "lease-safe.example.com,127.0.0.1";
     assert.doesNotThrow(() => createApp());
   } finally {
     if (previousNodeEnv === undefined) {
@@ -2658,6 +2714,9 @@ test("MCP auth token fails fast when configured too weakly", () => {
 
     process.env[authEnvName] = "short";
     assert.throws(() => createApp(), /MCP_AUTH_TOKEN must be at least 16 characters/);
+
+    process.env[authEnvName] = "replace-with-runtime-secret";
+    assert.throws(() => createApp(), /MCP_AUTH_TOKEN must be a real bearer token, not a placeholder/);
 
     process.env[authEnvName] = "strong-test-token";
     assert.doesNotThrow(() => createApp());
@@ -2848,12 +2907,30 @@ test("MCP tool input schemas bound free-text fields", () => {
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, contractDate: "가".repeat(MCP_TEXT_LIMITS.dateText + 1) }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, concerns: "가".repeat(MCP_TEXT_LIMITS.concerns + 1) }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, dealYmd: FUTURE_DEAL_YMD }).success, false);
+  assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, depositManwon: 0 }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, depositManwon: MONEY_INPUT_LIMITS.depositManwon + 1 }).success, false);
   assert.equal(assessmentSchema.safeParse({ ...validAssessmentInput, monthlyRentManwon: MONEY_INPUT_LIMITS.monthlyRentManwon + 1 }).success, false);
+
+  const saleComparisonSchema = registeredToolSchema("compare_deposit_to_sale_market");
+  assert.equal(saleComparisonSchema.safeParse({
+    housingType: "apartment",
+    lawdCd: "11620",
+    dealYmd: "202605",
+    depositManwon: 30000
+  }).success, true);
+  assert.equal(saleComparisonSchema.safeParse({
+    housingType: "apartment",
+    lawdCd: "11620",
+    dealYmd: "202605",
+    depositManwon: 0
+  }).success, false);
 
   const legalDongSchema = registeredToolSchema("resolve_legal_dong_code");
   assert.equal(legalDongSchema.safeParse({ region: "서울 관악구" }).success, true);
   assert.equal(legalDongSchema.safeParse({ region: "가".repeat(MCP_TEXT_LIMITS.region + 1) }).success, false);
+
+  const officialHelpSchema = registeredToolSchema("route_official_help");
+  assert.equal(officialHelpSchema.safeParse({ issueType: "tax_arrears", situation: "임대인 국세 체납이 걱정됩니다" }).success, true);
 });
 
 test("HTTP port is explicit and fails fast on invalid configuration", () => {
@@ -2897,43 +2974,115 @@ test("red flag checker surfaces registry and rushed deposit pressure", () => {
   assert.match(text, /법률 자문/);
 });
 
+test("red flag checker treats trust registry language as a senior-right signal", () => {
+  const text = checkLeaseRedFlags({
+    region: "서울 관악구",
+    situation: "등기부에 신탁등기가 보입니다.",
+    contractType: "jeonse",
+    depositManwon: 30000
+  });
+
+  assert.match(text, /신탁/);
+  assert.match(text, /잔금 전 등기부 재확인/);
+  assert.doesNotMatch(text, /현재 입력만으로 확정 위험/);
+});
+
+test("red flag checker surfaces landlord tax arrears concerns", () => {
+  const text = checkLeaseRedFlags({
+    region: "서울 관악구",
+    situation: "임대인 국세 체납과 지방세 미납이 걱정되고 납세증명을 확인하고 싶습니다.",
+    contractType: "jeonse",
+    depositManwon: 30000
+  });
+
+  assert.match(text, /체납/);
+  assert.match(text, /국세/);
+  assert.match(text, /지방세/);
+  assert.match(text, /납세증명/);
+  assert.match(text, /국세청/);
+  assert.match(text, /위택스/);
+  assert.match(text, /세금 체납 여부 확정/);
+  assert.match(text, /납세증명 진위 판단/);
+  assert.doesNotMatch(text, /현재 입력만으로 확정 위험/);
+});
+
 test("move-in plan includes official protection steps", () => {
   const text = buildMoveInProtectionPlan({ moveInDate: "2026-07-20", contractDate: "2026-07-01" });
   assert.match(text, /전입신고/);
   assert.match(text, /확정일자/);
   assert.match(text, /임대차 계약 신고/);
+  assert.match(text, /납세증명/);
 });
 
 test("contract questions include HUG and lease report", () => {
   const text = prepareContractQuestions({ concerns: "전세 보증금이 큽니다" });
   assert.match(text, /전세보증금반환보증/);
   assert.match(text, /임대차신고/);
+  assert.match(text, /국세·지방세 체납/);
+  assert.match(text, /임대인 납세·체납 관련 확인 가능 서류/);
 });
 
 test("contract questions redact contact details from user text", () => {
   const text = prepareContractQuestions({
-    concerns: "연락은 user@example.com 또는 010 1234 5678로 주세요. 주민번호는 900101 1234567입니다."
+    concerns: "서울 관악구 봉천동 101동 202호, 3층 301호, 1203호입니다. 연락은 user@example.com 또는 010 1234 5678로 주세요. 주민번호는 900101 1234567입니다. 계약금 계좌는 110-123-456789입니다."
   });
 
   assert.match(text, /\[이메일 생략\]/);
   assert.match(text, /\[연락처 생략\]/);
   assert.match(text, /\[민감번호 생략\]/);
+  assert.match(text, /\[계좌번호 생략\]/);
+  assert.match(text, /\[동호수 생략\]/);
+  assert.match(text, /서울 관악구 봉천동/);
   assert.doesNotMatch(text, /user@example\.com/);
   assert.doesNotMatch(text, /010 1234 5678/);
   assert.doesNotMatch(text, /900101 1234567/);
+  assert.doesNotMatch(text, /110-123-456789/);
+  assert.doesNotMatch(text, /101동 202호/);
+  assert.doesNotMatch(text, /3층 301호/);
+  assert.doesNotMatch(text, /1203호/);
+});
+
+test("red flag checker redacts household unit details from rendered region", () => {
+  const text = checkLeaseRedFlags({
+    region: "서울 관악구 봉천동 1203호",
+    contractType: "jeonse",
+    depositManwon: 30000
+  });
+
+  assert.match(text, /\[동호수 생략\]/);
+  assert.doesNotMatch(text, /1203호/);
 });
 
 test("contract questions normalize user text before rendering markdown", () => {
   const text = prepareContractQuestions({
-    concerns: "전세 보증금이 큽니다\n\n## 임의 섹션\n- 그대로 보이면 안 됩니다"
+    concerns: "전세 보증금이 큽니다\n\n## 임의 섹션\n- 그대로 보이면 안 됩니다 [악성링크](https://evil.example) ![추적](https://evil.example/pixel.png) <script>alert(1)</script>"
   });
 
-  assert.match(text, /핵심 고민: 전세 보증금이 큽니다 ## 임의 섹션 - 그대로 보이면 안 됩니다/);
+  assert.match(text, /핵심 고민: 전세 보증금이 큽니다 ## 임의 섹션 - 그대로 보이면 안 됩니다 악성링크 추적 alert\(1\)/);
   assert.doesNotMatch(text, /\n## 임의 섹션/);
+  assert.doesNotMatch(text, /\[악성링크\]\(https:\/\/evil\.example\)/);
+  assert.doesNotMatch(text, /!\[추적\]\(https:\/\/evil\.example\/pixel\.png\)/);
+  assert.doesNotMatch(text, /<script>/);
 });
 
 test("official help router maps lease report to RTMS", () => {
   const text = routeOfficialHelp({ issueType: "lease_report" });
   assert.match(text, /RTMS/);
   assert.match(text, /주택 임대차 계약 신고/);
+});
+
+test("official help router infers routes from natural language", () => {
+  const cases: Array<{ input: Parameters<typeof routeOfficialHelp>[0]; expected: RegExp }> = [
+    { input: { situation: "전입신고 처리 결과를 어디서 확인하나요?" }, expected: /정부24/ },
+    { input: { situation: "확정일자 신청을 하고 싶습니다" }, expected: /확정일자 신청/ },
+    { input: { situation: "주택 임대차 계약 신고 RTMS가 궁금합니다" }, expected: /RTMS/ },
+    { input: { situation: "전세보증금반환보증 가입 가능 여부를 확인하고 싶습니다" }, expected: /HUG/ },
+    { input: { situation: "임대인 국세 체납과 지방세 미납은 어디서 확인하나요?" }, expected: /국세청·위택스/ },
+    { input: { situation: "등기부에 근저당과 신탁이 보입니다" }, expected: /등기부등본 발급/ },
+    { input: { situation: "보증금 반환 분쟁과 수선 문제를 상담하고 싶습니다" }, expected: /분쟁 상담/ }
+  ];
+
+  for (const { input, expected } of cases) {
+    assert.match(routeOfficialHelp(input), expected);
+  }
 });

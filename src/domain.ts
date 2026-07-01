@@ -3,6 +3,8 @@ import { LEGAL_DONG_API, RENT_API_SPECS, SALE_API_SPECS, renderSources, SOURCES,
 const DEFAULT_PUBLIC_DATA_TIMEOUT_MS = 8000;
 const MAX_PUBLIC_DATA_TIMEOUT_MS = 60000;
 const MAX_PUBLIC_DATA_RESPONSE_BYTES = 1_000_000;
+const STRONG_SAMPLE_COUNT = 10;
+const MIN_MEDIAN_SAMPLE_COUNT = 3;
 const DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS = new Set([
   "...",
   "your-data-go-kr-service-key",
@@ -91,6 +93,8 @@ interface LegalDongRecord {
   lawdCd: string;
 }
 
+type OfficialHelpIssueType = "move_in" | "fixed_date" | "lease_report" | "deposit_guarantee" | "tax_arrears" | "dispute" | "registry" | "unknown";
+
 function lineItems(items: string[]): string {
   return items.map(item => `- ${item}`).join("\n");
 }
@@ -99,10 +103,18 @@ function cleanText(value: string | undefined, fallback = "미확인"): string {
   const trimmed = value?.trim();
   if (!trimmed || ["unknown", "undefined", "null", "미상", "미정", "모름"].includes(trimmed.toLowerCase())) return fallback;
   return trimmed
+    .replace(/!\[([^\]\r\n]{0,120})\]\([^) \r\n]{1,500}\)/g, "$1")
+    .replace(/\[([^\]\r\n]{1,120})\]\([^) \r\n]{1,500}\)/g, "$1")
+    .replace(/<\/?[A-Za-z][^>\r\n]{0,200}>/g, "")
+    .replace(/[<>]/g, "")
     .replace(/\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b/g, "[이메일 생략]")
     .replace(/\b\d{6}[\s.-]?[1-4]\d{6}\b/g, "[민감번호 생략]")
+    .replace(/((?:계약금\s*)?(?:계좌(?:번호)?|입금\s*계좌|송금\s*계좌)\s*(?:은|는|:)?\s*)\d{2,6}[\s-]\d{2,6}[\s-]\d{2,8}/g, "$1[계좌번호 생략]")
     .replace(/\b01[016789][\s.-]?\d{3,4}[\s.-]?\d{4}\b/g, "[연락처 생략]")
     .replace(/\b0(?:2|[3-6][1-5]|70|80)[\s.-]?\d{3,4}[\s.-]?\d{4}\b/g, "[연락처 생략]")
+    .replace(/\b\d{1,4}\s*동\s*\d{1,4}\s*호/g, "[동호수 생략]")
+    .replace(/\b\d{1,3}\s*층\s*\d{1,4}\s*호/g, "[동호수 생략]")
+    .replace(/\b\d{2,4}\s*호/g, "[동호수 생략]")
     .replace(/\s+/g, " ");
 }
 
@@ -119,6 +131,22 @@ function median(values: number[]): number | undefined {
   return Math.round((sorted[middle - 1] + sorted[middle]) / 2);
 }
 
+function sampleReliability(label: string, reportedCount: number, calculationCount = reportedCount): string {
+  if (reportedCount === 0) {
+    return `${label} 표본 신뢰도: 없음 - 조회된 신고 표본이 없어 이 월·지역만으로 시세 판단을 하면 안 됩니다.`;
+  }
+  if (calculationCount === 0) {
+    return `${label} 표본 신뢰도: 낮음 - 신고 표본은 있지만 중앙값 계산에 쓸 수 있는 금액 표본이 없습니다.`;
+  }
+  if (calculationCount < MIN_MEDIAN_SAMPLE_COUNT) {
+    return `${label} 표본 신뢰도: 낮음 - 계산 표본 ${calculationCount}건뿐이라 전후월, 인접동, 같은 면적대 실거래를 추가로 확인하세요.`;
+  }
+  if (calculationCount < STRONG_SAMPLE_COUNT) {
+    return `${label} 표본 신뢰도: 보통 - 계산 표본 ${calculationCount}건 기준이므로 개별 등기부와 같은 면적대 표본을 함께 확인하세요.`;
+  }
+  return `${label} 표본 신뢰도: 양호 - 계산 표본 ${calculationCount}건 기준입니다. 그래도 특정 매물의 권리관계 판단은 별도입니다.`;
+}
+
 function sourceIdFor(kind: "rent" | "sale", housingType: HousingType): string {
   return `molit-${housingType === "single_multi" ? "single" : housingType}-${kind}`;
 }
@@ -126,7 +154,7 @@ function sourceIdFor(kind: "rent" | "sale", housingType: HousingType): string {
 function officialNotice(): string {
   return [
     "## 확인 필요",
-    "전월세안전내비는 계약 전 점검과 공식 확인 경로를 정리하는 도구입니다. 법률 자문, 등기부 권리분석 확정, 보증보험 가입 가능 여부, 특정 매물 안전성 판단은 제공하지 않습니다."
+    "전월세안전내비는 계약 전 점검과 공식 확인 경로를 정리하는 도구입니다. 법률 자문, 등기부 권리분석 확정, 보증보험 가입 가능 여부, 임대인 세금 체납 여부 확정, 납세증명 진위 판단, 특정 매물 안전성 판단은 제공하지 않습니다."
   ].join("\n");
 }
 
@@ -137,8 +165,11 @@ function inferRiskSignals(input: LeaseProfileInput): string[] {
   if (/대리|위임|명의|소유자|집주인/.test(text)) {
     signals.push("계약 상대방과 등기부 소유자가 일치하는지, 대리계약이면 위임장·인감증명·본인 통화 확인이 필요합니다.");
   }
-  if (/근저당|압류|가압류|경매|채권/.test(text)) {
-    signals.push("근저당·압류·가압류·경매 관련 표현이 있으면 잔금 전 등기부 재확인과 전문가 상담 우선입니다.");
+  if (/근저당|압류|가압류|경매|채권|신탁/.test(text)) {
+    signals.push("근저당·압류·가압류·신탁·경매 관련 표현이 있으면 잔금 전 등기부 재확인과 전문가 상담 우선입니다.");
+  }
+  if (/체납|미납|국세|지방세|세금|납세\s*증명|납세증명/.test(text)) {
+    signals.push("임대인 체납, 국세, 지방세, 납세증명 관련 우려가 있으면 계약 전 확인 가능 서류와 공식 세무 경로를 문서로 확인하세요.");
   }
   if (/전입|확정|신고/.test(text) || input.moveInDate) {
     signals.push("전입신고, 확정일자, 임대차신고는 보증금 보호의 기본 확인 항목입니다.");
@@ -273,6 +304,13 @@ function assertRequiredNonNegativeManwon(label: keyof typeof MONEY_INPUT_LIMITS,
   }
 }
 
+function assertRequiredPositiveManwon(label: keyof typeof MONEY_INPUT_LIMITS, value: unknown, context = "for lease safety assessment"): asserts value is number {
+  assertRequiredNonNegativeManwon(label, value);
+  if (value <= 0) {
+    throw new Error(`${label} must be a positive integer number of manwon ${context}.`);
+  }
+}
+
 function assertSupportedHousingType(housingType: string): asserts housingType is HousingType {
   if (!["apartment", "rowhouse", "single_multi", "officetel"].includes(housingType)) {
     throw new Error("housingType must be one of apartment, rowhouse, single_multi, or officetel.");
@@ -368,7 +406,7 @@ async function fetchPublicDataText(label: string, url: URL): Promise<string> {
       throw new Error(`${label} request timed out after ${timeoutMs}ms.`);
     }
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`${label} request failed before receiving a response: ${message}`, { cause: error });
+    throw new Error(`${label} request failed before receiving a response: ${redactDataGoKrServiceKeys(message)}`);
   }
 
   const body = await readPublicDataResponseText(label, response);
@@ -484,8 +522,8 @@ function legalDongRegionQuery(region: string | undefined): string {
   if (cleaned === "미확인" || cleaned.length < 2) {
     throw new Error("region must include at least 2 meaningful characters for legal-dong lookup.");
   }
-  if (cleaned.includes("[민감번호 생략]") || cleaned.includes("[연락처 생략]") || cleaned.includes("[이메일 생략]")) {
-    throw new Error("region must not include personal identifiers, email addresses, or phone numbers for legal-dong lookup.");
+  if (cleaned.includes("[민감번호 생략]") || cleaned.includes("[연락처 생략]") || cleaned.includes("[이메일 생략]") || cleaned.includes("[계좌번호 생략]") || cleaned.includes("[동호수 생략]")) {
+    throw new Error("region must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details for legal-dong lookup.");
   }
   if (cleaned.length > MAX_LEGAL_DONG_REGION_LENGTH) {
     throw new Error(`region must be ${MAX_LEGAL_DONG_REGION_LENGTH} characters or fewer for legal-dong lookup.`);
@@ -540,10 +578,44 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function decodeXmlEntity(entity: string): string {
+  const namedEntities: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    quot: "\""
+  };
+  if (entity in namedEntities) return namedEntities[entity];
+
+  const codePoint = entity.startsWith("#x") || entity.startsWith("#X")
+    ? Number.parseInt(entity.slice(2), 16)
+    : entity.startsWith("#")
+      ? Number.parseInt(entity.slice(1), 10)
+      : Number.NaN;
+  if (!Number.isSafeInteger(codePoint) || codePoint < 0 || codePoint > 0x10ffff) {
+    return `&${entity};`;
+  }
+
+  try {
+    return String.fromCodePoint(codePoint);
+  } catch {
+    return `&${entity};`;
+  }
+}
+
+function decodeXmlTextContent(value: string): string {
+  return value.replace(/&([A-Za-z]+|#[0-9]+|#x[0-9A-Fa-f]+);/g, (_match, entity: string) => decodeXmlEntity(entity));
+}
+
 function extractTag(xml: string, tag: string): string | undefined {
   const escapedTag = escapeRegExp(tag);
   const match = xml.match(new RegExp(`<\\s*${escapedTag}(?:\\s[^>]*)?>(.*?)<\\/\\s*${escapedTag}\\s*>`, "s"));
-  return match?.[1]?.replace(/<!\[CDATA\[(.*?)\]\]>/s, "$1").trim();
+  if (!match) return undefined;
+
+  const rawContent = match[1].trim();
+  const cdata = rawContent.match(/^<!\[CDATA\[(.*?)\]\]>$/s);
+  return cdata ? cdata[1].trim() : decodeXmlTextContent(rawContent).trim();
 }
 
 function extractBlocks(xml: string, tag: string): string[] {
@@ -752,6 +824,7 @@ function renderRentMarketSnapshot(snapshot: RentMarketSnapshot): string {
       : snapshot.sampleCount > 0
         ? "조회된 신고 표본은 있지만 보증금 중앙값을 계산할 수 있는 보증금 표본이 없습니다."
         : "조회된 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
+    sampleReliability("전월세", snapshot.sampleCount, snapshot.depositSampleCount),
     `입력 보증금: ${money(snapshot.userDeposit)} / 입력 월세: ${money(snapshot.userMonthlyRent)}`,
     "",
     "## 해석",
@@ -832,9 +905,13 @@ function assessmentRiskSummary(
     score += 15;
     reasons.push("대리계약 또는 소유자 확인 신호가 있습니다.");
   }
-  if (/근저당|압류|가압류|경매|채권/.test(joinedFlags)) {
+  if (/근저당|압류|가압류|경매|채권|신탁/.test(joinedFlags)) {
     score += 20;
-    reasons.push("근저당, 압류, 경매 등 선순위 권리 확인 신호가 있습니다.");
+    reasons.push("근저당, 압류, 신탁, 경매 등 선순위 권리 확인 신호가 있습니다.");
+  }
+  if (/체납|미납|국세|지방세|세금|납세/.test(joinedFlags)) {
+    score += 15;
+    reasons.push("임대인 체납 또는 납세증명 확인 신호가 있습니다.");
   }
   if (/송금|가계약|계약금|압박/.test(joinedFlags)) {
     score += 15;
@@ -857,7 +934,7 @@ async function fetchSaleMarketSnapshot(input: {
 }): Promise<SaleMarketSnapshot> {
   assertSupportedHousingType(input.housingType);
   validateMarketQuery(input.lawdCd, input.dealYmd);
-  assertRequiredNonNegativeManwon("depositManwon", input.depositManwon);
+  assertRequiredPositiveManwon("depositManwon", input.depositManwon, "for deposit-to-sale comparison");
   const serviceKey = dataGoKrServiceKey();
   const spec = SALE_API_SPECS[input.housingType];
   const url = new URL(spec.endpoint);
@@ -906,6 +983,7 @@ function renderSaleMarketSnapshot(snapshot: SaleMarketSnapshot): string {
     `조회 기준: LAWD_CD ${snapshot.lawdCd}, 계약월 ${snapshot.dealYmd}`,
     `매매 표본 수: ${snapshot.sampleCount}`,
     snapshot.sampleCount > 0 ? `매매가 중앙값: ${money(snapshot.median)} / 최대값: ${money(snapshot.max)}` : "조회된 매매 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
+    sampleReliability("매매", snapshot.sampleCount),
     `입력 보증금: ${money(snapshot.userDeposit)}`,
     `매매가 대비 보증금 비율: ${formatRatio(snapshot.ratio)}`,
     "",
@@ -939,7 +1017,7 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
   dealYmd: string;
   depositManwon: number;
 }): Promise<string> {
-  assertRequiredNonNegativeManwon("depositManwon", input.depositManwon);
+  assertRequiredPositiveManwon("depositManwon", input.depositManwon);
   assertOptionalNonNegativeManwon("monthlyRentManwon", input.monthlyRentManwon);
   const [rentMarket, saleMarket] = await Promise.all([
     fetchRentMarketSnapshot(input),
@@ -948,16 +1026,32 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
   const redFlags = inferRiskSignals(input);
   const riskSummary = assessmentRiskSummary(input, rentMarket, saleMarket, redFlags);
   const ratioLine = formatRatio(saleMarket.ratio);
-  const immediateActions = [
-    "잔금 전 등기부등본을 다시 발급해 소유자, 근저당, 압류, 가압류, 신탁, 경매 표시를 확인",
-    "계약 상대방이 등기부 소유자와 다르면 위임장, 인감증명, 본인 통화로 대리권 확인",
-    "전입신고, 확정일자, 임대차신고, 보증보험 가능 여부를 같은 날 공식 경로로 확인",
-    "특약에 잔금 전 추가 근저당 금지, 등기 변동 시 해제·반환 조건, 하자·수리 책임을 문서화"
-  ];
+  const riskText = `${input.situation ?? ""} ${input.concerns ?? ""}`.toLowerCase();
+  const immediateActions: string[] = [];
+
+  if (/빨리|오늘|가계약|계약금|선입금/.test(riskText)) {
+    immediateActions.push("등기부·소유자·특약 확인 전에는 계약금·가계약금 송금을 보류하고, 송금 요구 사유와 반환 조건을 문자로 남기기");
+  }
+  if (/대리|위임|명의|소유자|집주인/.test(riskText)) {
+    immediateActions.push("대리계약이면 위임장 원본 범위, 인감증명서, 신분증, 등기부 소유자와의 직접 통화 확인 전 서명하지 않기");
+  }
+  if (/근저당|압류|가압류|경매|채권|신탁/.test(riskText)) {
+    immediateActions.push("근저당·압류·신탁 등 선순위 권리가 있으면 말소 조건, 잔금 전 등기부 재발급, 보증보험 가능 여부를 특약에 명시하기");
+  }
+  if (/체납|미납|국세|지방세|세금|납세\s*증명|납세증명/.test(riskText)) {
+    immediateActions.push("임대인 체납·납세증명 우려가 있으면 계약 전 확인 가능한 서류, 세무서·국세청·위택스 확인 경로, 확인 거부 시 계약 보류 조건을 문자로 남기기");
+  }
 
   if (Number.isFinite(saleMarket.ratio) && (saleMarket.ratio as number) >= 80) {
-    immediateActions.unshift("매매가 대비 보증금 비율이 높으므로 보증보험 가능 여부와 선순위 권리 확인 전 계약금 송금을 보류");
+    immediateActions.push("매매가 대비 보증금 비율이 높으므로 보증보험 가능 여부와 선순위 권리 확인 전 계약금 송금을 보류");
   }
+
+  immediateActions.push(
+    "잔금 전 등기부등본을 다시 발급해 소유자, 근저당, 압류, 가압류, 신탁, 경매 표시를 확인",
+    "계약 상대방이 등기부 소유자와 다르면 위임장, 인감증명, 본인 통화로 대리권 확인",
+    "전입신고, 확정일자, 임대차신고, 보증보험 가능 여부, 임대인 납세·체납 관련 확인 가능 서류를 같은 날 공식 경로로 확인",
+    "특약에 잔금 전 추가 근저당 금지, 등기 변동 시 해제·반환 조건, 하자·수리 책임을 문서화"
+  );
 
   return [
     "## 전월세 안전 종합 진단",
@@ -971,7 +1065,9 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
     lineItems([
       `위험도 근거: ${riskSummary.reasons.join(" / ")}`,
       `전월세 신고 표본 ${rentMarket.sampleCount}건, 보증금 산출 표본 ${rentMarket.depositSampleCount}건, 보증금 중앙값 ${money(rentMarket.median)}`,
+      sampleReliability("전월세", rentMarket.sampleCount, rentMarket.depositSampleCount),
       `매매 신고 표본 ${saleMarket.sampleCount}건, 매매가 중앙값 ${money(saleMarket.median)}`,
+      sampleReliability("매매", saleMarket.sampleCount),
       `매매가 대비 보증금 비율 ${ratioLine}: ${saleMarket.signal}`,
       rentMarket.position
     ]),
@@ -999,6 +1095,8 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
       "rtms-lease-report",
       "gov24",
       "hug-deposit-guarantee",
+      "nts-tax",
+      "wetax-local-tax",
       "easylaw-lease"
     ]),
     "",
@@ -1022,12 +1120,12 @@ export function checkLeaseRedFlags(input: LeaseProfileInput): string {
     lineItems([
       "등기부등본에서 소유자, 근저당, 압류, 가압류, 신탁, 경매 관련 표시 확인",
       "계약 상대방이 등기부 소유자와 같은지 확인하고 대리계약이면 위임 범위 확인",
-      "전입신고, 확정일자, 임대차신고, 보증보험 가능 여부를 같은 체크리스트로 확인",
+      "전입신고, 확정일자, 임대차신고, 보증보험 가능 여부, 임대인 납세·체납 관련 확인 가능 서류를 같은 체크리스트로 확인",
       "특약에 전입·확정일자 전까지 추가 근저당 설정 금지, 하자·수리, 잔금 전 등기부 재확인을 넣을지 중개사에게 질문"
     ]),
     "",
     "## 공식 출처",
-    renderSources(["iros-fixed-date", "easylaw-lease", "law-lease", "hug-deposit-guarantee"]),
+    renderSources(["iros-fixed-date", "easylaw-lease", "law-lease", "hug-deposit-guarantee", "nts-tax", "wetax-local-tax"]),
     "",
     officialNotice()
   ].join("\n");
@@ -1046,7 +1144,8 @@ export function buildMoveInProtectionPlan(input: LeaseProfileInput): string {
       "등기부등본을 직접 발급하거나 중개사 제공본의 발급 시각을 확인",
       "소유자와 계약 상대방 일치 여부 확인",
       "주택 유형, 보증금, 월세, 관리비, 특약을 계약서에 분리 기재",
-      "전세보증금반환보증 가능 여부와 필요 서류를 HUG 등 공식 경로로 확인"
+      "전세보증금반환보증 가능 여부와 필요 서류를 HUG 등 공식 경로로 확인",
+      "임대인 납세증명·체납 관련 확인 가능 서류와 국세청·위택스 확인 경로를 계약 전 질문 목록에 포함"
     ]),
     "",
     "## 잔금·입주 당일",
@@ -1065,7 +1164,7 @@ export function buildMoveInProtectionPlan(input: LeaseProfileInput): string {
     ]),
     "",
     "## 공식 출처",
-    renderSources(["gov24", "rtms-lease-report", "iros-fixed-date", "hug-deposit-guarantee", "easylaw-lease"]),
+    renderSources(["gov24", "rtms-lease-report", "iros-fixed-date", "hug-deposit-guarantee", "nts-tax", "wetax-local-tax", "easylaw-lease"]),
     "",
     officialNotice()
   ].join("\n");
@@ -1080,6 +1179,7 @@ export function prepareContractQuestions(input: LeaseProfileInput): string {
     lineItems([
       "등기부상 소유자와 계약 당사자가 같은가요? 다르면 대리권을 어떤 문서로 확인하나요?",
       "근저당, 압류, 가압류, 신탁, 임차권등기명령, 경매 관련 권리가 있나요?",
+      "임대인 납세증명, 국세·지방세 체납 관련 확인 가능한 서류를 계약 전에 확인할 수 있나요?",
       "잔금일 직전 등기부를 다시 확인하고 특약에 반영할 수 있나요?",
       "전입신고와 확정일자를 바로 진행해도 되는 주택인가요?",
       "주택 임대차 계약 신고는 누가, 언제, 어떤 방식으로 처리하나요?",
@@ -1088,22 +1188,37 @@ export function prepareContractQuestions(input: LeaseProfileInput): string {
     ]),
     "",
     "## 통화 첫 문장",
-    "계약 전 확인을 위해 등기부 권리관계, 전입·확정일자 가능 여부, 임대차신고, 보증보험 가능 여부를 문서 기준으로 확인하고 싶습니다.",
+    "계약 전 확인을 위해 등기부 권리관계, 전입·확정일자 가능 여부, 임대차신고, 보증보험 가능 여부, 임대인 납세·체납 관련 확인 가능 서류를 문서 기준으로 확인하고 싶습니다.",
     "",
     "## 공식 출처",
-    renderSources(["rtms-lease-report", "iros-fixed-date", "adr-lease-dispute", "hug-deposit-guarantee"]),
+    renderSources(["rtms-lease-report", "iros-fixed-date", "adr-lease-dispute", "hug-deposit-guarantee", "nts-tax", "wetax-local-tax"]),
     "",
     officialNotice()
   ].join("\n");
 }
 
-export function routeOfficialHelp(input: LeaseProfileInput & { issueType?: "move_in" | "fixed_date" | "lease_report" | "deposit_guarantee" | "dispute" | "registry" | "unknown" }): string {
-  const issueType = input.issueType ?? "unknown";
-  const routes: Record<string, string[]> = {
+function inferOfficialHelpIssueType(input: LeaseProfileInput & { issueType?: OfficialHelpIssueType }): OfficialHelpIssueType {
+  if (input.issueType && input.issueType !== "unknown") return input.issueType;
+
+  const text = `${input.situation ?? ""} ${input.concerns ?? ""}`.toLowerCase();
+  if (/임대차\s*신고|계약\s*신고|rtms|실거래/.test(text)) return "lease_report";
+  if (/확정\s*일자|확정일자/.test(text)) return "fixed_date";
+  if (/전입\s*신고|전입신고/.test(text)) return "move_in";
+  if (/보증\s*보험|보증보험|반환\s*보증|반환보증|hug/.test(text)) return "deposit_guarantee";
+  if (/체납|미납|국세|지방세|세금|납세\s*증명|납세증명|세무서|위택스/.test(text)) return "tax_arrears";
+  if (/등기부|등기\s*확인|소유자|근저당|압류|가압류|신탁|경매/.test(text)) return "registry";
+  if (/분쟁|보증금\s*반환|수선|원상복구|계약갱신|증액|조정/.test(text)) return "dispute";
+  return "unknown";
+}
+
+export function routeOfficialHelp(input: LeaseProfileInput & { issueType?: OfficialHelpIssueType }): string {
+  const issueType = inferOfficialHelpIssueType(input);
+  const routes: Record<OfficialHelpIssueType, string[]> = {
     move_in: ["정부24", "전입신고 신청과 처리 결과 확인"],
     fixed_date: ["인터넷등기소", "확정일자 신청과 접수 확인"],
     lease_report: ["부동산거래관리시스템 RTMS", "주택 임대차 계약 신고"],
     deposit_guarantee: ["HUG 주택도시보증공사", "전세보증금반환보증 가입 가능 여부와 서류 확인"],
+    tax_arrears: ["국세청·위택스", "임대인 국세·지방세 체납 우려와 납세증명 확인 경로"],
     dispute: ["한국부동산원·LH 임대차분쟁조정위원회", "보증금 반환, 수선, 원상복구, 계약갱신 분쟁 상담·조정"],
     registry: ["인터넷등기소", "등기부등본 발급과 소유자·권리관계 확인"],
     unknown: ["정부24 또는 임대차분쟁조정위원회", "상황에 맞는 공식 창구 확인"]
@@ -1121,11 +1236,12 @@ export function routeOfficialHelp(input: LeaseProfileInput & { issueType?: "move
       "확정일자·등기부 확인: 인터넷등기소",
       "주택 임대차 계약 신고: RTMS",
       "보증보험: HUG",
+      "국세·지방세 체납 확인: 국세청·위택스",
       "보증금 반환·원상복구·수선·계약갱신 분쟁: 임대차분쟁조정위원회"
     ]),
     "",
     "## 공식 출처",
-    renderSources(["gov24", "rtms-lease-report", "iros-fixed-date", "hug-deposit-guarantee", "adr-lease-dispute"]),
+    renderSources(["gov24", "rtms-lease-report", "iros-fixed-date", "hug-deposit-guarantee", "nts-tax", "wetax-local-tax", "adr-lease-dispute"]),
     "",
     officialNotice()
   ].join("\n");

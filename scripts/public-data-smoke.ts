@@ -68,8 +68,8 @@ export function publicDataSmokeRegion(): string {
   if (region.length < 2) {
     throw new Error("PUBLIC_DATA_SMOKE_REGION must include at least 2 meaningful characters.");
   }
-  if (/\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b/.test(region) || /\b\d{6}[\s.-]?[1-4]\d{6}\b/.test(region) || /\b01[016789][\s.-]?\d{3,4}[\s.-]?\d{4}\b/.test(region) || /\b0(?:2|[3-6][1-5]|70|80)[\s.-]?\d{3,4}[\s.-]?\d{4}\b/.test(region)) {
-    throw new Error("PUBLIC_DATA_SMOKE_REGION must not include personal identifiers, email addresses, or phone numbers.");
+  if (/\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b/.test(region) || /\b\d{6}[\s.-]?[1-4]\d{6}\b/.test(region) || /\b01[016789][\s.-]?\d{3,4}[\s.-]?\d{4}\b/.test(region) || /\b0(?:2|[3-6][1-5]|70|80)[\s.-]?\d{3,4}[\s.-]?\d{4}\b/.test(region) || /(?:계좌(?:번호)?|입금\s*계좌|송금\s*계좌)\s*(?:은|는|:)?\s*\d{2,6}[\s-]\d{2,6}[\s-]\d{2,8}/.test(region) || /\b\d{1,4}\s*동\s*\d{1,4}\s*호/.test(region) || /\b\d{1,3}\s*층\s*\d{1,4}\s*호/.test(region) || /\b\d{2,4}\s*호/.test(region)) {
+    throw new Error("PUBLIC_DATA_SMOKE_REGION must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details.");
   }
   if (region.length > MAX_PUBLIC_DATA_SMOKE_REGION_LENGTH) {
     throw new Error(`PUBLIC_DATA_SMOKE_REGION must be ${MAX_PUBLIC_DATA_SMOKE_REGION_LENGTH} characters or fewer.`);

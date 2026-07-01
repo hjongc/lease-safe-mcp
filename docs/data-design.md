@@ -39,6 +39,7 @@ These are stored as reviewed source records and rule text, not scraped live at a
 - 찾기쉬운 생활법령 and 국가법령정보센터: legal concepts such as opposition power and preferential payment.
 - 한국부동산원·LH 임대차분쟁조정위원회: dispute prevention, standard contract, mediation, and consultation path.
 - HUG: deposit-return guarantee confirmation path.
+- 국세청 and 위택스: landlord tax-arrears and tax-certificate confirmation paths for contract questions.
 
 ## Boundary
 
@@ -48,6 +49,7 @@ The MCP does not:
 - submit Government24 civil applications
 - determine legal safety
 - guarantee HUG insurance eligibility
+- determine landlord tax arrears or tax-certificate validity
 - recommend property listings
 - use broker blogs or private reviews as authority
 - replace failed public-data API calls with hardcoded sample data

@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { request } from "node:http";
 import { createServer } from "node:net";
 
 const imageTag = process.env.DOCKER_SMOKE_IMAGE ?? process.env.PREFLIGHT_DOCKER_TAG ?? "lease-safe-mcp-preflight";
@@ -142,6 +143,41 @@ async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): P
   if (response.status !== 413) {
     const text = await response.text();
     throw new Error(`Expected oversized MCP request to return 413, got ${response.status}: ${text}`);
+  }
+}
+
+async function verifyRejectedHost(endpoint: string): Promise<void> {
+  const target = new URL(endpoint.replace(/\/mcp$/, "/healthz"));
+  const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+    const req = request({
+      hostname: target.hostname,
+      port: target.port,
+      path: target.pathname,
+      method: "GET",
+      headers: {
+        Host: "evil.example"
+      }
+    }, res => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", chunk => {
+        body += chunk;
+      });
+      res.on("end", () => {
+        resolve({ statusCode: res.statusCode ?? 0, body });
+      });
+    });
+    req.on("error", reject);
+    req.end();
+  });
+
+  if (response.statusCode !== 403) {
+    throw new Error(`Expected disallowed Docker Host header to return 403, got ${response.statusCode}: ${response.body}`);
+  }
+
+  const body = JSON.parse(response.body) as { error?: { code?: unknown; message?: unknown } };
+  if (body.error?.code !== -32000 || body.error?.message !== "Invalid Host: evil.example") {
+    throw new Error("Disallowed Docker Host header did not return the expected JSON-RPC host validation error.");
   }
 }
 
@@ -300,7 +336,7 @@ async function main() {
     "-p",
     `127.0.0.1:${port}:3000`,
     "-e",
-    `MCP_ALLOWED_HOSTS=127.0.0.1:${port},localhost`,
+    "MCP_ALLOWED_HOSTS=127.0.0.1,localhost",
     "-e",
     `${publicDataKeyEnvName}=${publicDataSmokeKey}`,
     "-e",
@@ -311,6 +347,8 @@ async function main() {
   try {
     const maxBodyBytes = await waitForHealth(port, containerId);
     console.log("docker_healthz=ok");
+    await verifyRejectedHost(endpoint);
+    console.log("docker_host_rejection=ok");
     await verifyHeadMethodNotAllowed(endpoint);
     await verifyMethodNotAllowed(endpoint, "GET", "Method not allowed. Use POST /mcp for Streamable HTTP requests.");
     await verifyMethodNotAllowed(endpoint, "DELETE", "Method not allowed for stateless server.");

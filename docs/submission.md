@@ -22,11 +22,11 @@ Lease Safe(전월세안전내비) is a Korean lease-safety MCP server for people
 Required:
 
 - `DATA_GO_KR_SERVICE_KEY`: data.go.kr service key for legal-dong, rent, and sale transaction APIs
-- `MCP_ALLOWED_HOSTS`: PlayMCP host or deployment domain for DNS rebinding protection, using plain hostnames or `host:port` values only; URL schemes, paths, userinfo, query strings, fragments, wildcards, backslashes, and whitespace are rejected
+- `MCP_ALLOWED_HOSTS`: PlayMCP host or deployment domain for DNS rebinding protection, using plain hostnames only; URL schemes, ports, paths, userinfo, query strings, fragments, wildcards, backslashes, and whitespace are rejected
 
 Optional:
 
-- `MCP_AUTH_TOKEN`: bearer token of at least 16 characters for direct deployments that need private access control
+- `MCP_AUTH_TOKEN`: real bearer token of at least 16 characters for direct deployments that need private access control; placeholders are rejected
 - `MCP_MAX_BODY_BYTES`: MCP POST request body limit, default `262144`
 - `MCP_RATE_LIMIT_PER_MINUTE`: MCP POST rate limit per client, default `120`, set `0` to disable
 - `PUBLIC_DATA_TIMEOUT_MS`: official public-data API timeout, default `8000`, maximum `60000`

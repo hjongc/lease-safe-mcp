@@ -101,11 +101,13 @@ for (const required of [
 const server = readFileSync("src/server.ts", "utf8");
 const domain = readFileSync("src/domain.ts", "utf8");
 assert(/MCP_ALLOWED_HOSTS/.test(server), "server must support MCP_ALLOWED_HOSTS");
-assert(/plain hostnames or host:port values/.test(server), "server must reject unsafe MCP_ALLOWED_HOSTS entries");
+assert(/plain hostnames, not URLs, ports/.test(server), "server must reject unsafe MCP_ALLOWED_HOSTS entries");
 assert(/userinfo, query strings, fragments/.test(server), "server must reject URL userinfo/query/fragment host allowlist entries");
 assert(/DATA_GO_KR_SERVICE_KEY is required in production/.test(server), "server must fail fast without DATA_GO_KR_SERVICE_KEY in production");
 assert(/timingSafeEqual/.test(server), "server must compare bearer tokens with timingSafeEqual");
 assert(/MCP_AUTH_TOKEN must be at least/.test(server), "server must reject weak MCP_AUTH_TOKEN values");
+assert(/MCP_AUTH_TOKEN_PLACEHOLDERS/.test(server), "server must reject placeholder MCP_AUTH_TOKEN values");
+assert(/MCP_AUTH_TOKEN must be a real bearer token, not a placeholder/.test(server), "server must fail clearly on placeholder MCP_AUTH_TOKEN values");
 assert(/WWW-Authenticate/.test(server), "server must advertise bearer authentication on unauthorized MCP requests");
 assert(/Bearer realm="lease-safe"/.test(server), "server must use a stable bearer realm for unauthorized MCP requests");
 assert(/requireMcpBearerToken/.test(server), "server must authenticate MCP POST requests before parsing request bodies");
@@ -123,8 +125,31 @@ assert(/contractDateSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.dateText\)/.test(server
 assert(/concernsSchema[\s\S]*\.max\(MCP_TEXT_LIMITS\.concerns\)/.test(server), "server must bound MCP concerns text inputs");
 assert(/region:\s*z\.string\(\)\.min\(2\)\.max\(MCP_TEXT_LIMITS\.region\)/.test(server), "resolve_legal_dong_code must bound region text input");
 assert(/MONEY_INPUT_LIMITS/.test(domain), "domain must define explicit money input limits");
+assert(/assertRequiredPositiveManwon/.test(domain), "flagship assessment must require a positive deposit");
+assert(/context = "for lease safety assessment"/.test(domain), "flagship assessment must fail clearly on zero deposit");
+assert(/assertRequiredPositiveManwon\("depositManwon",\s*input\.depositManwon,\s*"for deposit-to-sale comparison"\)/.test(domain), "deposit-to-sale comparison must fail clearly on zero deposit");
+assert(/sampleReliability/.test(domain), "market outputs must disclose sample reliability");
+assert(/전후월, 인접동, 같은 면적대 실거래/.test(domain), "low-sample market outputs must tell users how to strengthen evidence");
+assert(/계약금·가계약금 송금을 보류/.test(domain), "flagship assessment must prioritize rushed deposit-payment pressure");
+assert(/위임장 원본 범위/.test(domain), "flagship assessment must prioritize proxy-contract verification");
+assert(/말소 조건, 잔금 전 등기부 재발급/.test(domain), "flagship assessment must prioritize senior-rights verification");
+assert(/근저당\|압류\|가압류\|경매\|채권\|신탁/.test(domain), "red-flag scoring must treat trust registry language as a senior-right signal");
+assert(/체납\|미납\|국세\|지방세\|세금\|납세/.test(domain), "red-flag scoring must treat landlord tax-arrears language as a contract risk signal");
+assert(/tax_arrears/.test(server), "official help schema must expose tax_arrears routing");
+assert(/세금 체납 여부 확정/.test(domain), "official notice must not imply tax-arrears determination");
+assert(/납세증명 진위 판단/.test(domain), "official notice must not imply tax-certificate validation");
+assert(/inferOfficialHelpIssueType/.test(domain), "official help router must infer routes from natural-language situations");
+assert(domain.includes("보증\\s*보험"), "official help router must infer HUG routes from natural-language guarantee questions");
+assert(/등기부\|등기/.test(domain), "official help router must infer registry routes from natural-language registry questions");
 assert(/publicDataTextFromOptionalTag/.test(domain), "domain must normalize official public-data text fields before rendering");
+assert(/decodeXmlTextContent/.test(domain), "domain must decode XML entities in official public-data text fields before rendering");
 assert(/compactPublicDataFieldValue/.test(domain), "domain must bound and redact invalid official public-data field excerpts");
+assert(/request failed before receiving a response: \$\{redactDataGoKrServiceKeys\(message\)\}/.test(domain), "domain must redact public-data network error messages");
+assert(!/request failed before receiving a response:[\s\S]*\{\s*cause:\s*error\s*\}/.test(domain), "domain must not attach raw public-data network error causes");
+assert(/동호수 생략/.test(domain), "domain must redact household unit details from user-rendered text");
+assert(/household unit details for legal-dong lookup/.test(domain), "legal-dong lookup must reject household unit details before API calls");
+assert(/계좌번호 생략/.test(domain), "domain must redact account-number-like payment details from user-rendered text");
+assert(/\.replace\(\/!\\\[/.test(domain) && /\.replace\(\/<\\\/\?\[A-Za-z\]/.test(domain), "domain must strip user-provided markdown media and HTML tags before rendering");
 assert(/parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data money fields");
 assert(/parsePublicDataDecimal/.test(domain), "domain must reject exponent-style official public-data decimal fields");
 assert(/parsedYear = parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data date fields");
@@ -133,8 +158,10 @@ assert(/assertPublicDataItemsContainer/.test(domain), "domain must fail fast whe
 assert(/invalid all-zero rent money fields/.test(domain), "domain must reject all-zero official rent money fields");
 assert(/invalid zero sale amount field/.test(domain), "domain must reject zero official sale amount fields");
 assert(/depositSchema[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "server must bound optional MCP deposit inputs");
+assert(/assessmentDepositSchema[\s\S]*\.positive\(\)[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "flagship MCP schema must require a positive deposit");
+assert(/saleComparisonDepositSchema[\s\S]*\.positive\(\)[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "deposit-to-sale MCP schema must require a positive deposit");
 assert(/monthlyRentSchema[\s\S]*\.max\(MONEY_INPUT_LIMITS\.monthlyRentManwon\)/.test(server), "server must bound optional MCP monthly-rent inputs");
-assert(/depositManwon:[\s\S]*\.max\(MONEY_INPUT_LIMITS\.depositManwon\)/.test(server), "server must bound required MCP deposit inputs");
+assert(/depositManwon:\s*(assessmentDepositSchema|saleComparisonDepositSchema)/.test(server), "server must bound required MCP deposit inputs");
 assert(/isAllZeroLawdCd/.test(domain), "domain must reject all-zero public-data LAWD_CD values");
 assert(/isAllZeroLawdCd\(lawdCd\)/.test(domain), "legal-dong parser must reject all-zero official row LAWD_CD values");
 assert(/lawdCdSchema[\s\S]*\.refine\(value => !isAllZeroLawdCd\(value\)/.test(server), "server must reject all-zero MCP LAWD_CD values");
@@ -180,7 +207,9 @@ for (const expected of [
   "easylaw-lease",
   "law-lease",
   "adr-lease-dispute",
-  "hug-deposit-guarantee"
+  "hug-deposit-guarantee",
+  "nts-tax",
+  "wetax-local-tax"
 ]) {
   assert(SOURCES.some(source => source.id === expected), `source missing: ${expected}`);
 }
@@ -207,10 +236,16 @@ assert(/assertToolOutputQuality/.test(smoke), "smoke must verify MCP tool output
 assert(/tool_output_chars/.test(smoke), "smoke must report validated tool output size");
 assert(/readResource/.test(smoke), "smoke must read the official source registry resource");
 assert(/official_sources/.test(smoke), "smoke must report validated official source count");
+assert(/nts-tax/.test(smoke), "smoke must require the national tax source registry entry");
+assert(/wetax-local-tax/.test(smoke), "smoke must require the local tax source registry entry");
+assert(/국세청/.test(smoke) && /위택스/.test(smoke), "smoke output quality must require tax official sources");
 
 const httpSmoke = readFileSync("scripts/http-smoke.ts", "utf8");
 assert(/healthz/.test(httpSmoke), "HTTP smoke must verify healthz");
 assert(/smokePortFromEnv/.test(httpSmoke), "HTTP smoke must fail fast on invalid port env values");
+assert(/listen\(0,\s*"0\.0\.0\.0"/.test(httpSmoke), "HTTP smoke free-port probe must match the server bind address");
+assert(/host_rejection/.test(httpSmoke), "HTTP smoke must verify DNS rebinding Host rejection");
+assert(/Invalid Host: evil\.example/.test(httpSmoke), "HTTP smoke must verify the host validation error shape");
 assert(/auth_rejection/.test(httpSmoke), "HTTP smoke must verify bearer auth rejection");
 assert(/WWW-Authenticate:\s*Bearer/.test(httpSmoke), "HTTP smoke must verify bearer auth challenge headers");
 assert(/method_rejection/.test(httpSmoke), "HTTP smoke must verify unsupported MCP method rejection");
@@ -231,6 +266,8 @@ const dockerSmoke = readFileSync("scripts/docker-smoke.ts", "utf8");
 assert(/docker/.test(dockerSmoke), "Docker smoke must run a container");
 assert(/healthz/.test(dockerSmoke), "Docker smoke must verify healthz");
 assert(/smokePortFromEnv/.test(dockerSmoke), "Docker smoke must fail fast on invalid port env values");
+assert(/docker_host_rejection/.test(dockerSmoke), "Docker smoke must verify DNS rebinding Host rejection");
+assert(/Invalid Host: evil\.example/.test(dockerSmoke), "Docker smoke must verify the host validation error shape");
 assert(/docker_auth_rejection/.test(dockerSmoke), "Docker smoke must verify bearer auth rejection");
 assert(/WWW-Authenticate:\s*Bearer/.test(dockerSmoke), "Docker smoke must verify bearer auth challenge headers");
 assert(/docker_method_rejection/.test(dockerSmoke), "Docker smoke must verify unsupported MCP method rejection");
@@ -250,6 +287,7 @@ assert(/dist\/scripts\/smoke\.js/.test(dockerSmoke), "Docker smoke must run the 
 const rateLimitSmoke = readFileSync("scripts/rate-limit-smoke.ts", "utf8");
 assert(/MCP_RATE_LIMIT_PER_MINUTE/.test(rateLimitSmoke), "rate-limit smoke must force a low rate limit");
 assert(/smokePortFromEnv/.test(rateLimitSmoke), "rate-limit smoke must fail fast on invalid port env values");
+assert(/listen\(0,\s*"0\.0\.0\.0"/.test(rateLimitSmoke), "rate-limit smoke free-port probe must match the server bind address");
 assert(/Retry-After/.test(rateLimitSmoke), "rate-limit smoke must verify Retry-After");
 assert(/429/.test(rateLimitSmoke), "rate-limit smoke must verify 429 rejection");
 
@@ -265,6 +303,8 @@ for (const housingType of ["apartment", "rowhouse", "single_multi", "officetel"]
 assert(/assessLeaseSafety/.test(publicDataSmoke), "public-data smoke must verify the flagship assessment tool");
 assert(/MONEY_INPUT_LIMITS\.depositManwon/.test(publicDataSmoke), "public-data smoke must reuse the bounded deposit input limit");
 assert(/plain positive integer/.test(publicDataSmoke), "public-data smoke must require a plain integer deposit value");
+assert(/payment account details/.test(publicDataSmoke), "public-data smoke must reject account-number-like region inputs");
+assert(/household unit details/.test(publicDataSmoke), "public-data smoke must reject household-unit region inputs");
 assert(/isAllZeroLawdCd/.test(publicDataSmoke), "public-data smoke must reject all-zero LAWD_CD values before API calls");
 assert(/isFutureDealYmd/.test(publicDataSmoke), "public-data smoke must reject future deal months before API calls");
 assert(/REQUIRE_LIVE_PUBLIC_DATA/.test(publicDataSmoke), "public-data smoke must know when registration preflight requires live evidence");
