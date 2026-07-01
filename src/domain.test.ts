@@ -17,7 +17,7 @@ import {
   resolveLegalDongCode,
   routeOfficialHelp
 } from "./domain.js";
-import { MCP_TEXT_LIMITS, createApp, createServer, httpPort, mcpMaxBodyBytes, mcpRateLimitPerMinute, pruneExpiredRateLimitWindows } from "./server.js";
+import { MCP_TEXT_LIMITS, compactLogError, createApp, createServer, httpPort, mcpMaxBodyBytes, mcpRateLimitPerMinute, pruneExpiredRateLimitWindows } from "./server.js";
 import { assertLegalDongSmokeMatchesLawdCd, positiveSampleCount, publicDataSmokeDealYmd, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes, publicDataSmokeLawdCd, publicDataSmokeRegion } from "../scripts/public-data-smoke.js";
 import { scanLine } from "../scripts/secret-scan.js";
 
@@ -2774,6 +2774,40 @@ test("MCP auth token fails fast when configured too weakly", () => {
     } else {
       process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
     }
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+    if (previousAuthToken === undefined) {
+      delete process.env[authEnvName];
+    } else {
+      process.env[authEnvName] = previousAuthToken;
+    }
+  }
+});
+
+test("compact log error redacts configured runtime secrets", () => {
+  const authEnvName = "MCP_AUTH" + "_TOKEN";
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousAuthToken = process.env[authEnvName];
+  const authToken = ["runtime", "auth", "token", "for", "log", "redaction"].join("-");
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY_ENCODED;
+    process.env[authEnvName] = authToken;
+
+    const error = new Error(`upstream leaked ${VALID_TEST_SERVICE_KEY} and ${VALID_TEST_SERVICE_KEY_ENCODED} with ${authToken}`);
+    error.name = `SecretError ${authToken}`;
+
+    const compact = compactLogError(error);
+    assert.match(compact.name, /\[MCP_AUTH_TOKEN redacted\]/);
+    assert.match(compact.message, /\[DATA_GO_KR_SERVICE_KEY redacted\]/);
+    assert.match(compact.message, /\[MCP_AUTH_TOKEN redacted\]/);
+    assert.doesNotMatch(compact.name, new RegExp(authToken.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(compact.message, new RegExp(VALID_TEST_SERVICE_KEY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(compact.message, new RegExp(VALID_TEST_SERVICE_KEY_ENCODED.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(compact.message, new RegExp(authToken.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  } finally {
     if (previousKey === undefined) {
       delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
     } else {

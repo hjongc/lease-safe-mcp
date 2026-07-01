@@ -39,6 +39,7 @@ const MCP_AUTH_TOKEN_PLACEHOLDERS = new Set([
   "mcp-auth-token",
   "..."
 ]);
+const LOG_SECRET_ENV_NAMES = ["DATA_GO_KR_SERVICE_KEY", "MCP_AUTH_TOKEN"] as const;
 
 export const MCP_TEXT_LIMITS = {
   region: 80,
@@ -447,16 +448,42 @@ function requestIdForLog(res: Response): string {
   return typeof res.locals.requestId === "string" ? res.locals.requestId : "unknown";
 }
 
-function compactLogError(error: unknown): { name: string; message: string } {
+function logSecretRedactionValues(): Array<{ envName: string; values: string[] }> {
+  return LOG_SECRET_ENV_NAMES.map(envName => {
+    const rawValue = process.env[envName]?.trim();
+    if (!rawValue || rawValue.length < 8) return { envName, values: [] };
+
+    const values = new Set([rawValue]);
+    try {
+      const decodedValue = decodeURIComponent(rawValue);
+      if (decodedValue.length >= 8) values.add(decodedValue);
+    } catch {
+      // Malformed env values are handled by startup validation; logging redaction stays best-effort.
+    }
+    return { envName, values: [...values].sort((a, b) => b.length - a.length) };
+  }).filter(entry => entry.values.length > 0);
+}
+
+function redactLogSecrets(value: string): string {
+  let redacted = value;
+  for (const { envName, values } of logSecretRedactionValues()) {
+    for (const secretValue of values) {
+      redacted = redacted.split(secretValue).join(`[${envName} redacted]`);
+    }
+  }
+  return redacted;
+}
+
+export function compactLogError(error: unknown): { name: string; message: string } {
   if (error instanceof Error) {
     return {
-      name: error.name,
-      message: error.message.replace(/\s+/g, " ").slice(0, 500)
+      name: redactLogSecrets(error.name).replace(/\s+/g, " ").slice(0, 120),
+      message: redactLogSecrets(error.message).replace(/\s+/g, " ").slice(0, 500)
     };
   }
   return {
     name: typeof error,
-    message: String(error).replace(/\s+/g, " ").slice(0, 500)
+    message: redactLogSecrets(String(error)).replace(/\s+/g, " ").slice(0, 500)
   };
 }
 
