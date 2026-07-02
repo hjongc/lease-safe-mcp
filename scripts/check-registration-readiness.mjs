@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 
-const requiredSecretName = "DATA_GO_KR_SERVICE_KEY";
+const requiredSecretNames = ["DATA_GO_KR_SERVICE_KEY", "MCP_AUTH_TOKEN"];
 const repo = process.env.GITHUB_REPOSITORY?.trim() || "hjongc/lease-safe-mcp";
 const branch = process.env.REGISTRATION_READY_BRANCH?.trim() || "main";
 
@@ -19,8 +19,11 @@ function isValidBranchName(value) {
   );
 }
 
-function fail(message) {
+function fail(message, hints = []) {
   console.error(message);
+  for (const hint of hints) {
+    console.error(hint);
+  }
   if (isValidRepositorySlug(repo) && isValidBranchName(branch)) {
     console.error(`Run: gh workflow run CI --repo ${repo} --ref ${branch}`);
     console.error(`Run: gh workflow run "Registration Preflight" --repo ${repo} --ref ${branch}`);
@@ -70,14 +73,38 @@ function requireCleanWorktree() {
   }
 }
 
-function requireGitHubSecret() {
+function requireGitHubSecrets() {
   const secretNames = run("gh", ["secret", "list", "--repo", repo], `list GitHub repository secrets for ${repo}`)
     .split(/\r?\n/)
     .map(line => line.trim().split(/\s+/)[0])
     .filter(Boolean);
 
-  if (!secretNames.includes(requiredSecretName)) {
-    fail(`${requiredSecretName} is not configured as a GitHub repository secret for ${repo}. Registration readiness requires live public-data evidence, not skipped smoke.`);
+  const missingSecretNames = requiredSecretNames.filter(secretName => !secretNames.includes(secretName));
+  if (missingSecretNames.length > 0) {
+    fail(
+      `${missingSecretNames.join(", ")} ${missingSecretNames.length === 1 ? "is" : "are"} not configured as GitHub repository secrets for ${repo}. Registration readiness requires live public-data evidence and production MCP authentication evidence.`,
+      missingSecretNames.map(secretName => `Run: gh secret set ${secretName} --repo ${repo}`)
+    );
+  }
+}
+
+function requireRemoteBranchHead(headSha) {
+  const output = run(
+    "git",
+    ["ls-remote", "--heads", `https://github.com/${repo}.git`, branch],
+    `inspect remote branch ${repo}@${branch}`
+  );
+  const refName = `refs/heads/${branch}`;
+  const remoteHead = output
+    .split(/\r?\n/)
+    .map(line => line.trim().split(/\s+/))
+    .find(([sha, ref]) => sha && ref === refName)?.[0];
+
+  if (!remoteHead) {
+    fail(`Remote branch ${repo}@${branch} was not found. Push the submitted commit before checking registration readiness.`);
+  }
+  if (remoteHead !== headSha) {
+    fail(`Local HEAD ${headSha} is not the remote ${branch} HEAD ${remoteHead}. Push the submitted commit before checking registration readiness.`);
   }
 }
 
@@ -101,10 +128,16 @@ function requireSuccessfulWorkflowRun(workflowName, headSha) {
     fail(`GitHub returned an unexpected ${workflowName} run list shape.`);
   }
 
-  const matchingRun = runs.find(run => run.headSha === headSha);
-  if (!matchingRun) {
+  const matchingRuns = runs.filter(run => run.headSha === headSha);
+  if (matchingRuns.length === 0) {
     fail(`No ${workflowName} workflow run was found for current commit ${headSha} on ${branch}.`);
   }
+  const invalidRun = matchingRuns.find(run => !Number.isSafeInteger(run.databaseId));
+  if (invalidRun) {
+    fail(`GitHub returned a ${workflowName} workflow run without a valid databaseId for current commit ${headSha}.`);
+  }
+
+  const matchingRun = [...matchingRuns].sort((a, b) => b.databaseId - a.databaseId)[0];
   if (matchingRun.status !== "completed") {
     fail(`${workflowName} workflow run for current commit ${headSha} is ${matchingRun.status}, not completed: ${matchingRun.url}`);
   }
@@ -114,7 +147,7 @@ function requireSuccessfulWorkflowRun(workflowName, headSha) {
   return matchingRun;
 }
 
-function requireSuccessfulStep(run, workflowName, stepName) {
+function requireSuccessfulJobStep(run, workflowName, jobName, stepName) {
   const details = ghJson([
     "run",
     "view",
@@ -129,28 +162,42 @@ function requireSuccessfulStep(run, workflowName, stepName) {
     fail(`GitHub returned an unexpected ${workflowName} job list shape.`);
   }
 
-  const matchingStep = details.jobs
-    .flatMap(job => Array.isArray(job.steps) ? job.steps : [])
-    .find(step => step.name === stepName);
+  const matchingJobs = details.jobs.filter(job => job.name === jobName);
+  if (matchingJobs.length !== 1) {
+    fail(`${workflowName} workflow run ${run.url} must include exactly one "${jobName}" job.`);
+  }
+
+  const matchingJob = matchingJobs[0];
+  if (matchingJob.conclusion !== "success") {
+    fail(`${workflowName} workflow required job "${jobName}" concluded ${matchingJob.conclusion}, not success: ${run.url}`);
+  }
+
+  if (!Array.isArray(matchingJob.steps)) {
+    fail(`${workflowName} workflow required job "${jobName}" did not include step details: ${run.url}`);
+  }
+
+  const matchingStep = matchingJob.steps.find(step => step.name === stepName);
 
   if (!matchingStep) {
-    fail(`${workflowName} workflow run ${run.url} did not include required step: ${stepName}.`);
+    fail(`${workflowName} workflow required job "${jobName}" did not include required step: ${stepName}.`);
   }
   if (matchingStep.conclusion !== "success") {
-    fail(`${workflowName} workflow required step "${stepName}" concluded ${matchingStep.conclusion}, not success: ${run.url}`);
+    fail(`${workflowName} workflow required job "${jobName}" step "${stepName}" concluded ${matchingStep.conclusion}, not success: ${run.url}`);
   }
 }
 
 requireCleanWorktree();
 const headSha = run("git", ["rev-parse", "HEAD"], "read current git commit").trim();
-requireGitHubSecret();
+requireRemoteBranchHead(headSha);
+requireGitHubSecrets();
 const ciRun = requireSuccessfulWorkflowRun("CI", headSha);
 const registrationRun = requireSuccessfulWorkflowRun("Registration Preflight", headSha);
-requireSuccessfulStep(ciRun, "CI", "Live public-data smoke");
-requireSuccessfulStep(registrationRun, "Registration Preflight", "Run registration preflight");
-requireSuccessfulStep(registrationRun, "Registration Preflight", "Publish registration evidence summary");
+requireSuccessfulJobStep(ciRun, "CI", "Quality Gate", "Live public-data smoke");
+requireSuccessfulJobStep(ciRun, "CI", "Quality Gate", "Publish live public-data status");
+requireSuccessfulJobStep(registrationRun, "Registration Preflight", "Registration Evidence", "Run registration preflight");
+requireSuccessfulJobStep(registrationRun, "Registration Preflight", "Registration Evidence", "Publish registration evidence summary");
 
 console.log(`registration_readiness=ok repo=${repo} branch=${branch} head_sha=${headSha}`);
-console.log(`github_secret=${requiredSecretName} status=present repo=${repo}`);
+console.log(`github_secrets=${requiredSecretNames.join(",")} status=present repo=${repo}`);
 console.log(`ci_run=${ciRun.url}`);
 console.log(`registration_preflight_run=${registrationRun.url}`);

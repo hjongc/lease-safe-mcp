@@ -1,9 +1,11 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { compactScriptErrorMessage } from "./safe-error.js";
 
 const endpoint = process.env.MCP_ENDPOINT;
 const supportedPlayMcpProtocolVersions = new Set(["2025-03-26", "2025-06-18", "2025-11-25"]);
 const officialSourceRegistryUri = "lease-safe://sources/official";
+const maxSourceReviewAgeDays = 45;
 const requiredOfficialSourceIds = [
   "mois-legal-dong-code",
   "molit-apartment-rent",
@@ -65,7 +67,7 @@ const offlineToolSmokeCases: OfflineToolSmokeCase[] = [
       depositManwon: 30000,
       concerns: "대리계약, 근저당, 가계약금"
     },
-    requiredPhrases: ["## 계약 위험 신호 점검", "## 계약 전 확인 순서", "## 공식 출처", "## 확인 필요", "전월세안전내비"],
+    requiredPhrases: ["## 계약 위험 신호 점검", "## 계약 전 확인 순서", "## 문서 증거 패키지", "## 공식 출처", "## 확인 필요", "전월세안전내비"],
     requiredSources: ["인터넷등기소", "법제처", "국가법령정보센터", "HUG", "국세청", "위택스"]
   },
   {
@@ -78,7 +80,7 @@ const offlineToolSmokeCases: OfflineToolSmokeCase[] = [
       contractDate: "2026-07-10",
       concerns: "전입신고와 확정일자를 놓치고 싶지 않습니다."
     },
-    requiredPhrases: ["## 이사·보증금 보호 체크리스트", "## 계약 전", "## 잔금·입주 당일", "## 입주 후", "## 확인 필요"],
+    requiredPhrases: ["## 이사·보증금 보호 체크리스트", "## 계약 전", "## 잔금·입주 당일", "## 입주 후", "## 문서 증거 패키지", "## 확인 필요"],
     requiredSources: ["정부24", "부동산거래관리시스템", "인터넷등기소", "HUG", "국세청", "위택스"]
   },
   {
@@ -89,7 +91,7 @@ const offlineToolSmokeCases: OfflineToolSmokeCase[] = [
       depositManwon: 30000,
       concerns: "근저당과 임대인 체납이 걱정됩니다."
     },
-    requiredPhrases: ["## 중개사·임대인에게 물어볼 질문", "## 통화 첫 문장", "## 공식 출처", "## 확인 필요"],
+    requiredPhrases: ["## 중개사·임대인에게 물어볼 질문", "## 통화 첫 문장", "## 문서 증거 패키지", "## 공식 출처", "## 확인 필요"],
     requiredSources: ["부동산거래관리시스템", "인터넷등기소", "HUG", "국세청", "위택스"]
   },
   {
@@ -120,6 +122,50 @@ const offlineToolSmokeCases: OfflineToolSmokeCase[] = [
   }
 ];
 
+const missingPublicDataKeySmokeCases: OfflineToolSmokeCase[] = [
+  {
+    name: "assess_lease_safety",
+    arguments: {
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605",
+      depositManwon: 30000,
+      region: "서울 관악구"
+    },
+    requiredPhrases: [],
+    requiredSources: []
+  },
+  {
+    name: "resolve_legal_dong_code",
+    arguments: {
+      region: "서울 관악구"
+    },
+    requiredPhrases: [],
+    requiredSources: []
+  },
+  {
+    name: "compare_rent_market",
+    arguments: {
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605"
+    },
+    requiredPhrases: [],
+    requiredSources: []
+  },
+  {
+    name: "compare_deposit_to_sale_market",
+    arguments: {
+      housingType: "apartment",
+      lawdCd: "11620",
+      dealYmd: "202605",
+      depositManwon: 30000
+    },
+    requiredPhrases: [],
+    requiredSources: []
+  }
+];
+
 function assertToolOutputQuality(toolName: string, text: string, requiredPhrases: string[], requiredSources: string[]) {
   if (!hasKorean(text)) throw new Error(`Tool ${toolName} output must contain Korean text`);
   if (text.length < 350) throw new Error(`Tool ${toolName} output is unexpectedly short`);
@@ -133,6 +179,39 @@ function assertToolOutputQuality(toolName: string, text: string, requiredPhrases
   if (/kakao/i.test(text)) throw new Error(`Tool ${toolName} output contains forbidden kakao string`);
 }
 
+function compactErrorText(error: unknown): string {
+  if (error instanceof Error) return `${error.name}: ${error.message}`;
+  return String(error);
+}
+
+function assertMissingPublicDataKeyFailure(toolName: string, text: string): void {
+  if (!/DATA_GO_KR_SERVICE_KEY is required/.test(text)) {
+    throw new Error(`API-backed tool ${toolName} must fail clearly when DATA_GO_KR_SERVICE_KEY is missing. Got: ${text.slice(0, 300)}`);
+  }
+}
+
+async function assertApiBackedToolsFailWithoutPublicDataKey(client: Client): Promise<void> {
+  for (const smokeCase of missingPublicDataKeySmokeCases) {
+    try {
+      const result = await client.callTool({
+        name: smokeCase.name,
+        arguments: smokeCase.arguments
+      });
+      const resultText = textFromToolResult(smokeCase.name, result);
+      if ((result as { isError?: unknown }).isError === true) {
+        assertMissingPublicDataKeyFailure(smokeCase.name, resultText);
+        console.log(`api_missing_key_failure[${smokeCase.name}]=ok`);
+        continue;
+      }
+      throw new Error(`API-backed tool ${smokeCase.name} unexpectedly succeeded without DATA_GO_KR_SERVICE_KEY.`);
+    } catch (error) {
+      const message = compactErrorText(error);
+      assertMissingPublicDataKeyFailure(smokeCase.name, message);
+      console.log(`api_missing_key_failure[${smokeCase.name}]=ok`);
+    }
+  }
+}
+
 function textFromResourceResult(result: unknown): string {
   const contents = (result as { contents?: Array<{ mimeType?: unknown; text?: unknown }> })?.contents ?? [];
   const content = contents.find(item => typeof item.text === "string");
@@ -143,6 +222,22 @@ function textFromResourceResult(result: unknown): string {
     throw new Error(`official source registry resource must use application/json, got ${String(content.mimeType)}`);
   }
   return content.text;
+}
+
+function sourceReviewAgeDays(reviewedAt: string): number {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(reviewedAt);
+  if (!match) throw new Error(`source reviewedAt must use YYYY-MM-DD: ${reviewedAt}`);
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const reviewedAtMs = Date.UTC(year, month - 1, day);
+  const parsed = new Date(reviewedAtMs);
+  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) {
+    throw new Error(`source reviewedAt must be a real calendar date: ${reviewedAt}`);
+  }
+  const now = new Date();
+  const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Math.floor((todayMs - reviewedAtMs) / 86_400_000);
 }
 
 function assertOfficialSourceRegistry(text: string): number {
@@ -167,6 +262,9 @@ function assertOfficialSourceRegistry(text: string): number {
     if (!hasKorean(sourceName)) throw new Error(`source ${id} must have a Korean sourceName`);
     if (typeof url !== "string" || new URL(url).protocol !== "https:") throw new Error(`source ${id} must use an https URL`);
     if (typeof reviewedAt !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(reviewedAt)) throw new Error(`source ${id} must have YYYY-MM-DD reviewedAt`);
+    const ageDays = sourceReviewAgeDays(reviewedAt);
+    if (ageDays < 0) throw new Error(`source ${id} reviewedAt must not be in the future`);
+    if (ageDays > maxSourceReviewAgeDays) throw new Error(`source ${id} reviewedAt is stale for registration: ageDays=${ageDays}`);
     if (confidence !== "official_national" && confidence !== "public_agency") throw new Error(`source ${id} has invalid confidence`);
     if (!hasKorean(useFor)) throw new Error(`source ${id} must describe useFor in Korean`);
     if (Object.values(source).some(value => typeof value === "string" && /kakao/i.test(value))) {
@@ -269,6 +367,10 @@ async function main() {
     console.log(`tool_output_chars[${smokeCase.name}]=${resultText.length}`);
   }
 
+  if (process.env.EXPECT_MISSING_PUBLIC_DATA_KEY_FAILURE === "1") {
+    await assertApiBackedToolsFailWithoutPublicDataKey(client);
+  }
+
   const resources = await client.listResources();
   if (!resources.resources.some(resource => resource.uri === officialSourceRegistryUri)) {
     throw new Error("official source registry resource is missing");
@@ -281,6 +383,6 @@ async function main() {
 }
 
 main().catch(error => {
-  console.error(error);
+  console.error(compactScriptErrorMessage(error));
   process.exit(1);
 });

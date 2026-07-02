@@ -1,4 +1,5 @@
 export type SourceConfidence = "official_national" | "public_agency";
+const SOURCE_CONFIDENCE_VALUES = new Set<SourceConfidence>(["official_national", "public_agency"]);
 
 export interface SourceRecord {
   id: string;
@@ -31,6 +32,7 @@ export interface SaleApiSpec {
 export type HousingType = "apartment" | "rowhouse" | "single_multi" | "officetel";
 
 export const REVIEWED_AT = "2026-06-30";
+export const MAX_SOURCE_REVIEW_AGE_DAYS = 45;
 
 export const SOURCES: SourceRecord[] = [
   {
@@ -282,6 +284,82 @@ export const KNOWN_LAWD_CODES = [
   { region: "부산광역시 해운대구", lawdCd: "26350" },
   { region: "인천광역시 연수구", lawdCd: "28185" }
 ];
+
+function reviewedAtEpochMs(reviewedAt: string): number {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(reviewedAt);
+  if (!match) {
+    throw new Error(`Source reviewedAt must use YYYY-MM-DD: ${reviewedAt}`);
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const epochMs = Date.UTC(year, month - 1, day);
+  const parsed = new Date(epochMs);
+  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) {
+    throw new Error(`Source reviewedAt must be a real calendar date: ${reviewedAt}`);
+  }
+  return epochMs;
+}
+
+export function sourceReviewAgeDays(reviewedAt: string, now = new Date()): number {
+  const reviewedAtMs = reviewedAtEpochMs(reviewedAt);
+  const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Math.floor((todayMs - reviewedAtMs) / 86_400_000);
+}
+
+export function assertFreshSourceReviews(sources: SourceRecord[] = SOURCES, now = new Date()): void {
+  for (const source of sources) {
+    const ageDays = sourceReviewAgeDays(source.reviewedAt, now);
+    if (ageDays < 0) {
+      throw new Error(`Official source review date must not be in the future: ${source.id} reviewedAt=${source.reviewedAt}`);
+    }
+    if (ageDays > MAX_SOURCE_REVIEW_AGE_DAYS) {
+      throw new Error(`Official source review is stale: ${source.id} reviewedAt=${source.reviewedAt} ageDays=${ageDays} maxDays=${MAX_SOURCE_REVIEW_AGE_DAYS}`);
+    }
+  }
+}
+
+export function assertValidSourceRegistry(sources: SourceRecord[] = SOURCES, now = new Date()): void {
+  if (sources.length === 0) {
+    throw new Error("Official source registry must include at least one source.");
+  }
+
+  const seenIds = new Set<string>();
+  for (const source of sources) {
+    if (!/^[a-z0-9][a-z0-9-]{1,80}$/.test(source.id)) {
+      throw new Error(`Official source id must be a stable lowercase slug: ${source.id}`);
+    }
+    if (seenIds.has(source.id)) {
+      throw new Error(`Duplicate official source id in registry: ${source.id}`);
+    }
+    seenIds.add(source.id);
+
+    for (const [fieldName, fieldValue] of Object.entries({
+      title: source.title,
+      sourceName: source.sourceName,
+      useFor: source.useFor
+    })) {
+      if (fieldValue.trim().length === 0) {
+        throw new Error(`Official source ${source.id} must include a non-empty ${fieldName}.`);
+      }
+    }
+
+    let url: URL;
+    try {
+      url = new URL(source.url);
+    } catch {
+      throw new Error(`Official source ${source.id} must use a valid HTTPS URL.`);
+    }
+    if (url.protocol !== "https:") {
+      throw new Error(`Official source ${source.id} must use an HTTPS URL.`);
+    }
+    if (!SOURCE_CONFIDENCE_VALUES.has(source.confidence)) {
+      throw new Error(`Official source ${source.id} must use a supported confidence value.`);
+    }
+  }
+
+  assertFreshSourceReviews(sources, now);
+}
 
 export function renderSources(ids?: string[]): string {
   const selected = ids ? SOURCES.filter(source => ids.includes(source.id)) : SOURCES;

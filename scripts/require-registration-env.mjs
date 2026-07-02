@@ -1,14 +1,30 @@
 const requiredEnvName = "DATA_GO_KR_SERVICE_KEY";
+const requiredAuthEnvName = "MCP_AUTH_TOKEN";
 const placeholders = new Set([
   "...",
   "your-data-go-kr-service-key",
   "replace-with-data-go-kr-service-key",
   "data-go-kr-service-key"
 ]);
+const authPlaceholders = new Set([
+  "...",
+  "replace-with-runtime-secret",
+  "your-mcp-auth-token",
+  "mcp-auth-token"
+]);
 const minKeyLength = 40;
+const minAuthTokenLength = 16;
+const maxAuthTokenLength = 4096;
+const authTokenPattern = /^[\x21-\x7E]+$/;
 const maxRegionLength = 80;
 const maxDepositManwon = 10_000_000;
 const supportedHousingTypes = ["apartment", "rowhouse", "single_multi", "officetel"];
+const officialDataTimeZone = "Asia/Seoul";
+const officialDataYearMonthFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: officialDataTimeZone,
+  year: "numeric",
+  month: "2-digit"
+});
 
 function fail(message, hint = "Set a real data.go.kr service key as a GitHub repository secret and as a PlayMCP runtime environment variable before registration.") {
   console.error(message);
@@ -24,9 +40,18 @@ function isFutureDealYmd(dealYmd, now = new Date()) {
   if (!/^\d{4}(0[1-9]|1[0-2])$/.test(dealYmd)) return false;
   const dealYear = Number(dealYmd.slice(0, 4));
   const dealMonth = Number(dealYmd.slice(4, 6));
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth() + 1;
+  const { year: currentYear, month: currentMonth } = officialDataYearMonth(now);
   return dealYear > currentYear || (dealYear === currentYear && dealMonth > currentMonth);
+}
+
+function officialDataYearMonth(now) {
+  const parts = officialDataYearMonthFormatter.formatToParts(now);
+  const year = Number(parts.find(part => part.type === "year")?.value);
+  const month = Number(parts.find(part => part.type === "month")?.value);
+  if (!Number.isSafeInteger(year) || !Number.isSafeInteger(month) || month < 1 || month > 12) {
+    failDemoInput(`Unable to resolve official public-data year-month in ${officialDataTimeZone}.`);
+  }
+  return { year, month };
 }
 
 function validateDemoInputs() {
@@ -36,6 +61,9 @@ function validateDemoInputs() {
   }
   if (/[\u0000-\u001F\u007F`]/.test(region)) {
     failDemoInput("PUBLIC_DATA_SMOKE_REGION must not include control characters, line breaks, tabs, or Markdown backticks.");
+  }
+  if (/!\[[^\]\r\n]{0,120}\]\([^) \r\n]{1,500}\)/.test(region) || /\[[^\]\r\n]{1,120}\]\([^) \r\n]{1,500}\)/.test(region) || /<\/?[A-Za-z][^>\r\n]{0,200}>|[<>]/.test(region)) {
+    failDemoInput("PUBLIC_DATA_SMOKE_REGION must not include Markdown links, images, HTML tags, or angle brackets.");
   }
   if (/\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b/.test(region) || /\bhttps?:\/\/[^\s)]+/i.test(region) || /\b\d{6}[\s.-]?[0-9]\d{6}\b/.test(region) || /\b01[016789][\s.-]?\d{3,4}[\s.-]?\d{4}\b/.test(region) || /\b0(?:2|[3-6][1-5]|70|80)[\s.-]?\d{3,4}[\s.-]?\d{4}\b/.test(region) || /(?:계좌(?:번호)?|입금\s*계좌|송금\s*계좌)\s*(?:은|는|:)?\s*\d{2,6}[\s-]\d{2,6}[\s-]\d{2,8}/.test(region) || /\b\d{1,4}\s*동\s*\d{1,4}\s*호/.test(region) || /\b\d{1,3}\s*층\s*\d{1,4}\s*호/.test(region) || /\b\d{2,4}\s*호/.test(region)) {
     failDemoInput("PUBLIC_DATA_SMOKE_REGION must not include personal identifiers, email addresses, phone numbers, URLs, payment account details, or household unit details.");
@@ -69,11 +97,15 @@ function validateDemoInputs() {
     failDemoInput(`PUBLIC_DATA_SMOKE_DEPOSIT_MANWON must be a positive integer no greater than ${maxDepositManwon} manwon for registration-ready deposit-to-sale evidence.`);
   }
 
-  const rawHousingTypes = process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES?.trim();
-  if (rawHousingTypes) {
-    const requested = rawHousingTypes.split(",").map(type => type.trim()).filter(Boolean);
-    if (requested.length === 0) {
+  const rawHousingTypesValue = process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES;
+  if (rawHousingTypesValue !== undefined) {
+    const rawHousingTypes = rawHousingTypesValue.trim();
+    if (rawHousingTypes.length === 0) {
       failDemoInput("PUBLIC_DATA_SMOKE_HOUSING_TYPES must include at least one supported housing type.");
+    }
+    const requested = rawHousingTypes.split(",").map(type => type.trim());
+    if (requested.some(type => type.length === 0)) {
+      failDemoInput("PUBLIC_DATA_SMOKE_HOUSING_TYPES must not include empty comma-separated entries.");
     }
     const duplicates = requested.filter((type, index) => requested.indexOf(type) !== index);
     if (duplicates.length > 0) {
@@ -123,6 +155,34 @@ if (serviceKey !== serviceKey.trim() || /\s/.test(serviceKey)) {
 
 if (serviceKey.length < minKeyLength || !/^[A-Za-z0-9+/]+={0,2}$/.test(serviceKey)) {
   fail(`${requiredEnvName} must look like a real data.go.kr service key.`);
+}
+
+const rawAuthToken = process.env[requiredAuthEnvName];
+
+if (rawAuthToken === undefined || rawAuthToken === "") {
+  console.error(`${requiredAuthEnvName} is required before running registration preflight.`);
+  console.error("Set it as a GitHub repository secret and as a PlayMCP runtime environment variable before registration.");
+  process.exit(1);
+}
+
+if (rawAuthToken !== rawAuthToken.trim() || /\s/.test(rawAuthToken)) {
+  fail(`${requiredAuthEnvName} must not contain whitespace.`);
+}
+
+if (authPlaceholders.has(rawAuthToken.toLowerCase())) {
+  fail(`${requiredAuthEnvName} must be a real bearer token, not a placeholder.`);
+}
+
+if (rawAuthToken.length < minAuthTokenLength) {
+  fail(`${requiredAuthEnvName} must be at least ${minAuthTokenLength} characters.`);
+}
+
+if (rawAuthToken.length > maxAuthTokenLength) {
+  fail(`${requiredAuthEnvName} must be ${maxAuthTokenLength} characters or fewer.`);
+}
+
+if (!authTokenPattern.test(rawAuthToken)) {
+  fail(`${requiredAuthEnvName} must contain only visible ASCII characters.`);
 }
 
 validateDemoInputs();

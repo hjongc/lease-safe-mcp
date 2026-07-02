@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { compactScriptErrorMessage } from "./safe-error.js";
 
 const child = spawn(process.execPath, ["dist/scripts/release-preflight.js"], {
   env: {
@@ -9,7 +10,7 @@ const child = spawn(process.execPath, ["dist/scripts/release-preflight.js"], {
 });
 
 child.on("error", error => {
-  console.error(error);
+  console.error(compactScriptErrorMessage(error));
   process.exit(1);
 });
 

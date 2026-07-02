@@ -4,10 +4,23 @@ const DOCKER_IMAGE_REFERENCE_PATTERN = new RegExp(
 );
 
 export function dockerImageReferenceFromEnv(primaryEnvName: string, fallbackEnvName: string | undefined, defaultValue: string): string {
-  const rawValue = process.env[primaryEnvName]?.trim() || (fallbackEnvName ? process.env[fallbackEnvName]?.trim() : undefined) || defaultValue;
+  const primaryValue = dockerImageReferenceEnvValue(primaryEnvName);
+  const fallbackValue = primaryValue === undefined && fallbackEnvName ? dockerImageReferenceEnvValue(fallbackEnvName) : undefined;
+  const rawValue = primaryValue ?? fallbackValue ?? defaultValue;
   if (!DOCKER_IMAGE_REFERENCE_PATTERN.test(rawValue)) {
-    const source = process.env[primaryEnvName]?.trim() ? primaryEnvName : fallbackEnvName && process.env[fallbackEnvName]?.trim() ? fallbackEnvName : "default";
+    const source = primaryValue !== undefined ? primaryEnvName : fallbackValue !== undefined ? fallbackEnvName : "default";
     throw new Error(`${source} must be a plain Docker image reference such as lease-safe-mcp-preflight or lease-safe-mcp-preflight:local.`);
   }
   return rawValue;
+}
+
+function dockerImageReferenceEnvValue(envName: string): string | undefined {
+  const rawValue = process.env[envName];
+  if (rawValue === undefined) return undefined;
+
+  const value = rawValue.trim();
+  if (value.length === 0) {
+    throw new Error(`${envName} must be a plain Docker image reference such as lease-safe-mcp-preflight or lease-safe-mcp-preflight:local.`);
+  }
+  return value;
 }

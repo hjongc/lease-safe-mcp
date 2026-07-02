@@ -13,6 +13,7 @@ type HousingEvidenceLine = {
 };
 
 const EVIDENCE_LINE_PATTERN = /^(public_data_smoke_config|legal_dong=ok|rent_market\[|sale_market\[|lease_assessment\[)/;
+const CONFIG_EVIDENCE_LINE_PATTERN = /^public_data_smoke_config registration_mode=true region="(?:\\.|[^"\\\r\n])*" lawd_cd=(\d{5}) deal_ymd=\d{4}(0[1-9]|1[0-2]) housing_types=([A-Za-z0-9_-]+(?:,[A-Za-z0-9_-]+)*) deposit_manwon=([1-9]\d*)$/;
 
 const REQUIRED_EVIDENCE_CATEGORIES: EvidenceCategory[] = [
   { name: "public_data_smoke_config", pattern: /^public_data_smoke_config / },
@@ -25,16 +26,17 @@ const REQUIRED_EVIDENCE_CATEGORIES: EvidenceCategory[] = [
 const SUPPORTED_EVIDENCE_HOUSING_TYPES = PUBLIC_DATA_SMOKE_HOUSING_TYPES;
 
 function expectedHousingTypesFromConfig(configLine: string): string[] {
-  if (!/\bregistration_mode=true\b/.test(configLine)) {
-    throw new Error("Live public-data smoke config evidence must be in registration_mode=true.");
-  }
-
-  const match = /\bhousing_types=([A-Za-z0-9_,_-]+)/.exec(configLine);
+  const match = CONFIG_EVIDENCE_LINE_PATTERN.exec(configLine);
   if (!match) {
-    throw new Error("Live public-data smoke config evidence is missing housing_types.");
+    throw new Error("Live public-data smoke config evidence must exactly match registration_mode=true, region, lawd_cd, deal_ymd, housing_types, and deposit_manwon fields.");
   }
 
-  const housingTypes = match[1].split(",").filter(Boolean);
+  const lawdCd = match[1];
+  if (lawdCd === "00000") {
+    throw new Error("Live public-data smoke config evidence lawd_cd must not be 00000.");
+  }
+
+  const housingTypes = match[3].split(",").filter(Boolean);
   if (housingTypes.length === 0) {
     throw new Error("Live public-data smoke config evidence has no housing types.");
   }
@@ -57,7 +59,7 @@ function expectedHousingTypesFromConfig(configLine: string): string[] {
   return housingTypes;
 }
 
-function assertPositiveEvidenceCount(line: string, label: string, pattern: RegExp): void {
+function positiveEvidenceCount(line: string, label: string, pattern: RegExp): number {
   const match = pattern.exec(line);
   if (!match?.[1]) {
     throw new Error(`Malformed live public-data evidence count for ${label}: ${line}`);
@@ -67,19 +69,28 @@ function assertPositiveEvidenceCount(line: string, label: string, pattern: RegEx
   if (!Number.isSafeInteger(count) || count <= 0) {
     throw new Error(`Live public-data evidence count for ${label} must be positive: ${line}`);
   }
+  return count;
+}
+
+function assertOfficialTotalCoversSamples(line: string, label: string, samplePattern: RegExp, officialTotalPattern: RegExp): void {
+  const samples = positiveEvidenceCount(line, label, samplePattern);
+  const officialTotal = positiveEvidenceCount(line, `${label} official_total`, officialTotalPattern);
+  if (officialTotal < samples) {
+    throw new Error(`Live public-data official_total for ${label} must be greater than or equal to samples: ${line}`);
+  }
 }
 
 function assertPositiveEvidenceCounts(lines: string[]): void {
   for (const line of lines) {
     if (/^rent_market\[/.test(line)) {
-      assertPositiveEvidenceCount(line, "rent_market", /\bsamples=(\d+)\b/);
+      assertOfficialTotalCoversSamples(line, "rent_market", /\bsamples=(\d+)\b/, /\bofficial_total=(\d+)\b/);
     }
     if (/^sale_market\[/.test(line)) {
-      assertPositiveEvidenceCount(line, "sale_market", /\bsamples=(\d+)\b/);
+      assertOfficialTotalCoversSamples(line, "sale_market", /\bsamples=(\d+)\b/, /\bofficial_total=(\d+)\b/);
     }
     if (/^lease_assessment\[/.test(line)) {
-      assertPositiveEvidenceCount(line, "lease_assessment rent", /\brent_samples=(\d+)\b/);
-      assertPositiveEvidenceCount(line, "lease_assessment sale", /\bsale_samples=(\d+)\b/);
+      assertOfficialTotalCoversSamples(line, "lease_assessment rent", /\brent_samples=(\d+)\b/, /\brent_official_total=(\d+)\b/);
+      assertOfficialTotalCoversSamples(line, "lease_assessment sale", /\bsale_samples=(\d+)\b/, /\bsale_official_total=(\d+)\b/);
     }
   }
 }
@@ -91,12 +102,32 @@ function assertSingleEvidenceLine(lines: string[], label: string, pattern: RegEx
   }
 }
 
+function assertStrictSingletonEvidenceLineFormats(lines: string[]): void {
+  for (const line of lines) {
+    if (/^public_data_smoke_config/.test(line) && !CONFIG_EVIDENCE_LINE_PATTERN.test(line)) {
+      throw new Error(`Malformed live public-data smoke config evidence line. Expected registration_mode=true with exact non-secret fields: ${line}`);
+    }
+    if (/^legal_dong=ok/.test(line) && !/^legal_dong=ok$/.test(line)) {
+      throw new Error(`Malformed live public-data legal-dong evidence line: ${line}`);
+    }
+  }
+}
+
 function parseHousingEvidenceLine(line: string): HousingEvidenceLine | undefined {
-  const match = /^(rent_market|sale_market|lease_assessment)\[([A-Za-z0-9_-]+)\]=ok\b/.exec(line);
-  if (!match) return undefined;
+  const marketMatch = /^(rent_market|sale_market)\[([A-Za-z0-9_-]+)\]=ok samples=\d+ official_total=\d+$/.exec(line);
+  if (marketMatch) {
+    return {
+      category: marketMatch[1] as HousingEvidenceLine["category"],
+      housingType: marketMatch[2],
+      line
+    };
+  }
+
+  const assessmentMatch = /^lease_assessment\[([A-Za-z0-9_-]+)\]=ok rent_samples=\d+ rent_official_total=\d+ sale_samples=\d+ sale_official_total=\d+$/.exec(line);
+  if (!assessmentMatch) return undefined;
   return {
-    category: match[1] as HousingEvidenceLine["category"],
-    housingType: match[2],
+    category: "lease_assessment",
+    housingType: assessmentMatch[1],
     line
   };
 }
@@ -140,6 +171,7 @@ export function extractLivePublicDataEvidenceLines(logText: string): string[] {
     throw new Error(`Missing required live public-data evidence categories: ${missing.join(", ")}`);
   }
 
+  assertStrictSingletonEvidenceLineFormats(lines);
   assertSingleEvidenceLine(lines, "public_data_smoke_config", /^public_data_smoke_config /);
   assertSingleEvidenceLine(lines, "legal_dong=ok", /^legal_dong=ok$/);
   assertStrictHousingEvidenceLineFormats(lines);

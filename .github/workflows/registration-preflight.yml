@@ -35,6 +35,7 @@ jobs:
 
     env:
       DATA_GO_KR_SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
+      MCP_AUTH_TOKEN: ${{ secrets.MCP_AUTH_TOKEN }}
       PUBLIC_DATA_SMOKE_REGION: ${{ inputs.public_data_smoke_region }}
       PUBLIC_DATA_SMOKE_LAWD_CD: ${{ inputs.public_data_smoke_lawd_cd }}
       PUBLIC_DATA_SMOKE_DEAL_YMD: ${{ inputs.public_data_smoke_deal_ymd }}
@@ -42,10 +43,14 @@ jobs:
       PUBLIC_DATA_SMOKE_HOUSING_TYPES: apartment,rowhouse,single_multi,officetel
 
     steps:
-      - name: Verify live public-data secret
+      - name: Verify registration secrets
         run: |
           if [ -z "${DATA_GO_KR_SERVICE_KEY}" ]; then
             echo "DATA_GO_KR_SERVICE_KEY repository secret is required for registration evidence." >&2
+            exit 1
+          fi
+          if [ -z "${MCP_AUTH_TOKEN}" ]; then
+            echo "MCP_AUTH_TOKEN repository secret is required for production MCP authentication evidence." >&2
             exit 1
           fi
 
@@ -107,6 +112,11 @@ jobs:
             else
               echo "- GitHub public-data secret: missing"
             fi
+            if [ -n "${MCP_AUTH_TOKEN}" ]; then
+              echo "- GitHub MCP auth secret: configured (value not printed)"
+            else
+              echo "- GitHub MCP auth secret: missing"
+            fi
             echo "- Live public-data smoke: required by registration preflight"
             echo "- Required housing coverage: ${PUBLIC_DATA_SMOKE_HOUSING_TYPES}"
             echo "- Demo smoke region: \`${SAFE_PUBLIC_DATA_SMOKE_REGION}\`"
@@ -115,6 +125,7 @@ jobs:
             echo "- Demo smoke deposit: \`${SAFE_PUBLIC_DATA_SMOKE_DEPOSIT_MANWON}\` manwon"
             echo "- Whitespace diff checks: working tree, staged diff, and submitted commit included"
             echo "- Root route minimality smoke: included in local HTTP and Docker runtime smoke"
+            echo "- API-backed missing-key smoke: included when DATA_GO_KR_SERVICE_KEY is absent"
             echo "- MCP request-id smoke: included in local HTTP and Docker runtime smoke"
             echo "- Docker runtime smoke: included in registration preflight"
             echo "- Docker non-root runtime check: included in registration preflight"

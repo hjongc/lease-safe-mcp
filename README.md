@@ -68,19 +68,21 @@ MCP_ALLOWED_HOSTS=your.playmcp.host,your.custom.domain
 
 Use unique plain hostnames only. Do not include `https://`, ports, paths, whitespace, wildcards, blank comma-separated entries, underscores, empty labels, or labels that start or end with `-`.
 
+The HTTP bind host defaults to `0.0.0.0` for container runtimes. Set `HOST=127.0.0.1` only for local or platform environments that require loopback binding.
+
 Production also requires the official public-data key at startup because the flagship tool depends on live legal-dong, rent, and sale APIs:
 
 ```bash
 DATA_GO_KR_SERVICE_KEY=your-data-go-kr-service-key
 ```
 
-Optional bearer-token protection is available for direct deployments:
+Production also requires bearer-token protection for MCP POST requests:
 
 ```bash
 MCP_AUTH_TOKEN=replace-with-runtime-secret
 ```
 
-When `MCP_AUTH_TOKEN` is set, it must be a real token, not a placeholder, at least 16 characters, free of whitespace, and visible ASCII only. `POST /mcp` then requires `Authorization: Bearer <token>`.
+It must be a real token, not a placeholder, at least 16 characters, free of whitespace, and visible ASCII only. In production, startup fails when `MCP_AUTH_TOKEN` is missing or blank. `POST /mcp` requires `Authorization: Bearer <token>`.
 
 Optional request-size hardening is available for deployments with stricter ingress limits:
 
@@ -88,7 +90,7 @@ Optional request-size hardening is available for deployments with stricter ingre
 MCP_MAX_BODY_BYTES=262144
 ```
 
-The default MCP request body limit is 262144 bytes, and the maximum accepted value is 1048576 bytes. Invalid values fail at startup instead of silently changing runtime behavior.
+The default MCP request body limit is 262144 bytes, and the maximum accepted value is 1048576 bytes. Invalid or blank configured values fail at startup instead of silently changing runtime behavior.
 
 Optional MCP request rate limiting is available for public deployments:
 
@@ -96,7 +98,7 @@ Optional MCP request rate limiting is available for public deployments:
 MCP_RATE_LIMIT_PER_MINUTE=120
 ```
 
-The default MCP POST rate limit is 120 requests per client per minute, and the maximum accepted value is 10000. Set `MCP_RATE_LIMIT_PER_MINUTE=0` to disable it when an upstream gateway already enforces stricter limits.
+The default MCP POST rate limit is 120 requests per client per minute, and the maximum accepted value is 10000. Set `MCP_RATE_LIMIT_PER_MINUTE=0` to disable it when an upstream gateway already enforces stricter limits. Blank configured values fail at startup instead of falling back to the default.
 
 Optional public-data timeout tuning is available when the deployment ingress has a tighter request budget:
 
@@ -104,7 +106,7 @@ Optional public-data timeout tuning is available when the deployment ingress has
 PUBLIC_DATA_TIMEOUT_MS=8000
 ```
 
-The default official public-data API timeout is 8000ms, with a maximum accepted value of 60000ms. Invalid values fail before requests are made.
+The default official public-data API timeout is 8000ms, with a maximum accepted value of 60000ms. Invalid or blank configured values fail before requests are made.
 
 ## Run Locally
 
@@ -140,17 +142,17 @@ Release preflight:
 npm run preflight
 ```
 
-`npm run preflight` runs working-tree, staged, and committed whitespace diff checks, secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke with root route minimality, DNS-rebinding Host rejection, unsupported-method, invalid-JSON, unsupported-content-type, bearer-auth, and oversized-request rejection checks, MCP rate-limit smoke, production dependency audit, Docker build, Docker runtime smoke with the same MCP boundary checks, and live public-data smoke with extracted evidence-line validation when `DATA_GO_KR_SERVICE_KEY` is set.
+`npm run preflight` runs working-tree, staged, and committed whitespace diff checks, secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke with root route minimality, API-backed missing-key failure checks when `DATA_GO_KR_SERVICE_KEY` is absent, DNS-rebinding Host rejection, unsupported-method, invalid-JSON, unsupported-content-type, bearer-auth, malformed `Content-Length`, and oversized-request rejection checks, MCP rate-limit smoke, production dependency audit, Docker build, Docker runtime smoke with the same MCP boundary checks, and live public-data smoke with extracted evidence-line validation when `DATA_GO_KR_SERVICE_KEY` is set.
 
 Registration preflight:
 
 ```bash
-DATA_GO_KR_SERVICE_KEY=... npm run preflight:registration
+DATA_GO_KR_SERVICE_KEY=... MCP_AUTH_TOKEN=... npm run preflight:registration
 ```
 
 `npm run preflight:registration` runs the same checks but requires the live public-data smoke to run, pass for every supported housing type, and produce extractable registration evidence lines. Use it before PlayMCP registration.
 
-For registration evidence in GitHub Actions, run the manual **Registration Preflight** workflow after adding `DATA_GO_KR_SERVICE_KEY` as a repository secret. Unlike the normal CI workflow, this workflow fails instead of skipping when the live public-data key is missing.
+For registration evidence in GitHub Actions, run the manual **Registration Preflight** workflow after adding `DATA_GO_KR_SERVICE_KEY` and `MCP_AUTH_TOKEN` as repository secrets. Unlike the normal CI workflow, this workflow fails instead of skipping when registration secrets are missing.
 
 Final registration readiness gate:
 
@@ -158,7 +160,7 @@ Final registration readiness gate:
 npm run check:registration-readiness
 ```
 
-`npm run check:registration-readiness` fails unless the worktree is clean, `DATA_GO_KR_SERVICE_KEY` exists as a GitHub repository secret, the latest `CI` run for the current commit on `main` completed successfully with `Live public-data smoke` passed instead of skipped, and the manual `Registration Preflight` workflow completed successfully for the same commit with its evidence summary published. It reads only GitHub secret names and workflow metadata, never the secret value.
+`npm run check:registration-readiness` fails unless the worktree is clean, local `HEAD` matches the remote `main` HEAD, `DATA_GO_KR_SERVICE_KEY` and `MCP_AUTH_TOKEN` exist as GitHub repository secrets, the latest `CI` run for that commit on `main` completed successfully with `Live public-data smoke` passed instead of skipped and `Publish live public-data status` succeeded inside the `Quality Gate` job, and the manual `Registration Preflight` workflow completed successfully for the same commit with its evidence summary published inside the `Registration Evidence` job. It reads only GitHub secret names and workflow metadata, never secret values.
 
 Live public-data smoke before production rollout:
 
@@ -166,7 +168,7 @@ Live public-data smoke before production rollout:
 DATA_GO_KR_SERVICE_KEY=... npm run smoke:public-data
 ```
 
-By default, the live public-data smoke checks legal-dong lookup, rent-market APIs for all four housing types, sale-market APIs for all four housing types, and the flagship one-shot assessment for every selected housing type. Successful registration evidence includes `legal_dong=ok`, `rent_market[...]`, `sale_market[...]`, and `lease_assessment[...]` log lines for every selected housing type.
+By default, the live public-data smoke checks legal-dong lookup, rent-market APIs for all four housing types, sale-market APIs for all four housing types, and the flagship one-shot assessment for every selected housing type. Successful registration evidence includes `legal_dong=ok`, `rent_market[...]`, `sale_market[...]`, and `lease_assessment[...]` log lines for every selected housing type, with positive sample counts and official `totalCount` evidence.
 
 Optional overrides:
 
@@ -180,7 +182,7 @@ To narrow the live smoke while debugging one source:
 PUBLIC_DATA_SMOKE_HOUSING_TYPES=apartment,rowhouse DATA_GO_KR_SERVICE_KEY=... npm run smoke:public-data
 ```
 
-Do not use a narrowed `PUBLIC_DATA_SMOKE_HOUSING_TYPES` list as registration evidence. `npm run preflight:registration` fails unless all supported housing types are included.
+Do not use a narrowed `PUBLIC_DATA_SMOKE_HOUSING_TYPES` list as registration evidence. `npm run preflight:registration` fails unless all supported housing types are included, and blank or empty comma-separated entries such as `apartment,` are rejected instead of being normalized.
 
 ## CI Gate
 
@@ -205,13 +207,13 @@ Before registering in PlayMCP:
 - Review `SECURITY.md`
 - Review `docs/submission.md`
 - Review `docs/operations.md`
-- Run `npm run preflight:registration` locally with `DATA_GO_KR_SERVICE_KEY` set
-- Run `npm run check:github-secret` and confirm the GitHub repository secret exists before trusting CI live-smoke evidence
+- Run `npm run preflight:registration` locally with `DATA_GO_KR_SERVICE_KEY` and `MCP_AUTH_TOKEN` set
+- Run `npm run check:github-secret` and confirm the GitHub repository secrets exist before trusting CI live-smoke evidence
 - Run the manual GitHub Actions `Registration Preflight` workflow on the submitted commit
 - Confirm the latest GitHub Actions CI run is green
 - Confirm GitHub Actions live public-data smoke is passed, not skipped
 - Run `npm run check:registration-readiness` on a clean worktree to verify the current commit has passing CI and Registration Preflight evidence
-- Configure the same `DATA_GO_KR_SERVICE_KEY` as a PlayMCP runtime environment variable
+- Configure the same `DATA_GO_KR_SERVICE_KEY` and a production `MCP_AUTH_TOKEN` as PlayMCP runtime environment variables
 - Set `MCP_ALLOWED_HOSTS` to the PlayMCP host or deployment domain
 - Use `assess_lease_safety` as the demo entry tool
 

@@ -4,7 +4,11 @@
 
 The flagship `assess_lease_safety` tool calls both the rent and sale APIs for the same `housingType`, `LAWD_CD`, and `DEAL_YMD`, then combines the market signals with official checklist guidance. It does not replace failed API calls with sample values.
 
-Official public-data calls use `PUBLIC_DATA_TIMEOUT_MS`, default `8000` and maximum `60000`, so slow upstream responses fail at the source boundary instead of hanging the MCP request indefinitely.
+Official public-data calls use `PUBLIC_DATA_TIMEOUT_MS`, default `8000` and maximum `60000`, so slow upstream responses fail at the source boundary instead of hanging the MCP request indefinitely. Blank configured timeout values are rejected instead of falling back to the default.
+
+Successful public-data responses with browser HTML content types fail before parsing, so gateway, proxy, approval, or auth pages are reported as upstream transport problems instead of malformed market samples.
+
+Rent and sale market calls require the official `totalCount` response field. Missing, contradictory, or prematurely exhausted pagination metadata fails the request instead of treating the first page as a complete market sample.
 
 1. 행정안전부_행정표준코드_법정동코드
    - Portal: https://www.data.go.kr/data/15077871/openapi.do

@@ -1,14 +1,16 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { request, type IncomingHttpHeaders } from "node:http";
 import { createServer } from "node:net";
+import { compactScriptErrorMessage } from "./safe-error.js";
 
 const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
+const LOCAL_SMOKE_HOST = "127.0.0.1";
 
 function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
     server.on("error", reject);
-    server.listen(0, "0.0.0.0", () => {
+    server.listen(0, LOCAL_SMOKE_HOST, () => {
       const address = server.address();
       server.close(() => {
         if (!address || typeof address === "string") {
@@ -102,6 +104,9 @@ function assertSecurityHeaders(response: Response, label: string): void {
   if (response.headers.get("content-security-policy") !== "default-src 'none'; base-uri 'none'; frame-ancestors 'none'") {
     throw new Error(`${label} response must set a restrictive Content-Security-Policy.`);
   }
+  if (response.headers.get("permissions-policy") !== "camera=(), microphone=(), geolocation=(), payment=(), usb=()") {
+    throw new Error(`${label} response must set a restrictive Permissions-Policy.`);
+  }
   if (response.headers.get("referrer-policy") !== "no-referrer") {
     throw new Error(`${label} response must set Referrer-Policy: no-referrer.`);
   }
@@ -131,6 +136,9 @@ function assertRawSecurityHeaders(headers: IncomingHttpHeaders, label: string): 
   }
   if (headerValue(headers, "content-security-policy") !== "default-src 'none'; base-uri 'none'; frame-ancestors 'none'") {
     throw new Error(`${label} response must set a restrictive Content-Security-Policy.`);
+  }
+  if (headerValue(headers, "permissions-policy") !== "camera=(), microphone=(), geolocation=(), payment=(), usb=()") {
+    throw new Error(`${label} response must set a restrictive Permissions-Policy.`);
   }
   if (headerValue(headers, "referrer-policy") !== "no-referrer") {
     throw new Error(`${label} response must set Referrer-Policy: no-referrer.`);
@@ -313,6 +321,51 @@ async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): P
   const body = await response.json() as { error?: { code?: unknown; message?: unknown } };
   if (body.error?.code !== -32600 || body.error?.message !== `MCP request body exceeds ${maxBodyBytes} bytes.`) {
     throw new Error("Oversized MCP request did not return the expected JSON-RPC invalid request error.");
+  }
+}
+
+async function verifyMalformedContentLengthRejected(endpoint: string): Promise<void> {
+  const target = new URL(endpoint);
+  const response = await new Promise<{ statusCode: number; body: string; contentType: string | string[] | undefined; headers: IncomingHttpHeaders }>((resolve, reject) => {
+    const req = request({
+      hostname: target.hostname,
+      port: target.port,
+      path: target.pathname,
+      method: "POST",
+      headers: {
+        "Content-Length": "9007199254740992",
+        "Content-Type": "application/json"
+      }
+    }, res => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", chunk => {
+        body += chunk;
+      });
+      res.on("end", () => {
+        resolve({
+          statusCode: res.statusCode ?? 0,
+          body,
+          contentType: res.headers["content-type"],
+          headers: res.headers
+        });
+      });
+    });
+    req.on("error", reject);
+    req.end();
+  });
+
+  assertRawSecurityHeaders(response.headers, "malformed Content-Length rejection");
+  if (response.statusCode !== 400) {
+    throw new Error(`Expected malformed Content-Length MCP request to return 400, got ${response.statusCode}: ${response.body}`);
+  }
+  if (typeof response.contentType !== "string" || !response.contentType.includes("application/json")) {
+    throw new Error("Malformed Content-Length MCP request rejection must return application/json.");
+  }
+
+  const body = JSON.parse(response.body) as { error?: { code?: unknown; message?: unknown } };
+  if (body.error?.code !== -32600 || body.error?.message !== "Invalid Content-Length header.") {
+    throw new Error("Malformed Content-Length MCP request did not return the expected JSON-RPC invalid request error.");
   }
 }
 
@@ -585,13 +638,15 @@ function stopServer(server: ChildProcess): Promise<void> {
 
 async function main() {
   const port = smokePortFromEnv("MCP_HTTP_SMOKE_PORT") ?? await getFreePort();
-  const endpoint = `http://127.0.0.1:${port}/mcp`;
+  const endpoint = `http://${LOCAL_SMOKE_HOST}:${port}/mcp`;
   const authToken = process.env.MCP_AUTH_TOKEN ?? "smoke-token-for-preflight";
   const env = {
     ...process.env,
     MCP_ALLOWED_HOSTS: process.env.MCP_ALLOWED_HOSTS ?? "127.0.0.1,localhost",
     MCP_AUTH_TOKEN: authToken,
     MCP_ENDPOINT: endpoint,
+    EXPECT_MISSING_PUBLIC_DATA_KEY_FAILURE: process.env.DATA_GO_KR_SERVICE_KEY?.trim() ? "0" : "1",
+    HOST: process.env.HOST ?? LOCAL_SMOKE_HOST,
     PORT: String(port)
   };
 
@@ -634,6 +689,8 @@ async function main() {
     console.log("auth_rejection=ok");
     await verifyOversizedBearerTokenRejected(endpoint);
     console.log("oversized_bearer_rejection=ok");
+    await verifyMalformedContentLengthRejected(endpoint);
+    console.log("malformed_content_length=ok");
     await verifyOversizedRequest(endpoint, mcpMaxBodyBytesFromEnv());
     console.log("oversized_request=ok");
     await runNode(["dist/scripts/smoke.js"], env);
@@ -644,6 +701,6 @@ async function main() {
 }
 
 main().catch(error => {
-  console.error(error);
+  console.error(compactScriptErrorMessage(error));
   process.exit(1);
 });

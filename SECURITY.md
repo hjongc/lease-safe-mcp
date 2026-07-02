@@ -19,8 +19,8 @@ For this competition build, report security issues privately to the repository o
 ## Secret Handling
 
 - Never commit `.env`, `.env.*`, `DATA_GO_KR_SERVICE_KEY`, `MCP_AUTH_TOKEN`, or copied PlayMCP runtime secrets.
-- Rotate `DATA_GO_KR_SERVICE_KEY` if it appears in chat, logs, issues, screenshots, or command history.
-- After rotating, update GitHub Actions secrets and PlayMCP runtime environment, then run `npm run preflight:registration`.
+- Rotate `DATA_GO_KR_SERVICE_KEY` or `MCP_AUTH_TOKEN` if either appears in chat, logs, issues, screenshots, or command history.
+- After rotating, update GitHub Actions secrets and PlayMCP runtime environment, then run `npm run preflight:registration` and `npm run check:registration-readiness`.
 
 ## Security Gates
 
@@ -34,7 +34,7 @@ Every production-bound change should pass:
 - `npm audit --omit=dev`
 - Docker build and `npm run smoke:docker`
 
-Before PlayMCP registration, `npm run preflight:registration` must pass with a live `DATA_GO_KR_SERVICE_KEY`.
+Before PlayMCP registration, `npm run preflight:registration` must pass with a live `DATA_GO_KR_SERVICE_KEY` and a production `MCP_AUTH_TOKEN`.
 
 ## Dependency Updates
 

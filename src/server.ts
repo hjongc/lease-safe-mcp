@@ -24,9 +24,11 @@ import {
   routeOfficialHelp,
   sourceRegistry
 } from "./domain.js";
+import { SOURCES, assertValidSourceRegistry, type SourceRecord } from "./sources.js";
 
 const SERVICE_NAME = "Lease Safe(전월세안전내비)";
 const VERSION = "0.1.0";
+const DEFAULT_HTTP_HOST = "0.0.0.0";
 const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
 const MAX_MCP_MAX_BODY_BYTES = 1024 * 1024;
 const DEFAULT_MCP_RATE_LIMIT_PER_MINUTE = 120;
@@ -181,7 +183,12 @@ function requireProductionDataKey(): void {
 
 function mcpAuthToken(): string | undefined {
   const token = process.env.MCP_AUTH_TOKEN;
-  if (token === undefined || token === "") return undefined;
+  if (token === undefined || token === "") {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("MCP_AUTH_TOKEN is required in production for MCP POST authentication.");
+    }
+    return undefined;
+  }
   if (token !== token.trim() || /\s/.test(token)) {
     throw new Error("MCP_AUTH_TOKEN must not contain whitespace.");
   }
@@ -201,8 +208,13 @@ function mcpAuthToken(): string | undefined {
 }
 
 export function mcpMaxBodyBytes(): number {
-  const rawLimit = process.env.MCP_MAX_BODY_BYTES?.trim();
-  if (!rawLimit) return DEFAULT_MCP_MAX_BODY_BYTES;
+  const rawLimitValue = process.env.MCP_MAX_BODY_BYTES;
+  if (rawLimitValue === undefined) return DEFAULT_MCP_MAX_BODY_BYTES;
+
+  const rawLimit = rawLimitValue.trim();
+  if (rawLimit.length === 0) {
+    throw new Error(`MCP_MAX_BODY_BYTES must be a positive integer no greater than ${MAX_MCP_MAX_BODY_BYTES}.`);
+  }
 
   const parsed = parsePlainInteger(rawLimit);
   if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > MAX_MCP_MAX_BODY_BYTES) {
@@ -212,8 +224,13 @@ export function mcpMaxBodyBytes(): number {
 }
 
 export function mcpRateLimitPerMinute(): number {
-  const rawLimit = process.env.MCP_RATE_LIMIT_PER_MINUTE?.trim();
-  if (!rawLimit) return DEFAULT_MCP_RATE_LIMIT_PER_MINUTE;
+  const rawLimitValue = process.env.MCP_RATE_LIMIT_PER_MINUTE;
+  if (rawLimitValue === undefined) return DEFAULT_MCP_RATE_LIMIT_PER_MINUTE;
+
+  const rawLimit = rawLimitValue.trim();
+  if (rawLimit.length === 0) {
+    throw new Error(`MCP_RATE_LIMIT_PER_MINUTE must be a non-negative integer no greater than ${MAX_MCP_RATE_LIMIT_PER_MINUTE}.`);
+  }
 
   const parsed = parsePlainInteger(rawLimit);
   if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > MAX_MCP_RATE_LIMIT_PER_MINUTE) {
@@ -223,14 +240,42 @@ export function mcpRateLimitPerMinute(): number {
 }
 
 export function httpPort(): number {
-  const rawPort = process.env.PORT?.trim();
-  if (!rawPort) return 3000;
+  const rawPortValue = process.env.PORT;
+  if (rawPortValue === undefined) return 3000;
+
+  const rawPort = rawPortValue.trim();
+  if (rawPort.length === 0) {
+    throw new Error("PORT must be an integer between 1 and 65535.");
+  }
 
   const parsed = parsePlainInteger(rawPort);
   if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 65535) {
     throw new Error("PORT must be an integer between 1 and 65535.");
   }
   return parsed;
+}
+
+export function httpHost(): string {
+  const rawHostValue = process.env.HOST;
+  if (rawHostValue === undefined) return DEFAULT_HTTP_HOST;
+
+  const host = rawHostValue.trim();
+  if (
+    host.length === 0 ||
+    host === "*" ||
+    host.includes("://") ||
+    host.includes("/") ||
+    host.includes("\\") ||
+    host.includes("@") ||
+    host.includes("?") ||
+    host.includes("#") ||
+    host.includes(":") ||
+    /\s/.test(host) ||
+    !isValidAllowedHost(host)
+  ) {
+    throw new Error("HOST must be a plain hostname or IPv4 address, not a URL, port, path, wildcard, userinfo, query string, fragment, IPv6 literal, or whitespace.");
+  }
+  return host;
 }
 
 function parsePlainInteger(value: string): number {
@@ -320,8 +365,12 @@ function rateLimitMcpRequests(limitPerMinute: number) {
     window.count += 1;
     windows.set(key, window);
 
+    const retryAfterSeconds = Math.max(1, Math.ceil((window.resetAt - now) / 1000));
+    res.setHeader("RateLimit-Limit", String(limitPerMinute));
+    res.setHeader("RateLimit-Remaining", String(Math.max(0, limitPerMinute - window.count)));
+    res.setHeader("RateLimit-Reset", String(retryAfterSeconds));
+
     if (window.count > limitPerMinute) {
-      const retryAfterSeconds = Math.max(1, Math.ceil((window.resetAt - now) / 1000));
       res.setHeader("Retry-After", String(retryAfterSeconds));
       jsonRpcError(res, 429, -32002, "Too many MCP requests. Try again later.");
       return;
@@ -349,7 +398,13 @@ function rejectOversizedMcpRequest(maxBodyBytes: number) {
       return;
     }
 
-    if (Number(contentLength) > maxBodyBytes) {
+    const parsedContentLength = Number(contentLength);
+    if (!Number.isSafeInteger(parsedContentLength)) {
+      jsonRpcError(res, 400, -32600, "Invalid Content-Length header.");
+      return;
+    }
+
+    if (parsedContentLength > maxBodyBytes) {
       jsonRpcError(res, 413, -32600, `MCP request body exceeds ${maxBodyBytes} bytes.`);
       return;
     }
@@ -447,6 +502,7 @@ function setSecurityHeaders(_req: Request, res: Response, next: NextFunction): v
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Content-Security-Policy", "default-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Cache-Control", "no-store");
   next();
@@ -731,7 +787,8 @@ export function createServer(): McpServer {
   return server;
 }
 
-export function createApp() {
+export function createApp(now = new Date(), sources: SourceRecord[] = SOURCES) {
+  assertValidSourceRegistry(sources, now);
   const allowedHosts = requiredAllowedHosts();
   requireProductionDataKey();
   const maxBodyBytes = mcpMaxBodyBytes();
@@ -821,15 +878,12 @@ export function createApp() {
   return app;
 }
 
-export function startHttpServer(port = httpPort()): Server {
+export function startHttpServer(port = httpPort(), host = httpHost()): Server {
   const app = createApp();
-  const httpServer = app.listen(port, "0.0.0.0", error => {
-    if (error) {
-      console.error("Failed to start server", error);
-      process.exit(1);
-    }
-    console.log(`${SERVICE_NAME} listening on port ${port}`);
+  const httpServer = app.listen(port, host, () => {
+    console.log(`${SERVICE_NAME} listening on ${host}:${port}`);
   });
+  httpServer.once("error", handleHttpServerListenError);
 
   function shutdown(signal: NodeJS.Signals) {
     console.log(`Received ${signal}; shutting down ${SERVICE_NAME}`);
@@ -842,7 +896,7 @@ export function startHttpServer(port = httpPort()): Server {
     httpServer.close(error => {
       clearTimeout(forceExit);
       if (error) {
-        console.error("Failed to close server", error);
+        console.error("Failed to close server", compactLogError(error));
         process.exit(1);
       }
       process.exit(0);
@@ -853,6 +907,11 @@ export function startHttpServer(port = httpPort()): Server {
   process.once("SIGINT", shutdown);
 
   return httpServer;
+}
+
+export function handleHttpServerListenError(error: unknown): never {
+  console.error("Failed to start server", compactLogError(error));
+  process.exit(1);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

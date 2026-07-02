@@ -16,6 +16,12 @@ const DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS = new Set([
 const MIN_DATA_GO_KR_SERVICE_KEY_LENGTH = 40;
 const MAX_LEGAL_DONG_REGION_LENGTH = 80;
 const MAX_PUBLIC_DATA_TEXT_FIELD_LENGTH = 80;
+const OFFICIAL_DATA_TIME_ZONE = "Asia/Seoul";
+const OFFICIAL_DATA_YEAR_MONTH_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: OFFICIAL_DATA_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit"
+});
 
 export const MONEY_INPUT_LIMITS = {
   depositManwon: 10_000_000,
@@ -58,7 +64,7 @@ interface RentMarketSnapshot {
   label: string;
   lawdCd: string;
   dealYmd: string;
-  officialTotalCount?: number;
+  officialTotalCount: number;
   sampleCount: number;
   depositSampleCount: number;
   median?: number;
@@ -74,7 +80,7 @@ interface SaleMarketSnapshot {
   label: string;
   lawdCd: string;
   dealYmd: string;
-  officialTotalCount?: number;
+  officialTotalCount: number;
   sampleCount: number;
   median?: number;
   max?: number;
@@ -109,6 +115,7 @@ function cleanText(value: string | undefined, fallback = "미확인"): string {
   return trimmed
     .replace(/!\[([^\]\r\n]{0,120})\]\([^) \r\n]{1,500}\)/g, "$1")
     .replace(/\[([^\]\r\n]{1,120})\]\([^) \r\n]{1,500}\)/g, "$1")
+    .replace(/[\u0000-\u001F\u007F`]+/g, " ")
     .replace(/\bhttps?:\/\/[^\s)]+/gi, "[링크 생략]")
     .replace(/<\/?[A-Za-z][^>\r\n]{0,200}>/g, "")
     .replace(/[<>]/g, "")
@@ -152,6 +159,35 @@ function sampleReliability(label: string, reportedCount: number, calculationCoun
   return `${label} 표본 신뢰도: 양호 - 계산 표본 ${calculationCount}건 기준입니다. 그래도 특정 매물의 권리관계 판단은 별도입니다.`;
 }
 
+function formatArea(area: number): string {
+  return `${(Math.round(area * 10) / 10).toLocaleString("ko-KR")}㎡`;
+}
+
+function recordAreaText(record: { area?: number }): string {
+  return typeof record.area === "number" && Number.isFinite(record.area) && record.area > 0 ? ` 면적 ${formatArea(record.area)}` : "";
+}
+
+function marketAreaMixNotice(label: string, records: Array<{ area?: number }>): string {
+  if (records.length === 0) {
+    return `${label} 면적대 한계: 조회 표본이 없어 같은 면적대 비교를 할 수 없습니다.`;
+  }
+
+  const areas = records
+    .map(record => record.area)
+    .filter((area): area is number => typeof area === "number" && Number.isFinite(area) && area > 0);
+  if (areas.length === 0) {
+    return `${label} 면적대 한계: 공식 응답에 유효한 면적 필드가 없어 같은 면적대 비교가 아닙니다.`;
+  }
+
+  const minArea = Math.min(...areas);
+  const maxArea = Math.max(...areas);
+  if (minArea === maxArea) {
+    return `${label} 면적대 참고: 면적 정보 ${areas.length}건이 모두 ${formatArea(minArea)}입니다. 그래도 동·층·권리관계 차이는 별도 확인하세요.`;
+  }
+
+  return `${label} 면적대 한계: ${formatArea(minArea)}~${formatArea(maxArea)} 표본이 섞인 시군구 단위 중앙값입니다. 같은 전용면적·유사 층·인접동 표본으로 다시 확인하세요.`;
+}
+
 function sourceIdFor(kind: "rent" | "sale", housingType: HousingType): string {
   return `molit-${housingType === "single_multi" ? "single" : housingType}-${kind}`;
 }
@@ -161,6 +197,16 @@ function officialNotice(): string {
     "## 확인 필요",
     "전월세안전내비는 계약 전 점검과 공식 확인 경로를 정리하는 도구입니다. 법률 자문, 등기부 권리분석 확정, 보증보험 가입 가능 여부, 임대인 세금 체납 여부 확정, 납세증명 진위 판단, 특정 매물 안전성 판단은 제공하지 않습니다."
   ].join("\n");
+}
+
+function documentEvidencePackage(): string[] {
+  return [
+    "등기부등본: 발급일시, 소유자, 근저당·압류·가압류·신탁·경매 표시를 캡처하거나 PDF로 보관",
+    "계약서·특약 초안: 잔금 전 등기부 재확인, 추가 근저당 금지, 권리 말소 조건, 보증금 반환 조건을 문장으로 남기기",
+    "공식 접수 증거: 전입신고, 확정일자, 임대차신고, 보증보험 신청·문의 결과의 접수번호와 처리일시 보관",
+    "상대방 확인 증거: 등기부 소유자, 대리인 위임 범위, 임대인 납세·체납 확인 가능 서류 요청과 답변을 문자나 이메일로 보관",
+    "시세 근거: 같은 지역·전후월·같은 면적대 전월세·매매 실거래 조회 조건과 확인일을 함께 기록"
+  ];
 }
 
 function inferRiskSignals(input: LeaseProfileInput): string[] {
@@ -247,8 +293,13 @@ export function dataGoKrServiceKey(): string {
 }
 
 export function publicDataTimeoutMs(): number {
-  const rawTimeout = process.env.PUBLIC_DATA_TIMEOUT_MS?.trim();
-  if (!rawTimeout) return DEFAULT_PUBLIC_DATA_TIMEOUT_MS;
+  const rawTimeoutValue = process.env.PUBLIC_DATA_TIMEOUT_MS;
+  if (rawTimeoutValue === undefined) return DEFAULT_PUBLIC_DATA_TIMEOUT_MS;
+
+  const rawTimeout = rawTimeoutValue.trim();
+  if (rawTimeout.length === 0) {
+    throw new Error(`PUBLIC_DATA_TIMEOUT_MS must be a positive integer no greater than ${MAX_PUBLIC_DATA_TIMEOUT_MS}.`);
+  }
 
   const parsed = parsePlainInteger(rawTimeout);
   if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > MAX_PUBLIC_DATA_TIMEOUT_MS) {
@@ -266,9 +317,18 @@ export function isFutureDealYmd(dealYmd: string, now = new Date()): boolean {
   if (!/^\d{4}(0[1-9]|1[0-2])$/.test(dealYmd)) return false;
   const dealYear = Number(dealYmd.slice(0, 4));
   const dealMonth = Number(dealYmd.slice(4, 6));
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth() + 1;
+  const { year: currentYear, month: currentMonth } = officialDataYearMonth(now);
   return dealYear > currentYear || (dealYear === currentYear && dealMonth > currentMonth);
+}
+
+function officialDataYearMonth(now: Date): { year: number; month: number } {
+  const parts = OFFICIAL_DATA_YEAR_MONTH_FORMATTER.formatToParts(now);
+  const year = Number(parts.find(part => part.type === "year")?.value);
+  const month = Number(parts.find(part => part.type === "month")?.value);
+  if (!Number.isSafeInteger(year) || !Number.isSafeInteger(month) || month < 1 || month > 12) {
+    throw new Error(`Unable to resolve official public-data year-month in ${OFFICIAL_DATA_TIME_ZONE}.`);
+  }
+  return { year, month };
 }
 
 export function isAllZeroLawdCd(lawdCd: string): boolean {
@@ -365,6 +425,10 @@ function compactPublicDataStatusText(statusText: string): string {
   return redactDataGoKrServiceKeys(statusText.replace(/\s+/g, " ").trim()).slice(0, 80);
 }
 
+function compactPublicDataContentType(contentType: string): string {
+  return redactDataGoKrServiceKeys(contentType.replace(/\s+/g, " ").trim()).slice(0, 120);
+}
+
 function compactPublicDataFieldValue(value: string): string {
   return redactDataGoKrServiceKeys(value.replace(/\s+/g, " ").trim()).slice(0, 80);
 }
@@ -380,6 +444,14 @@ function decodePublicDataResponseChunk(label: string, decoder: TextDecoder, valu
     return decoder.decode(value, options);
   } catch {
     throw new Error(`${label} response returned invalid UTF-8 text.`);
+  }
+}
+
+function assertNonHtmlPublicDataContentType(label: string, response: Response): void {
+  const contentType = response.headers.get("content-type");
+  if (contentType === null) return;
+  if (/\b(?:text\/html|application\/xhtml\+xml)\b/i.test(contentType)) {
+    throw new Error(`${label} response returned browser HTML Content-Type ${compactPublicDataContentType(contentType)} instead of official API data.`);
   }
 }
 
@@ -446,6 +518,7 @@ async function fetchPublicDataText(label: string, url: URL): Promise<string> {
     const excerpt = compactPublicDataResponseExcerpt(body);
     throw new Error(`${label} request failed: ${status}${excerpt ? ` - ${excerpt}` : ""}`);
   }
+  assertNonHtmlPublicDataContentType(label, response);
   return body;
 }
 
@@ -492,9 +565,11 @@ function assertPublicDataItemsContainer(label: string, body: string): void {
   }
 }
 
-function publicDataTotalCount(label: string, body: string, itemCount: number): number | undefined {
+function publicDataTotalCount(label: string, body: string, itemCount: number): number {
   const rawTotalCount = extractTag(body, "totalCount");
-  if (rawTotalCount === undefined) return undefined;
+  if (rawTotalCount === undefined) {
+    throw new Error(`${label} returned XML without totalCount.`);
+  }
 
   const totalCount = parsePublicDataInteger(rawTotalCount.trim());
   if (!Number.isSafeInteger(totalCount)) {
@@ -506,14 +581,14 @@ function publicDataTotalCount(label: string, body: string, itemCount: number): n
   return totalCount;
 }
 
-function assertStablePublicDataTotalCount(label: string, expected: number | undefined, actual: number | undefined): void {
-  if (expected !== undefined && actual !== undefined && actual !== expected) {
+function assertStablePublicDataTotalCount(label: string, expected: number | undefined, actual: number): void {
+  if (expected !== undefined && actual !== expected) {
     throw new Error(`${label} returned inconsistent totalCount field: firstPageTotalCount=${expected}, nextPageTotalCount=${actual}`);
   }
 }
 
-function assertPublicDataPageProgress(label: string, officialTotalCount: number | undefined, currentCount: number, pageCount: number): void {
-  if (officialTotalCount !== undefined && currentCount < Math.min(officialTotalCount, MAX_MARKET_RECORDS) && pageCount < MARKET_PAGE_SIZE) {
+function assertPublicDataPageProgress(label: string, officialTotalCount: number, currentCount: number, pageCount: number): void {
+  if (currentCount < Math.min(officialTotalCount, MAX_MARKET_RECORDS) && pageCount < MARKET_PAGE_SIZE) {
     throw new Error(`${label} returned fewer items than totalCount: totalCount=${officialTotalCount}, items=${currentCount}`);
   }
 }
@@ -576,6 +651,9 @@ function parseLegalDongRows(payload: unknown): LegalDongRecord[] {
 function legalDongRegionQuery(region: string | undefined): string {
   if (region !== undefined && /[\u0000-\u001F\u007F`]/.test(region)) {
     throw new Error("region must not include control characters, line breaks, tabs, or Markdown backticks for legal-dong lookup.");
+  }
+  if (region !== undefined && (/!\[[^\]\r\n]{0,120}\]\([^) \r\n]{1,500}\)/.test(region) || /\[[^\]\r\n]{1,120}\]\([^) \r\n]{1,500}\)/.test(region) || /<\/?[A-Za-z][^>\r\n]{0,200}>|[<>]/.test(region))) {
+    throw new Error("region must not include Markdown links, images, HTML tags, or angle brackets for legal-dong lookup.");
   }
   const cleaned = cleanText(region);
   if (cleaned === "미확인" || cleaned.length < 2) {
@@ -826,7 +904,7 @@ async function fetchMarketXmlPage(label: string, baseUrl: URL, pageNo: number): 
   return xml;
 }
 
-async function fetchRentRecords(label: string, baseUrl: URL, specNameField?: string): Promise<{ records: RentRecord[]; officialTotalCount?: number }> {
+async function fetchRentRecords(label: string, baseUrl: URL, specNameField?: string): Promise<{ records: RentRecord[]; officialTotalCount: number }> {
   const records: RentRecord[] = [];
   let officialTotalCount: number | undefined;
   let pageNo = 1;
@@ -840,9 +918,13 @@ async function fetchRentRecords(label: string, baseUrl: URL, specNameField?: str
     records.push(...pageRecords);
     assertPublicDataPageProgress(label, officialTotalCount, records.length, pageRecords.length);
 
-    const targetCount = officialTotalCount === undefined ? pageRecords.length : Math.min(officialTotalCount, MAX_MARKET_RECORDS);
+    const targetCount = Math.min(officialTotalCount, MAX_MARKET_RECORDS);
     if (records.length >= targetCount || pageRecords.length < MARKET_PAGE_SIZE) break;
     pageNo += 1;
+  }
+
+  if (officialTotalCount === undefined) {
+    throw new Error(`${label} returned XML without totalCount.`);
   }
 
   return {
@@ -851,7 +933,7 @@ async function fetchRentRecords(label: string, baseUrl: URL, specNameField?: str
   };
 }
 
-async function fetchSaleRecords(label: string, baseUrl: URL, specNameField?: string): Promise<{ records: SaleRecord[]; officialTotalCount?: number }> {
+async function fetchSaleRecords(label: string, baseUrl: URL, specNameField?: string): Promise<{ records: SaleRecord[]; officialTotalCount: number }> {
   const records: SaleRecord[] = [];
   let officialTotalCount: number | undefined;
   let pageNo = 1;
@@ -865,9 +947,13 @@ async function fetchSaleRecords(label: string, baseUrl: URL, specNameField?: str
     records.push(...pageRecords);
     assertPublicDataPageProgress(label, officialTotalCount, records.length, pageRecords.length);
 
-    const targetCount = officialTotalCount === undefined ? pageRecords.length : Math.min(officialTotalCount, MAX_MARKET_RECORDS);
+    const targetCount = Math.min(officialTotalCount, MAX_MARKET_RECORDS);
     if (records.length >= targetCount || pageRecords.length < MARKET_PAGE_SIZE) break;
     pageNo += 1;
+  }
+
+  if (officialTotalCount === undefined) {
+    throw new Error(`${label} returned XML without totalCount.`);
   }
 
   return {
@@ -933,7 +1019,7 @@ function renderRentMarketSnapshot(snapshot: RentMarketSnapshot): string {
     "## 전월세 실거래 비교",
     `주택유형: ${snapshot.label}`,
     `조회 기준: LAWD_CD ${snapshot.lawdCd}, 계약월 ${snapshot.dealYmd}`,
-    snapshot.officialTotalCount !== undefined ? `공식 전체 신고 건수: ${snapshot.officialTotalCount.toLocaleString("ko-KR")}` : "",
+    `공식 전체 신고 건수: ${snapshot.officialTotalCount.toLocaleString("ko-KR")}`,
     `신고 표본 수: ${snapshot.sampleCount}`,
     marketCalculationScope(snapshot.officialTotalCount, snapshot.sampleCount),
     snapshot.depositSampleCount > 0
@@ -942,13 +1028,14 @@ function renderRentMarketSnapshot(snapshot: RentMarketSnapshot): string {
         ? "조회된 신고 표본은 있지만 보증금 중앙값을 계산할 수 있는 보증금 표본이 없습니다."
         : "조회된 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
     sampleReliability("전월세", snapshot.sampleCount, snapshot.depositSampleCount),
+    marketAreaMixNotice("전월세", snapshot.records),
     `입력 보증금: ${money(snapshot.userDeposit)} / 입력 월세: ${money(snapshot.userMonthlyRent)}`,
     "",
     "## 해석",
     snapshot.position,
     "",
     recentRecords.length > 0
-      ? ["## 최근 표본 일부", ...recentRecords.map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 보증금 ${money(record.depositManwon)} 월세 ${money(record.monthlyRentManwon)}`)].join("\n")
+      ? ["## 최근 표본 일부", ...recentRecords.map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""}${recordAreaText(record)} 보증금 ${money(record.depositManwon)} 월세 ${money(record.monthlyRentManwon)}`)].join("\n")
       : "",
     "",
     "## 공식 출처",
@@ -986,16 +1073,13 @@ function formatRatio(ratio: number | undefined): string {
   return Number.isFinite(ratio) ? `${(ratio as number).toLocaleString("ko-KR")}%` : "계산 불가";
 }
 
-function marketCalculationScope(officialTotalCount: number | undefined, sampleCount: number): string {
-  return officialTotalCount !== undefined && officialTotalCount > sampleCount
+function marketCalculationScope(officialTotalCount: number, sampleCount: number): string {
+  return officialTotalCount > sampleCount
     ? `계산 표본 범위: 공식 전체 ${officialTotalCount.toLocaleString("ko-KR")}건 중 최대 ${MAX_MARKET_RECORDS.toLocaleString("ko-KR")}건 조회 상한으로 ${sampleCount.toLocaleString("ko-KR")}건을 계산에 사용했습니다.`
     : "";
 }
 
-function marketCalculationSummary(label: string, officialTotalCount: number | undefined, sampleCount: number): string {
-  if (officialTotalCount === undefined) {
-    return `${label} 신고 표본 ${sampleCount}건을 계산에 사용`;
-  }
+function marketCalculationSummary(label: string, officialTotalCount: number, sampleCount: number): string {
   if (officialTotalCount > sampleCount) {
     return `${label} 공식 전체 신고 ${officialTotalCount.toLocaleString("ko-KR")}건 중 최대 ${MAX_MARKET_RECORDS.toLocaleString("ko-KR")}건 조회 상한으로 현재 조회 표본 ${sampleCount.toLocaleString("ko-KR")}건을 계산에 사용`;
   }
@@ -1065,6 +1149,34 @@ function assessmentRiskSummary(
   };
 }
 
+function assessmentDecisionGate(
+  riskSummary: AssessmentRiskSummary,
+  rentMarket: RentMarketSnapshot,
+  saleMarket: SaleMarketSnapshot
+): string[] {
+  const guidance: string[] = [];
+
+  if (riskSummary.level === "매우 높음" || riskSummary.level === "높음") {
+    guidance.push("보류 기준: 계약금·가계약금 송금과 서명은 소유자, 대리권, 선순위 권리, 보증보험 가능 여부, 임대인 체납 확인이 문서로 끝날 때까지 보류하세요.");
+  } else if (riskSummary.level === "주의") {
+    guidance.push("주의 기준: 바로 진행하지 말고 등기부, 보증보험, 선순위 보증금, 임대차신고 가능 여부를 같은 날 다시 맞춰보세요.");
+  } else {
+    guidance.push("진행 전 기준: 위험도가 낮아 보여도 잔금 전 등기부 재발급, 전입신고, 확정일자, 임대차신고 가능 여부 확인은 생략하지 마세요.");
+  }
+
+  if (Number.isFinite(saleMarket.ratio) && (saleMarket.ratio as number) >= 70) {
+    guidance.push(`전세가율 기준: 매매가 대비 보증금 비율이 ${formatRatio(saleMarket.ratio)}이므로 같은 면적대 매매 표본과 보증보험 가능 여부를 추가 확인하세요.`);
+  }
+
+  if (rentMarket.depositSampleCount < MIN_MEDIAN_SAMPLE_COUNT || saleMarket.sampleCount < MIN_MEDIAN_SAMPLE_COUNT) {
+    guidance.push("증거 보강 기준: 표본이 적으므로 전후월, 인접동, 같은 면적대 실거래를 추가로 확인한 뒤 중개사 설명과 맞는지 비교하세요.");
+  }
+
+  guidance.push("진행 조건: 잔금 전 등기부 재발급, 권리 말소 특약, 대리권 확인, 보증보험·전입·확정일자·임대차신고 가능 여부가 문서로 남아야 합니다.");
+  guidance.push("중단 신호: 소유자 직접 확인 거부, 권리 말소 특약 거부, 보증보험 확인 회피, 납세·체납 확인 거부, 급한 송금 압박이 있으면 계약을 멈추세요.");
+  return guidance;
+}
+
 async function fetchSaleMarketSnapshot(input: {
   housingType: HousingType;
   lawdCd: string;
@@ -1110,11 +1222,12 @@ function renderSaleMarketSnapshot(snapshot: SaleMarketSnapshot): string {
     "## 매매가 대비 보증금 점검",
     `주택유형: ${snapshot.label}`,
     `조회 기준: LAWD_CD ${snapshot.lawdCd}, 계약월 ${snapshot.dealYmd}`,
-    snapshot.officialTotalCount !== undefined ? `공식 전체 신고 건수: ${snapshot.officialTotalCount.toLocaleString("ko-KR")}` : "",
+    `공식 전체 신고 건수: ${snapshot.officialTotalCount.toLocaleString("ko-KR")}`,
     `매매 표본 수: ${snapshot.sampleCount}`,
     marketCalculationScope(snapshot.officialTotalCount, snapshot.sampleCount),
     snapshot.sampleCount > 0 ? `매매가 중앙값: ${money(snapshot.median)} / 최대값: ${money(snapshot.max)}` : "조회된 매매 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
     sampleReliability("매매", snapshot.sampleCount),
+    marketAreaMixNotice("매매", snapshot.records),
     `입력 보증금: ${money(snapshot.userDeposit)}`,
     `매매가 대비 보증금 비율: ${formatRatio(snapshot.ratio)}`,
     "",
@@ -1122,7 +1235,7 @@ function renderSaleMarketSnapshot(snapshot: SaleMarketSnapshot): string {
     snapshot.signal,
     "",
     recentRecords.length > 0
-      ? ["## 매매 표본 일부", ...recentRecords.map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 매매가 ${money(record.dealAmountManwon)}`)].join("\n")
+      ? ["## 매매 표본 일부", ...recentRecords.map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""}${recordAreaText(record)} 매매가 ${money(record.dealAmountManwon)}`)].join("\n")
       : "",
     "",
     "## 확인 필요",
@@ -1157,6 +1270,7 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
   const redFlags = inferRiskSignals(input);
   const riskSummary = assessmentRiskSummary(input, rentMarket, saleMarket, redFlags);
   const ratioLine = formatRatio(saleMarket.ratio);
+  const decisionGate = assessmentDecisionGate(riskSummary, rentMarket, saleMarket);
   const riskText = `${input.situation ?? ""} ${input.concerns ?? ""}`.toLowerCase();
   const immediateActions: string[] = [];
 
@@ -1188,24 +1302,30 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
 
   return [
     "## 전월세 안전 종합 진단",
-    `지역: ${cleanText(input.region, `LAWD_CD ${input.lawdCd}`)}`,
+    `조회 기준: LAWD_CD ${input.lawdCd}, 계약월 ${input.dealYmd}`,
+    `입력 지역 메모: ${cleanText(input.region, "미입력")}`,
     `주택유형: ${rentMarket.label}`,
-    `계약월: ${input.dealYmd}`,
     `입력 조건: 보증금 ${money(input.depositManwon)} / 월세 ${money(input.monthlyRentManwon)}`,
     `종합 위험도: ${riskSummary.level} (${riskSummary.score}/100)`,
     "",
     "## 핵심 판단",
     lineItems([
+      "지역명 메모는 표시용이며, 공식 실거래 조회와 시세 계산은 LAWD_CD와 계약월 기준입니다.",
       `위험도 근거: ${riskSummary.reasons.join(" / ")}`,
       marketCalculationSummary("전월세", rentMarket.officialTotalCount, rentMarket.sampleCount),
       `전월세 신고 표본 ${rentMarket.sampleCount}건, 보증금 산출 표본 ${rentMarket.depositSampleCount}건, 보증금 중앙값 ${money(rentMarket.median)}`,
       sampleReliability("전월세", rentMarket.sampleCount, rentMarket.depositSampleCount),
+      marketAreaMixNotice("전월세", rentMarket.records),
       marketCalculationSummary("매매", saleMarket.officialTotalCount, saleMarket.sampleCount),
       `매매 신고 표본 ${saleMarket.sampleCount}건, 매매가 중앙값 ${money(saleMarket.median)}`,
       sampleReliability("매매", saleMarket.sampleCount),
+      marketAreaMixNotice("매매", saleMarket.records),
       `매매가 대비 보증금 비율 ${ratioLine}: ${saleMarket.signal}`,
       rentMarket.position
     ]),
+    "",
+    "## 계약 판단 기준",
+    lineItems(decisionGate),
     "",
     "## 입력에서 감지한 위험 신호",
     lineItems(redFlags),
@@ -1215,11 +1335,11 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
     "",
     "## 실거래 근거",
     recentRentRecords.length > 0
-      ? ["전월세 표본", ...recentRentRecords.map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 보증금 ${money(record.depositManwon)} 월세 ${money(record.monthlyRentManwon)}`)].join("\n")
+      ? ["전월세 표본", ...recentRentRecords.map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""}${recordAreaText(record)} 보증금 ${money(record.depositManwon)} 월세 ${money(record.monthlyRentManwon)}`)].join("\n")
       : "전월세 표본: 조회된 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
     "",
     recentSaleRecords.length > 0
-      ? ["매매 표본", ...recentSaleRecords.map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 매매가 ${money(record.dealAmountManwon)}`)].join("\n")
+      ? ["매매 표본", ...recentSaleRecords.map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""}${recordAreaText(record)} 매매가 ${money(record.dealAmountManwon)}`)].join("\n")
       : "매매 표본: 조회된 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
     "",
     "## 공식 출처",
@@ -1258,6 +1378,9 @@ export function checkLeaseRedFlags(input: LeaseProfileInput): string {
       "전입신고, 확정일자, 임대차신고, 보증보험 가능 여부, 임대인 납세·체납 관련 확인 가능 서류를 같은 체크리스트로 확인",
       "특약에 전입·확정일자 전까지 추가 근저당 설정 금지, 하자·수리, 잔금 전 등기부 재확인을 넣을지 중개사에게 질문"
     ]),
+    "",
+    "## 문서 증거 패키지",
+    lineItems(documentEvidencePackage()),
     "",
     "## 공식 출처",
     renderSources(["iros-fixed-date", "easylaw-lease", "law-lease", "hug-deposit-guarantee", "nts-tax", "wetax-local-tax"]),
@@ -1298,6 +1421,9 @@ export function buildMoveInProtectionPlan(input: LeaseProfileInput): string {
       "수리·하자·관리비 분쟁 가능 항목은 사진과 날짜로 남김"
     ]),
     "",
+    "## 문서 증거 패키지",
+    lineItems(documentEvidencePackage()),
+    "",
     "## 공식 출처",
     renderSources(["gov24", "rtms-lease-report", "iros-fixed-date", "hug-deposit-guarantee", "nts-tax", "wetax-local-tax", "easylaw-lease"]),
     "",
@@ -1324,6 +1450,9 @@ export function prepareContractQuestions(input: LeaseProfileInput): string {
     "",
     "## 통화 첫 문장",
     "계약 전 확인을 위해 등기부 권리관계, 전입·확정일자 가능 여부, 임대차신고, 보증보험 가능 여부, 임대인 납세·체납 관련 확인 가능 서류를 문서 기준으로 확인하고 싶습니다.",
+    "",
+    "## 문서 증거 패키지",
+    lineItems(documentEvidencePackage()),
     "",
     "## 공식 출처",
     renderSources(["rtms-lease-report", "iros-fixed-date", "adr-lease-dispute", "hug-deposit-guarantee", "nts-tax", "wetax-local-tax"]),

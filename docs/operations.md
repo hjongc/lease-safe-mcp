@@ -6,10 +6,11 @@ This runbook is for PlayMCP registration, demo day checks, and post-launch opera
 
 - `DATA_GO_KR_SERVICE_KEY`: required in production and CI live smoke; encoded and decoded keys are accepted, but whitespace is rejected.
 - `MCP_ALLOWED_HOSTS`: required in production for DNS rebinding protection.
-- `MCP_MAX_BODY_BYTES`: optional MCP POST body limit, default `262144`, maximum `1048576`.
-- `MCP_RATE_LIMIT_PER_MINUTE`: optional MCP POST rate limit per client, default `120`, maximum `10000`, set `0` to disable.
-- `PUBLIC_DATA_TIMEOUT_MS`: optional official public-data timeout, default `8000`, maximum `60000`.
-- `MCP_AUTH_TOKEN`: optional bearer token for private direct deployments; must be a real visible-ASCII token, not a placeholder, at least 16 characters, and free of whitespace when set.
+- `MCP_MAX_BODY_BYTES`: optional MCP POST body limit, default `262144`, maximum `1048576`; blank configured values are rejected.
+- `MCP_RATE_LIMIT_PER_MINUTE`: optional MCP POST rate limit per client, default `120`, maximum `10000`, set `0` to disable; blank configured values are rejected.
+- `PUBLIC_DATA_TIMEOUT_MS`: optional official public-data timeout, default `8000`, maximum `60000`; blank configured values are rejected.
+- `HOST`: optional HTTP bind host, default `0.0.0.0`; use a plain hostname or IPv4 address such as `127.0.0.1` only when the runtime requires loopback binding.
+- `MCP_AUTH_TOKEN`: required in production for MCP POST authentication; must be a real visible-ASCII token, not a placeholder, at least 16 characters, and free of whitespace.
 
 The server fails at startup when required production settings are missing or malformed. Fix configuration instead of adding fallback data.
 
@@ -19,6 +20,7 @@ GitHub Actions live public-data smoke:
 
 ```bash
 gh secret set DATA_GO_KR_SERVICE_KEY --repo hjongc/lease-safe-mcp
+gh secret set MCP_AUTH_TOKEN --repo hjongc/lease-safe-mcp
 npm run check:github-secret
 gh secret list --repo hjongc/lease-safe-mcp
 gh workflow run CI --repo hjongc/lease-safe-mcp --ref main
@@ -26,9 +28,9 @@ gh workflow run "Registration Preflight" --repo hjongc/lease-safe-mcp --ref main
 npm run check:registration-readiness
 ```
 
-After setting the secret, run `npm run check:github-secret` and confirm that `gh secret list --repo hjongc/lease-safe-mcp` shows `DATA_GO_KR_SERVICE_KEY`. These commands check only secret names and metadata, not the secret value. If the secret is absent, do not treat a green CI run as registration evidence because the live public-data smoke will be skipped.
+After setting the secrets, run `npm run check:github-secret` and confirm that `gh secret list --repo hjongc/lease-safe-mcp` shows `DATA_GO_KR_SERVICE_KEY` and `MCP_AUTH_TOKEN`. These commands check only secret names and metadata, not secret values. If either secret is absent, do not treat a green CI run as registration evidence because live public-data or production MCP authentication evidence is incomplete.
 
-Before registering, run `npm run check:registration-readiness` from a clean worktree. It fails unless the current commit has the GitHub repository secret configured, `CI` completed successfully with `Live public-data smoke` passed instead of skipped, and `Registration Preflight` completed successfully with its evidence summary published for that exact commit on `main`.
+Before registering, run `npm run check:registration-readiness` from a clean worktree. It fails unless local `HEAD` matches the remote `main` HEAD, the current commit has both GitHub repository secrets configured, `CI` completed successfully with `Live public-data smoke` passed instead of skipped and `Publish live public-data status` succeeded inside the `Quality Gate` job, and `Registration Preflight` completed successfully with its evidence summary published inside the `Registration Evidence` job for that exact commit on `main`.
 
 If the default live demo region or month returns zero official samples, rerun the manual `Registration Preflight` workflow with verified public demo inputs:
 
@@ -45,7 +47,8 @@ PlayMCP runtime:
 - Set `DATA_GO_KR_SERVICE_KEY` in the PlayMCP runtime environment.
 - Set `MCP_ALLOWED_HOSTS` to the PlayMCP host or custom deployment domain. Use unique plain hostnames only; do not include `https://`, ports, paths, wildcards, userinfo, query strings, fragments, backslashes, whitespace, blank comma-separated entries, underscores, empty labels, or labels that start or end with `-`.
 - Put the primary PlayMCP host first in `MCP_ALLOWED_HOSTS`; the Docker `HEALTHCHECK` dials loopback but sends that first allowed host as the `Host` header, so DNS rebinding protection and container liveness checks do not conflict.
-- Leave `MCP_AUTH_TOKEN` unset unless the deployment is private and the client can send bearer auth. If set, use a real visible-ASCII token, not a placeholder, with at least 16 characters and no whitespace.
+- Leave `HOST` unset for normal container binding, or set it to the platform-provided plain bind host when required.
+- Set `MCP_AUTH_TOKEN` before production startup and configure the client to send `Authorization: Bearer <token>`. Use a real visible-ASCII token, not a placeholder, with at least 16 characters and no whitespace.
 
 Never paste secrets into issues, commits, README examples, screenshots, or CI logs.
 
@@ -53,11 +56,11 @@ Never paste secrets into issues, commits, README examples, screenshots, or CI lo
 
 Collect this evidence before registering or updating the PlayMCP build:
 
-- `npm run preflight:registration` passes with `DATA_GO_KR_SERVICE_KEY` set locally.
+- `npm run preflight:registration` passes with `DATA_GO_KR_SERVICE_KEY` and `MCP_AUTH_TOKEN` set locally.
 - GitHub Actions `Registration Preflight` workflow passes on the submitted commit.
-- GitHub Actions `Registration Preflight` job summary shows the submitted commit, workflow run URL, required command, GitHub public-data secret status without printing the value, live public-data requirement, required housing coverage, sanitized and length-limited demo smoke input values, working-tree/staged/committed whitespace diff check coverage, root route minimality smoke coverage, MCP request-id smoke coverage, Docker runtime smoke coverage, non-root runtime evidence, scriptless npm install evidence, and the extracted live public-data evidence lines.
-- Latest GitHub Actions `CI` run is green and its summary shows required housing coverage, working-tree/staged/committed whitespace diff checks, root route minimality smoke evidence, MCP request-id smoke evidence, Docker runtime smoke evidence, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines when the repository secret is configured.
-- `npm run check:registration-readiness` passes on the clean submitted commit, including CI live public-data smoke step success and Registration Preflight evidence-summary success.
+- GitHub Actions `Registration Preflight` job summary shows the submitted commit, workflow run URL, required command, GitHub public-data and MCP auth secret status without printing values, live public-data requirement, required housing coverage, sanitized and length-limited demo smoke input values, working-tree/staged/committed whitespace diff check coverage, root route minimality smoke coverage, API-backed missing-key smoke coverage when applicable, MCP request-id smoke coverage, Docker runtime smoke coverage, non-root runtime evidence, scriptless npm install evidence, and the extracted live public-data evidence lines.
+- Latest GitHub Actions `CI` run is green and its summary shows required housing coverage, working-tree/staged/committed whitespace diff checks, root route minimality smoke evidence, API-backed missing-key smoke evidence when the repository secret is absent, MCP request-id smoke evidence, Docker runtime smoke evidence, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines when the repository secret is configured.
+- `npm run check:registration-readiness` passes on the clean submitted commit, including CI `Quality Gate` live public-data smoke step success, CI live evidence status publishing, and `Registration Evidence` evidence-summary success.
 - GitHub Actions `Live public-data smoke` is passed, not skipped, after the repository secret is configured.
 - Docker runtime smoke passes after image build.
 - Demo tool is `assess_lease_safety`.
@@ -81,13 +84,14 @@ Recommended demo input:
 
 - `GET /` must return only a text/plain MCP usage hint. It must not expose runtime configuration names or tuning values.
 - `GET /healthz` must return only minimal liveness metadata: `ok: true`, `service: lease-safe`, and `version`. It must not expose request-size, rate-limit, or public-data timeout tuning values.
-- HTTP responses must set a safe `X-Request-Id` for log correlation, preserve safe inbound request IDs, regenerate unsafe inbound values, and set `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Content-Security-Policy: default-src 'none'; base-uri 'none'; frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`; they must not expose `X-Powered-By`.
-- `npm run smoke:http` verifies local HTTP MCP handshake, tool metadata, root route minimality, DNS-rebinding Host rejection, unknown-route rejection and encoded-path rejection with JSON `404`, unsupported-method rejection with `Allow: POST`, invalid-JSON rejection, unsupported-content-type rejection, compressed-request rejection, bearer-auth rejection with `WWW-Authenticate` and JSON-RPC `-32001`, oversized request rejection in JSON-RPC `-32600` format, a lightweight tool call, and official source registry access.
-- `npm run smoke:rate-limit` verifies the MCP POST rate limiter returns `429` with `Retry-After`, preserves the same security headers used by normal responses, and keeps the rejection in JSON-RPC `-32002` format.
-- `npm run smoke:docker` verifies the built image starts in production mode as a non-root runtime user, answers `/healthz`, keeps the public root route minimal, proves the Docker `HEALTHCHECK` still works when `MCP_ALLOWED_HOSTS` contains only an external deployment host, rejects disallowed Host headers, unknown routes, encoded paths, unsupported methods, invalid JSON, unsupported content types, compressed requests, unauthenticated requests in JSON-RPC `-32001` format, and oversized MCP requests in JSON-RPC `-32600` format, then completes MCP handshake/list-tools and official source registry access.
-- `npm run smoke:public-data` verifies legal-dong lookup, all rent APIs, all sale APIs, and the flagship assessment for every selected housing type against live official APIs. It prints a `public_data_smoke_config` line with `registration_mode` plus the non-secret demo region, LAWD code, deal month, housing types, and deposit used for evidence. A successful registration run must also show `legal_dong=ok`, `rent_market[...]`, `sale_market[...]`, and `lease_assessment[...]` evidence lines for every selected housing type. It fails when `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` is not positive or when a rent, sale, or flagship assessment API path returns zero samples, because registration evidence must prove a real demo data path.
+- HTTP responses must set a safe `X-Request-Id` for log correlation, preserve safe inbound request IDs, regenerate unsafe inbound values, and set `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Content-Security-Policy: default-src 'none'; base-uri 'none'; frame-ancestors 'none'`, `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`; they must not expose `X-Powered-By`.
+- `npm run smoke:http` verifies local HTTP MCP handshake, tool metadata, root route minimality, API-backed missing-key failure behavior when `DATA_GO_KR_SERVICE_KEY` is absent, DNS-rebinding Host rejection, unknown-route rejection and encoded-path rejection with JSON `404`, unsupported-method rejection with `Allow: POST`, invalid-JSON rejection, unsupported-content-type rejection, compressed-request rejection, malformed `Content-Length` rejection, bearer-auth rejection with `WWW-Authenticate` and JSON-RPC `-32001`, oversized request rejection in JSON-RPC `-32600` format, a lightweight tool call, and official source registry access.
+- `npm run smoke:rate-limit` verifies the MCP POST rate limiter with bearer authentication enabled, returns `429` with `Retry-After`, publishes `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset`, preserves the same security headers used by normal responses, and keeps the rejection in JSON-RPC `-32002` format.
+- `npm run smoke:docker` verifies the built image starts in production mode as a non-root runtime user, answers `/healthz`, keeps the public root route minimal, proves the Docker `HEALTHCHECK` still works when `MCP_ALLOWED_HOSTS` contains only an external deployment host, rejects disallowed Host headers, unknown routes, encoded paths, unsupported methods, invalid JSON, unsupported content types, compressed requests, malformed `Content-Length` headers, unauthenticated requests in JSON-RPC `-32001` format, and oversized MCP requests in JSON-RPC `-32600` format, then completes MCP handshake/list-tools and official source registry access.
+- `npm run smoke:public-data` verifies legal-dong lookup, all rent APIs, all sale APIs, and the flagship assessment for every selected housing type against live official APIs. It prints a `public_data_smoke_config` line with `registration_mode` plus the non-secret demo region, LAWD code, deal month, housing types, and deposit used for evidence. A successful registration run must also show `legal_dong=ok`, `rent_market[...]`, `sale_market[...]`, and `lease_assessment[...]` evidence lines for every selected housing type, with positive sample counts and official `totalCount` evidence. It fails when `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` is not positive or when a rent, sale, or flagship assessment API path returns zero samples, because registration evidence must prove a real demo data path.
 - `npm run preflight:registration` runs the full release preflight, including working-tree, staged, and committed whitespace diff checks, and fails if live public-data smoke cannot run for every supported housing type or if its output does not contain extractable registration evidence lines. The Docker build step retries transient Docker or registry failures up to 3 times, then still fails if the image cannot be built.
-- GitHub Actions `Registration Preflight` runs `npm run preflight:registration` manually and fails when `DATA_GO_KR_SERVICE_KEY` is missing, so use it as shareable registration evidence.
+- GitHub Actions `Registration Preflight` runs `npm run preflight:registration` manually and fails when `DATA_GO_KR_SERVICE_KEY` or `MCP_AUTH_TOKEN` is missing, so use it as shareable registration evidence.
+- Official source registry entries must keep unique lowercase IDs, HTTPS URLs, non-empty labels, and `reviewedAt` dates no more than 45 days old at validation time and server startup. Refresh the official source review dates only after re-checking the linked official pages or API portal records.
 
 ## Incident Response
 
@@ -110,12 +114,13 @@ If a security issue or leaked secret is reported:
 ## Key Rotation
 
 1. Add or renew the data.go.kr service key approvals for all required APIs.
-2. Update the GitHub repository secret `DATA_GO_KR_SERVICE_KEY`.
-3. Update the PlayMCP runtime `DATA_GO_KR_SERVICE_KEY`.
-4. Run GitHub Actions `CI` and `Registration Preflight`, then confirm live public-data smoke passes.
-5. Run the PlayMCP demo entry tool once with the recommended input.
+2. Rotate the production MCP bearer token when auth exposure is suspected or on the planned credential rotation schedule.
+3. Update the GitHub repository secrets `DATA_GO_KR_SERVICE_KEY` and `MCP_AUTH_TOKEN`.
+4. Update the PlayMCP runtime `DATA_GO_KR_SERVICE_KEY` and `MCP_AUTH_TOKEN`.
+5. Run GitHub Actions `CI` and `Registration Preflight`, then confirm live public-data smoke passes.
+6. Run the PlayMCP demo entry tool once with the recommended input.
 
-Do not remove the old key until both CI and the runtime smoke have passed with the new key.
+Do not remove old credentials until both CI and the runtime smoke have passed with the new values.
 
 ## Dependency Maintenance
 

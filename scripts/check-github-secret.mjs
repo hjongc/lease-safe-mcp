@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 
-const requiredSecretName = "DATA_GO_KR_SERVICE_KEY";
+const requiredSecretNames = ["DATA_GO_KR_SERVICE_KEY", "MCP_AUTH_TOKEN"];
 const repo = process.env.GITHUB_REPOSITORY?.trim() || "hjongc/lease-safe-mcp";
 
 function isValidRepositorySlug(value) {
@@ -10,7 +10,9 @@ function isValidRepositorySlug(value) {
 function fail(message) {
   console.error(message);
   if (isValidRepositorySlug(repo)) {
-    console.error(`Run: gh secret set ${requiredSecretName} --repo ${repo}`);
+    for (const secretName of requiredSecretNames) {
+      console.error(`Run: gh secret set ${secretName} --repo ${repo}`);
+    }
   } else {
     console.error("Set GITHUB_REPOSITORY to an owner/repo GitHub repository slug before checking repository secrets.");
   }
@@ -40,8 +42,9 @@ const secretNames = result.stdout
   .map(line => line.trim().split(/\s+/)[0])
   .filter(Boolean);
 
-if (!secretNames.includes(requiredSecretName)) {
-  fail(`${requiredSecretName} is not configured as a GitHub repository secret for ${repo}. A green CI run can still skip live public-data smoke without it.`);
+const missingSecretNames = requiredSecretNames.filter(secretName => !secretNames.includes(secretName));
+if (missingSecretNames.length > 0) {
+  fail(`${missingSecretNames.join(", ")} ${missingSecretNames.length === 1 ? "is" : "are"} not configured as GitHub repository secrets for ${repo}. Registration evidence requires live public-data and production MCP authentication secrets.`);
 }
 
-console.log(`github_secret=${requiredSecretName} status=present repo=${repo}`);
+console.log(`github_secrets=${requiredSecretNames.join(",")} status=present repo=${repo}`);

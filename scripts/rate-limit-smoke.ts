@@ -1,11 +1,14 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
+import { compactScriptErrorMessage } from "./safe-error.js";
+
+const LOCAL_SMOKE_HOST = "127.0.0.1";
 
 function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
     server.on("error", reject);
-    server.listen(0, "0.0.0.0", () => {
+    server.listen(0, LOCAL_SMOKE_HOST, () => {
       const address = server.address();
       server.close(() => {
         if (!address || typeof address === "string") {
@@ -49,6 +52,9 @@ function assertSecurityHeaders(response: Response, label: string): void {
   }
   if (response.headers.get("content-security-policy") !== "default-src 'none'; base-uri 'none'; frame-ancestors 'none'") {
     throw new Error(`${label} response must set a restrictive Content-Security-Policy.`);
+  }
+  if (response.headers.get("permissions-policy") !== "camera=(), microphone=(), geolocation=(), payment=(), usb=()") {
+    throw new Error(`${label} response must set a restrictive Permissions-Policy.`);
   }
   if (response.headers.get("referrer-policy") !== "no-referrer") {
     throw new Error(`${label} response must set Referrer-Policy: no-referrer.`);
@@ -96,6 +102,7 @@ async function postProbe(endpoint: string): Promise<Response> {
   return fetch(endpoint, {
     method: "POST",
     headers: {
+      authorization: "Bearer rate-limit-smoke-token",
       "content-type": "application/json"
     },
     body: JSON.stringify({
@@ -104,6 +111,20 @@ async function postProbe(endpoint: string): Promise<Response> {
       method: "tools/list"
     })
   });
+}
+
+function assertRateLimitHeaders(response: Response, label: string): void {
+  if (response.headers.get("ratelimit-limit") !== "1") {
+    throw new Error(`${label} response must set RateLimit-Limit: 1.`);
+  }
+  if (response.headers.get("ratelimit-remaining") !== "0") {
+    throw new Error(`${label} response must set RateLimit-Remaining: 0.`);
+  }
+
+  const reset = response.headers.get("ratelimit-reset");
+  if (!reset || !/^\d+$/.test(reset) || Number(reset) < 1) {
+    throw new Error(`${label} response must set a positive integer RateLimit-Reset.`);
+  }
 }
 
 function stopServer(server: ChildProcess): Promise<void> {
@@ -123,11 +144,13 @@ function stopServer(server: ChildProcess): Promise<void> {
 
 async function main() {
   const port = smokePortFromEnv("MCP_RATE_LIMIT_SMOKE_PORT") ?? await getFreePort();
-  const endpoint = `http://127.0.0.1:${port}/mcp`;
+  const endpoint = `http://${LOCAL_SMOKE_HOST}:${port}/mcp`;
   const env = {
     ...process.env,
     MCP_ALLOWED_HOSTS: process.env.MCP_ALLOWED_HOSTS ?? "127.0.0.1,localhost",
+    MCP_AUTH_TOKEN: "rate-limit-smoke-token",
     MCP_RATE_LIMIT_PER_MINUTE: "1",
+    HOST: process.env.HOST ?? LOCAL_SMOKE_HOST,
     PORT: String(port)
   };
 
@@ -143,6 +166,7 @@ async function main() {
 
     const first = await postProbe(endpoint);
     assertSecurityHeaders(first, "first rate-limit probe");
+    assertRateLimitHeaders(first, "first rate-limit probe");
     await first.text();
     if (first.status === 429) {
       throw new Error("First MCP POST was unexpectedly rate limited.");
@@ -150,6 +174,7 @@ async function main() {
 
     const second = await postProbe(endpoint);
     assertSecurityHeaders(second, "rate-limit rejection");
+    assertRateLimitHeaders(second, "rate-limit rejection");
     const retryAfter = second.headers.get("retry-after");
     const body = await second.text();
     if (second.status !== 429 || !retryAfter) {
@@ -171,6 +196,6 @@ async function main() {
 }
 
 main().catch(error => {
-  console.error(error);
+  console.error(compactScriptErrorMessage(error));
   process.exit(1);
 });

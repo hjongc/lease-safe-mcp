@@ -104,6 +104,7 @@ jobs:
             echo "- Required housing coverage: ${PUBLIC_DATA_SMOKE_HOUSING_TYPES}"
             echo "- Whitespace diff checks: working tree, staged diff, and submitted commit executed"
             echo "- Root route minimality smoke: executed in local HTTP and Docker runtime smoke"
+            echo "- API-backed missing-key smoke: executed when DATA_GO_KR_SERVICE_KEY is absent"
             echo "- MCP request-id smoke: executed in local HTTP and Docker runtime smoke"
             echo "- Docker runtime smoke: executed"
             echo "- Docker non-root runtime check: executed"

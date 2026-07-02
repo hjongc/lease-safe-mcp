@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { request, type IncomingHttpHeaders } from "node:http";
 import { createServer } from "node:net";
 import { dockerImageReferenceFromEnv } from "./docker-image-reference.js";
+import { compactScriptErrorMessage } from "./safe-error.js";
 
 const imageTag = dockerImageReferenceFromEnv("DOCKER_SMOKE_IMAGE", "PREFLIGHT_DOCKER_TAG", "lease-safe-mcp-preflight");
 const containerName = `lease-safe-mcp-smoke-${process.pid}`;
@@ -120,7 +121,7 @@ async function imageHealthcheckCommand(): Promise<string[]> {
   return parsed.slice(1) as string[];
 }
 
-async function verifyHealthcheckWithExternalAllowedHost(): Promise<void> {
+async function verifyHealthcheckWithExternalAllowedHost(authToken: string): Promise<void> {
   const healthcheckContainerName = `${containerName}-health`;
   const healthcheckArgs = await imageHealthcheckCommand();
   const healthcheckContainerId = await collectOutput("docker", [
@@ -133,6 +134,8 @@ async function verifyHealthcheckWithExternalAllowedHost(): Promise<void> {
     "MCP_ALLOWED_HOSTS=lease-safe.example.com",
     "-e",
     `${publicDataKeyEnvName}=${publicDataSmokeKey}`,
+    "-e",
+    `MCP_AUTH_TOKEN=${authToken}`,
     imageTag
   ]);
   const startedAt = Date.now();
@@ -207,6 +210,9 @@ function assertSecurityHeaders(response: Response, label: string): void {
   if (response.headers.get("content-security-policy") !== "default-src 'none'; base-uri 'none'; frame-ancestors 'none'") {
     throw new Error(`${label} response must set a restrictive Content-Security-Policy.`);
   }
+  if (response.headers.get("permissions-policy") !== "camera=(), microphone=(), geolocation=(), payment=(), usb=()") {
+    throw new Error(`${label} response must set a restrictive Permissions-Policy.`);
+  }
   if (response.headers.get("referrer-policy") !== "no-referrer") {
     throw new Error(`${label} response must set Referrer-Policy: no-referrer.`);
   }
@@ -236,6 +242,9 @@ function assertRawSecurityHeaders(headers: IncomingHttpHeaders, label: string): 
   }
   if (headerValue(headers, "content-security-policy") !== "default-src 'none'; base-uri 'none'; frame-ancestors 'none'") {
     throw new Error(`${label} response must set a restrictive Content-Security-Policy.`);
+  }
+  if (headerValue(headers, "permissions-policy") !== "camera=(), microphone=(), geolocation=(), payment=(), usb=()") {
+    throw new Error(`${label} response must set a restrictive Permissions-Policy.`);
   }
   if (headerValue(headers, "referrer-policy") !== "no-referrer") {
     throw new Error(`${label} response must set Referrer-Policy: no-referrer.`);
@@ -418,6 +427,51 @@ async function verifyOversizedRequest(endpoint: string, maxBodyBytes: number): P
   const body = await response.json() as { error?: { code?: unknown; message?: unknown } };
   if (body.error?.code !== -32600 || body.error?.message !== `MCP request body exceeds ${maxBodyBytes} bytes.`) {
     throw new Error("Oversized Docker MCP request did not return the expected JSON-RPC invalid request error.");
+  }
+}
+
+async function verifyMalformedContentLengthRejected(endpoint: string): Promise<void> {
+  const target = new URL(endpoint);
+  const response = await new Promise<{ statusCode: number; body: string; contentType: string | string[] | undefined; headers: IncomingHttpHeaders }>((resolve, reject) => {
+    const req = request({
+      hostname: target.hostname,
+      port: target.port,
+      path: target.pathname,
+      method: "POST",
+      headers: {
+        "Content-Length": "9007199254740992",
+        "Content-Type": "application/json"
+      }
+    }, res => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", chunk => {
+        body += chunk;
+      });
+      res.on("end", () => {
+        resolve({
+          statusCode: res.statusCode ?? 0,
+          body,
+          contentType: res.headers["content-type"],
+          headers: res.headers
+        });
+      });
+    });
+    req.on("error", reject);
+    req.end();
+  });
+
+  assertRawSecurityHeaders(response.headers, "docker malformed Content-Length rejection");
+  if (response.statusCode !== 400) {
+    throw new Error(`Expected malformed Content-Length Docker MCP request to return 400, got ${response.statusCode}: ${response.body}`);
+  }
+  if (typeof response.contentType !== "string" || !response.contentType.includes("application/json")) {
+    throw new Error("Malformed Content-Length Docker MCP request rejection must return application/json.");
+  }
+
+  const body = JSON.parse(response.body) as { error?: { code?: unknown; message?: unknown } };
+  if (body.error?.code !== -32600 || body.error?.message !== "Invalid Content-Length header.") {
+    throw new Error("Malformed Content-Length Docker MCP request did not return the expected JSON-RPC invalid request error.");
   }
 }
 
@@ -660,14 +714,14 @@ async function stopContainer(containerId: string): Promise<void> {
   try {
     await collectOutput("docker", ["stop", "--time", "3", containerId]);
   } catch (error) {
-    console.error((error as Error).message);
+    console.error(compactScriptErrorMessage(error));
   }
 }
 
 async function main() {
   const port = smokePortFromEnv("DOCKER_SMOKE_PORT") ?? await getFreePort();
   const endpoint = `http://127.0.0.1:${port}/mcp`;
-  const authToken = process.env.DOCKER_SMOKE_MCP_AUTH_TOKEN ?? "smoke-token-for-preflight";
+  const authToken = process.env.DOCKER_SMOKE_MCP_AUTH_TOKEN ?? process.env.MCP_AUTH_TOKEN ?? "smoke-token-for-preflight";
 
   console.log(`Starting Docker smoke container ${containerName} from ${imageTag}`);
   const containerId = await collectOutput("docker", [
@@ -722,6 +776,8 @@ async function main() {
     console.log("docker_auth_rejection=ok");
     await verifyOversizedBearerTokenRejected(endpoint);
     console.log("docker_oversized_bearer_rejection=ok");
+    await verifyMalformedContentLengthRejected(endpoint);
+    console.log("docker_malformed_content_length=ok");
     await verifyOversizedRequest(endpoint, DEFAULT_MCP_MAX_BODY_BYTES);
     console.log("docker_oversized_request=ok");
     await runNode(["dist/scripts/smoke.js"], {
@@ -733,11 +789,11 @@ async function main() {
   } finally {
     await stopContainer(containerId);
   }
-  await verifyHealthcheckWithExternalAllowedHost();
+  await verifyHealthcheckWithExternalAllowedHost(authToken);
   console.log("docker_healthcheck_external_host=ok");
 }
 
 main().catch(error => {
-  console.error(error);
+  console.error(compactScriptErrorMessage(error));
   process.exit(1);
 });

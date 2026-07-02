@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { dockerImageReferenceFromEnv } from "./docker-image-reference.js";
 import { extractLivePublicDataEvidenceLines } from "./live-evidence.js";
+import { compactScriptErrorMessage } from "./safe-error.js";
 
 interface Step {
   name: string;
@@ -181,6 +182,6 @@ async function main() {
 }
 
 main().catch(error => {
-  console.error(error);
+  console.error(compactScriptErrorMessage(error));
   process.exit(1);
 });

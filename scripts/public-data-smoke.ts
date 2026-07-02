@@ -1,5 +1,6 @@
 import { MONEY_INPUT_LIMITS, assessLeaseSafety, compareDepositToSaleMarket, compareRentMarket, isAllZeroLawdCd, isFutureDealYmd, resolveLegalDongCode } from "../src/domain.js";
 import type { HousingType } from "../src/sources.js";
+import { compactScriptErrorMessage } from "./safe-error.js";
 
 export const PUBLIC_DATA_SMOKE_HOUSING_TYPES = ["apartment", "rowhouse", "single_multi", "officetel"] as const satisfies readonly HousingType[];
 const MAX_PUBLIC_DATA_SMOKE_REGION_LENGTH = 80;
@@ -18,13 +19,32 @@ export function positiveSampleCount(text: string, label: string, pattern: RegExp
   return count;
 }
 
-export function publicDataSmokeHousingTypes(): HousingType[] {
-  const raw = process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES?.trim();
-  if (!raw) return [...PUBLIC_DATA_SMOKE_HOUSING_TYPES];
+export function positiveOfficialTotalCount(text: string, label: string, pattern: RegExp): number {
+  const match = text.match(pattern);
+  if (!match?.[1]) {
+    throw new Error(`${label} smoke did not return a parseable official total count.`);
+  }
 
-  const requested = raw.split(",").map(type => type.trim()).filter(Boolean);
-  if (requested.length === 0) {
+  const count = Number(match[1].replace(/,/g, ""));
+  if (!Number.isSafeInteger(count) || count <= 0) {
+    throw new Error(`${label} smoke returned official total count ${count}. Configure a region/month with live official totalCount evidence before registration.`);
+  }
+
+  return count;
+}
+
+export function publicDataSmokeHousingTypes(): HousingType[] {
+  const rawValue = process.env.PUBLIC_DATA_SMOKE_HOUSING_TYPES;
+  if (rawValue === undefined) return [...PUBLIC_DATA_SMOKE_HOUSING_TYPES];
+
+  const raw = rawValue.trim();
+  if (raw.length === 0) {
     throw new Error("PUBLIC_DATA_SMOKE_HOUSING_TYPES must include at least one supported housing type.");
+  }
+
+  const requested = raw.split(",").map(type => type.trim());
+  if (requested.some(type => type.length === 0)) {
+    throw new Error("PUBLIC_DATA_SMOKE_HOUSING_TYPES must not include empty comma-separated entries.");
   }
 
   const duplicates = requested.filter((type, index) => requested.indexOf(type) !== index);
@@ -70,6 +90,9 @@ export function publicDataSmokeRegion(): string {
   }
   if (/[\u0000-\u001F\u007F`]/.test(region)) {
     throw new Error("PUBLIC_DATA_SMOKE_REGION must not include control characters, line breaks, tabs, or Markdown backticks.");
+  }
+  if (/!\[[^\]\r\n]{0,120}\]\([^) \r\n]{1,500}\)/.test(region) || /\[[^\]\r\n]{1,120}\]\([^) \r\n]{1,500}\)/.test(region) || /<\/?[A-Za-z][^>\r\n]{0,200}>|[<>]/.test(region)) {
+    throw new Error("PUBLIC_DATA_SMOKE_REGION must not include Markdown links, images, HTML tags, or angle brackets.");
   }
   if (/\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b/.test(region) || /\bhttps?:\/\/[^\s)]+/i.test(region) || /\b\d{6}[\s.-]?[0-9]\d{6}\b/.test(region) || /\b01[016789][\s.-]?\d{3,4}[\s.-]?\d{4}\b/.test(region) || /\b0(?:2|[3-6][1-5]|70|80)[\s.-]?\d{3,4}[\s.-]?\d{4}\b/.test(region) || /(?:계좌(?:번호)?|입금\s*계좌|송금\s*계좌)\s*(?:은|는|:)?\s*\d{2,6}[\s-]\d{2,6}[\s-]\d{2,8}/.test(region) || /\b\d{1,4}\s*동\s*\d{1,4}\s*호/.test(region) || /\b\d{1,3}\s*층\s*\d{1,4}\s*호/.test(region) || /\b\d{2,4}\s*호/.test(region)) {
     throw new Error("PUBLIC_DATA_SMOKE_REGION must not include personal identifiers, email addresses, phone numbers, URLs, payment account details, or household unit details.");
@@ -142,7 +165,8 @@ async function main() {
       dealYmd
     });
     const rentSampleCount = positiveSampleCount(rentMarket, `Rent-market[${housingType}]`, /신고 표본 수:\s*([\d,]+)/);
-    console.log(`rent_market[${housingType}]=ok samples=${rentSampleCount}`);
+    const rentOfficialTotalCount = positiveOfficialTotalCount(rentMarket, `Rent-market[${housingType}]`, /공식 전체 신고 건수:\s*([\d,]+)/);
+    console.log(`rent_market[${housingType}]=ok samples=${rentSampleCount} official_total=${rentOfficialTotalCount}`);
 
     const saleMarket = await compareDepositToSaleMarket({
       housingType,
@@ -151,10 +175,11 @@ async function main() {
       depositManwon: deposit
     });
     const saleSampleCount = positiveSampleCount(saleMarket, `Sale-market[${housingType}]`, /매매 표본 수:\s*([\d,]+)/);
+    const saleOfficialTotalCount = positiveOfficialTotalCount(saleMarket, `Sale-market[${housingType}]`, /공식 전체 신고 건수:\s*([\d,]+)/);
     if (!saleMarket.includes("매매가 대비 보증금 비율:")) {
       throw new Error(`Sale-market smoke did not return a deposit-to-sale ratio: ${housingType}`);
     }
-    console.log(`sale_market[${housingType}]=ok samples=${saleSampleCount}`);
+    console.log(`sale_market[${housingType}]=ok samples=${saleSampleCount} official_total=${saleOfficialTotalCount}`);
 
     const assessment = await assessLeaseSafety({
       housingType,
@@ -169,13 +194,15 @@ async function main() {
     }
     const assessmentRentCount = positiveSampleCount(assessment, `Lease-assessment[${housingType}] rent`, /전월세 신고 표본\s*([\d,]+)건/);
     const assessmentSaleCount = positiveSampleCount(assessment, `Lease-assessment[${housingType}] sale`, /매매 신고 표본\s*([\d,]+)건/);
-    console.log(`lease_assessment[${housingType}]=ok rent_samples=${assessmentRentCount} sale_samples=${assessmentSaleCount}`);
+    const assessmentRentOfficialTotalCount = positiveOfficialTotalCount(assessment, `Lease-assessment[${housingType}] rent`, /전월세 공식 전체 신고\s*([\d,]+)건/);
+    const assessmentSaleOfficialTotalCount = positiveOfficialTotalCount(assessment, `Lease-assessment[${housingType}] sale`, /매매 공식 전체 신고\s*([\d,]+)건/);
+    console.log(`lease_assessment[${housingType}]=ok rent_samples=${assessmentRentCount} rent_official_total=${assessmentRentOfficialTotalCount} sale_samples=${assessmentSaleCount} sale_official_total=${assessmentSaleOfficialTotalCount}`);
   }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch(error => {
-    console.error(error);
+    console.error(compactScriptErrorMessage(error));
     process.exit(1);
   });
 }
