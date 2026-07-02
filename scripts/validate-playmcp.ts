@@ -715,7 +715,7 @@ function molitSourceId(housingType: string, transactionType: "rent" | "sale"): s
   return `molit-${housingType === "single_multi" ? "single" : housingType}-${transactionType}`;
 }
 
-assert(LEGAL_DONG_API.endpoint.startsWith("https://apis.data.go.kr/1741000/"), "legal-dong endpoint must use the official HTTPS data.go.kr gateway");
+assert(LEGAL_DONG_API.endpoint.startsWith("http://apis.data.go.kr/1741000/"), "legal-dong endpoint must use the official data.go.kr request address");
 assert(LEGAL_DONG_API.portalUrl.includes("data.go.kr"), "legal-dong portal must use data.go.kr");
 assert(SOURCES.some(source => source.id === "mois-legal-dong-code" && source.url === LEGAL_DONG_API.portalUrl), "legal-dong source registry URL must match the API portal URL");
 
