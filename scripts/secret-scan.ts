@@ -4,12 +4,13 @@ import { pathToFileURL } from "node:url";
 
 const root = process.cwd();
 const includeExtensions = new Set([".ts", ".js", ".mjs", ".json", ".md", ".yml", ".yaml", ".dockerignore", ".gitignore"]);
-const includeFileNames = new Set(["Dockerfile", ".npmrc"]);
+const includeFileNames = new Set(["Dockerfile", "Dockerfile.playmcp", ".npmrc"]);
 const ignoredDirectories = new Set([".git", "node_modules", "dist", "coverage"]);
 const allowedPlaceholders = [
   "DATA_GO_KR_SERVICE_KEY=...",
   "DATA_GO_KR_SERVICE_KEY=your-data-go-kr-service-key",
-  "MCP_AUTH_TOKEN=replace-with-runtime-secret"
+  "MCP_AUTH_TOKEN=replace-with-runtime-secret",
+  "ENV DATA_GO_KR_SERVICE_KEY=${DATA_GO_KR_SERVICE_KEY}"
 ];
 
 interface Finding {
@@ -65,7 +66,9 @@ function isAllowedPlaceholder(line: string): boolean {
 }
 
 function lineWithoutAllowedSyntheticSecrets(line: string): string {
-  return line.replace(/LeaseSafePublicDataSmokeKey[A-Za-z0-9+/]*={0,2}/g, "");
+  return line
+    .replace(/LeaseSafePublicDataSmokeKey[A-Za-z0-9+/]*={0,2}/g, "")
+    .replace(/DATA_GO_KR_SERVICE_KEY=(?:"?\$\{DATA_GO_KR_SERVICE_KEY\}"?)/g, "DATA_GO_KR_SERVICE_KEY=...");
 }
 
 function scanStandalonePublicDataKey(line: string): boolean {
@@ -77,6 +80,7 @@ export function scanLine(file: string, line: string, lineNumber: number): Findin
   const findings: Finding[] = [];
   const relativeFile = relative(root, file);
   if (isAllowedPlaceholder(line)) return findings;
+  const lineToScan = lineWithoutAllowedSyntheticSecrets(line);
 
   const patterns: Array<[RegExp, string]> = [
     [/DATA_GO_KR_SERVICE_KEY\s*=\s*["']?[^"'\s.][^"'\s]{20,}/, "possible committed data.go.kr service key"],
@@ -86,11 +90,11 @@ export function scanLine(file: string, line: string, lineNumber: number): Findin
   ];
 
   for (const [pattern, reason] of patterns) {
-    if (pattern.test(line)) {
+    if (pattern.test(lineToScan)) {
       findings.push({ file: relativeFile, reason, line: lineNumber });
     }
   }
-  if (scanStandalonePublicDataKey(line)) {
+  if (scanStandalonePublicDataKey(lineToScan)) {
     findings.push({ file: relativeFile, reason: "possible decoded data.go.kr service key", line: lineNumber });
   }
   return findings;

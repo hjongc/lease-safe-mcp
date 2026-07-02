@@ -44,6 +44,7 @@ const MCP_AUTH_TOKEN_PLACEHOLDERS = new Set([
   "mcp-auth-token",
   "..."
 ]);
+const PLAYMCP_PUBLIC_AUTH_MODE = "playmcp-untrusted-public";
 const LOG_SECRET_ENV_NAMES = ["DATA_GO_KR_SERVICE_KEY", "MCP_AUTH_TOKEN"] as const;
 
 export const MCP_TEXT_LIMITS = {
@@ -169,6 +170,13 @@ function requiredAllowedHosts(): string[] {
   return ["127.0.0.1", "localhost"];
 }
 
+function isPlayMcpPublicMode(): boolean {
+  const authMode = process.env.MCP_AUTH_MODE;
+  if (authMode === undefined || authMode === "") return false;
+  if (authMode === PLAYMCP_PUBLIC_AUTH_MODE) return true;
+  throw new Error(`MCP_AUTH_MODE must be ${PLAYMCP_PUBLIC_AUTH_MODE} when set.`);
+}
+
 function requireProductionDataKey(): void {
   if (process.env.NODE_ENV !== "production") return;
   try {
@@ -181,7 +189,9 @@ function requireProductionDataKey(): void {
   }
 }
 
-function mcpAuthToken(): string | undefined {
+function mcpAuthToken(playMcpPublicMode = false): string | undefined {
+  if (playMcpPublicMode) return undefined;
+
   const token = process.env.MCP_AUTH_TOKEN;
   if (token === undefined || token === "") {
     if (process.env.NODE_ENV === "production") {
@@ -789,18 +799,19 @@ export function createServer(): McpServer {
 
 export function createApp(now = new Date(), sources: SourceRecord[] = SOURCES) {
   assertValidSourceRegistry(sources, now);
-  const allowedHosts = requiredAllowedHosts();
+  const playMcpPublicMode = isPlayMcpPublicMode();
+  const allowedHosts = playMcpPublicMode ? undefined : requiredAllowedHosts();
   requireProductionDataKey();
   const maxBodyBytes = mcpMaxBodyBytes();
   const rateLimitPerMinute = mcpRateLimitPerMinute();
   publicDataTimeoutMs();
-  const authToken = mcpAuthToken();
+  const authToken = mcpAuthToken(playMcpPublicMode);
   const app = express();
 
   app.disable("x-powered-by");
   app.use(setSecurityHeaders);
   app.use(setRequestId);
-  app.use(hostHeaderValidation(allowedHosts));
+  if (allowedHosts) app.use(hostHeaderValidation(allowedHosts));
 
   app.get("/", (_req: Request, res: Response) => {
     res.type("text/plain").send(`${SERVICE_NAME} MCP server is running. Use POST /mcp for Streamable HTTP.`);

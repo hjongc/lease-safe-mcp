@@ -39,11 +39,15 @@ Optional:
 
 Do not commit runtime secrets. Configure them in PlayMCP or deployment environment settings.
 
-Do not bake secrets into the image with Dockerfile `ENV`, build args, committed files, or hardcoded source. If PlayMCP image registration does not provide runtime secret settings, deploy the verified image to a secret-capable HTTPS runtime and register that external HTTPS endpoint in PlayMCP instead.
+Do not bake secrets into the image for normal production deployments with Dockerfile `ENV`, build args, committed files, or hardcoded source. If PlayMCP image registration provides runtime secret settings, use the normal immutable `sha-<short-sha>` image and configure secrets at runtime.
 
-Use the immutable `sha-<short-sha>` GHCR image from the `Publish Image` workflow for submission evidence. If PlayMCP cannot pull private GHCR packages, make the package public or deploy the same image to a runtime that can authenticate to GHCR.
+If PlayMCP does not provide runtime secret or Authorization-header settings, use the separate contest-only `playmcp-sha-<short-sha>` GHCR image from the `Publish Image` workflow. That image bakes `DATA_GO_KR_SERVICE_KEY` from the GitHub repository secret and runs with `MCP_AUTH_MODE=playmcp-untrusted-public`, which disables bearer authentication and host allowlist enforcement only for that image. Treat the PlayMCP baked image as a public contest endpoint image and rotate `DATA_GO_KR_SERVICE_KEY` after the event.
 
-The production server fails at startup if `MCP_ALLOWED_HOSTS`, `DATA_GO_KR_SERVICE_KEY`, or `MCP_AUTH_TOKEN` is missing, or if official source registry metadata is invalid or stale. This is intentional: missing official-data configuration, unauthenticated MCP exposure, or broken official-source evidence should be fixed before the demo, not hidden until a user calls the flagship tool.
+Use the immutable `sha-<short-sha>` GHCR image for normal submission evidence, or the immutable `playmcp-sha-<short-sha>` GHCR image when PlayMCP cannot inject runtime secrets/headers. If PlayMCP cannot pull private GHCR packages, make the package public or deploy the same image to a runtime that can authenticate to GHCR.
+
+For long-lived production, prefer a secret-capable external HTTPS endpoint registered in PlayMCP instead of the baked contest image.
+
+The normal production server fails at startup if `MCP_ALLOWED_HOSTS`, `DATA_GO_KR_SERVICE_KEY`, or `MCP_AUTH_TOKEN` is missing, or if official source registry metadata is invalid or stale. This is intentional: missing official-data configuration, unauthenticated MCP exposure, or broken official-source evidence should be fixed before the demo, not hidden until a user calls the flagship tool. The PlayMCP baked image is the only exception: it still requires the baked public-data key, but intentionally disables bearer auth and host allowlist enforcement because the target PlayMCP deployment screen does not expose runtime secret/header settings.
 
 The Docker `HEALTHCHECK` connects to loopback but sends the first configured `MCP_ALLOWED_HOSTS` value as the `Host` header, so a production allowlist containing only the PlayMCP host can still pass container liveness checks.
 

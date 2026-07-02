@@ -52,14 +52,16 @@ gh workflow run "Registration Preflight" --repo hjongc/lease-safe-mcp --ref main
 
 PlayMCP runtime:
 
-- Use image registration only if PlayMCP provides runtime secret settings for the submitted image.
-- Set `DATA_GO_KR_SERVICE_KEY` in the PlayMCP runtime environment or secret settings.
-- Set `MCP_ALLOWED_HOSTS` to the PlayMCP host or custom deployment domain. Use unique plain hostnames only; do not include `https://`, ports, paths, wildcards, userinfo, query strings, fragments, backslashes, whitespace, blank comma-separated entries, underscores, empty labels, or labels that start or end with `-`.
-- Put the primary PlayMCP host first in `MCP_ALLOWED_HOSTS`; the Docker `HEALTHCHECK` dials loopback but sends that first allowed host as the `Host` header, so DNS rebinding protection and container liveness checks do not conflict.
+- Use the normal `sha-<short-sha>` image only if PlayMCP provides runtime secret settings for the submitted image.
+- If PlayMCP does not provide runtime secret/header settings, use the separate `playmcp-sha-<short-sha>` baked image from the `Publish Image` workflow. This contest-only image bakes `DATA_GO_KR_SERVICE_KEY` from GitHub Actions secrets and runs with `MCP_AUTH_MODE=playmcp-untrusted-public`.
+- For normal production images, set `DATA_GO_KR_SERVICE_KEY` in the PlayMCP runtime environment or secret settings.
+- For normal production images, set `MCP_ALLOWED_HOSTS` to the PlayMCP host or custom deployment domain. Use unique plain hostnames only; do not include `https://`, ports, paths, wildcards, userinfo, query strings, fragments, backslashes, whitespace, blank comma-separated entries, underscores, empty labels, or labels that start or end with `-`.
+- For normal production images, put the primary PlayMCP host first in `MCP_ALLOWED_HOSTS`; the Docker `HEALTHCHECK` dials loopback but sends that first allowed host as the `Host` header, so DNS rebinding protection and container liveness checks do not conflict.
 - Leave `HOST` unset for normal container binding, or set it to the platform-provided plain bind host when required.
-- Set `MCP_AUTH_TOKEN` before production startup and configure the client to send `Authorization: Bearer <token>`. Use a real visible-ASCII token, not a placeholder, with at least 16 characters and no whitespace.
-- Do not bake secrets into the image with Dockerfile `ENV`, build args, committed files, or hardcoded source.
-- If PlayMCP image registration does not provide runtime secret settings, deploy the verified image to a secret-capable HTTPS runtime and register that external HTTPS endpoint in PlayMCP instead.
+- For normal production images, set `MCP_AUTH_TOKEN` before production startup and configure the client to send `Authorization: Bearer <token>`. Use a real visible-ASCII token, not a placeholder, with at least 16 characters and no whitespace.
+- Do not bake secrets into the image for normal production deployments with Dockerfile `ENV`, build args, committed files, or hardcoded source. The PlayMCP baked image is the only exception and should be treated as a contest-only public endpoint image.
+- Rotate `DATA_GO_KR_SERVICE_KEY` after using the PlayMCP baked image in the event.
+- For long-lived production, prefer a secret-capable external HTTPS endpoint registered in PlayMCP instead of the baked contest image.
 
 Never paste secrets into issues, commits, README examples, screenshots, or CI logs.
 
@@ -73,7 +75,7 @@ Collect this evidence before registering or updating the PlayMCP build:
 - Latest GitHub Actions `CI` run is green and its summary shows required housing coverage, working-tree/staged/committed whitespace diff checks, official source freshness evidence, root route minimality smoke evidence, API-backed missing-key smoke evidence when the repository secret is absent, MCP request-id smoke evidence, Docker runtime smoke evidence, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines when the repository secret is configured.
 - `npm run check:registration-readiness` passes on the clean submitted commit, including CI `Quality Gate` official source freshness, Docker build/runtime, live public-data smoke, CI live evidence status publishing, and `Registration Evidence` evidence-summary success.
 - GitHub Actions `Live public-data smoke` is passed, not skipped, after the repository secret is configured.
-- GitHub Actions `Publish Image` workflow passes for the same commit and publishes the immutable GHCR image tag.
+- GitHub Actions `Publish Image` workflow passes for the same commit and publishes the immutable normal GHCR image tag plus the immutable PlayMCP baked GHCR image tag.
 - Docker runtime smoke passes after image build.
 - Demo tool is `assess_lease_safety`.
 - Demo input uses a positive `depositManwon` plus a verified `lawdCd`, `dealYmd`, and `housingType` with positive live rent and sale sample counts.

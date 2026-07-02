@@ -62,6 +62,8 @@ jobs:
             echo "IMAGE=${image}"
             echo "IMAGE_SHA_TAG=${image}:sha-${short_sha}"
             echo "IMAGE_MAIN_TAG=${image}:main"
+            echo "IMAGE_PLAYMCP_SHA_TAG=${image}:playmcp-sha-${short_sha}"
+            echo "IMAGE_PLAYMCP_MAIN_TAG=${image}:playmcp-main"
             echo "PUBLISHED_HEAD_SHA=$(git rev-parse HEAD)"
           } >> "$GITHUB_ENV"
 
@@ -73,6 +75,39 @@ jobs:
         env:
           DOCKER_SMOKE_IMAGE: ${{ env.IMAGE_SHA_TAG }}
 
+      - name: Verify PlayMCP baked image input
+        shell: bash
+        run: |
+          if [ -z "${DATA_GO_KR_SERVICE_KEY}" ]; then
+            echo "DATA_GO_KR_SERVICE_KEY repository secret is required to publish the PlayMCP baked image." >&2
+            exit 1
+          fi
+        env:
+          DATA_GO_KR_SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
+
+      - name: Build PlayMCP baked image
+        run: docker build --platform linux/amd64 -f Dockerfile.playmcp --build-arg DATA_GO_KR_SERVICE_KEY="${DATA_GO_KR_SERVICE_KEY}" -t "${IMAGE_PLAYMCP_SHA_TAG}" -t "${IMAGE_PLAYMCP_MAIN_TAG}" .
+        env:
+          DATA_GO_KR_SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
+
+      - name: Smoke PlayMCP baked image
+        shell: bash
+        run: |
+          container="lease-safe-playmcp-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker run -d --rm --name "${container}" -p 127.0.0.1::3000 "${IMAGE_PLAYMCP_SHA_TAG}"
+          trap 'docker rm -f "${container}" >/dev/null 2>&1 || true' EXIT
+          for _ in $(seq 1 30); do
+            host_port="$(docker port "${container}" 3000/tcp 2>/dev/null | sed 's/.*://')"
+            if [ -n "${host_port}" ] && curl -fsS "http://127.0.0.1:${host_port}/healthz" >/dev/null; then
+              MCP_ENDPOINT="http://127.0.0.1:${host_port}/mcp" npm run smoke
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs "${container}" >&2 || true
+          echo "PlayMCP baked image did not become healthy." >&2
+          exit 1
+
       - name: Login to GHCR
         shell: bash
         run: printf '%s' "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
@@ -83,6 +118,8 @@ jobs:
         run: |
           docker push "${IMAGE_SHA_TAG}"
           docker push "${IMAGE_MAIN_TAG}"
+          docker push "${IMAGE_PLAYMCP_SHA_TAG}"
+          docker push "${IMAGE_PLAYMCP_MAIN_TAG}"
 
       - name: Publish image summary
         shell: bash
@@ -93,7 +130,9 @@ jobs:
             echo "- Commit: \`${PUBLISHED_HEAD_SHA}\`"
             echo "- Immutable image: \`${IMAGE_SHA_TAG}\`"
             echo "- Moving main image: \`${IMAGE_MAIN_TAG}\`"
+            echo "- PlayMCP baked image: \`${IMAGE_PLAYMCP_SHA_TAG}\`"
+            echo "- PlayMCP moving baked image: \`${IMAGE_PLAYMCP_MAIN_TAG}\`"
             echo "- Platform: \`linux/amd64\`"
             echo "- Docker runtime smoke: passed before push"
-            echo "- Runtime secrets: not baked into the image; configure them in PlayMCP runtime secret settings or an external HTTPS runtime"
+            echo "- Runtime secrets: default image does not bake secrets; PlayMCP image bakes DATA_GO_KR_SERVICE_KEY and disables bearer auth because PlayMCP does not expose runtime secret/header settings"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -136,6 +136,9 @@ for (const requiredPublishImageStep of [
   "Scan for committed secrets",
   "Build Docker image",
   "Smoke Docker runtime",
+  "Verify PlayMCP baked image input",
+  "Build PlayMCP baked image",
+  "Smoke PlayMCP baked image",
   "Push GHCR image",
   "Publish image summary"
 ]) {
@@ -154,6 +157,16 @@ assert(/HEALTHCHECK[\s\S]*\/healthz/.test(dockerfile), "Dockerfile must healthch
 assert(/HEALTHCHECK[\s\S]*MCP_ALLOWED_HOSTS[\s\S]*headers:\{Host:host\}/.test(dockerfile), "Dockerfile healthcheck must use an allowed Host header while dialing loopback");
 assert(/CMD \["node", "dist\/src\/server\.js"\]/.test(dockerfile), "Dockerfile CMD must start built server");
 
+const playMcpDockerfile = readFileSync("Dockerfile.playmcp", "utf8");
+assert((playMcpDockerfile.match(/^FROM node:20-bookworm-slim@sha256:[a-f0-9]{64}/gm) ?? []).length === 3, "Dockerfile.playmcp must pin every Node base image stage by digest");
+assert(/ARG DATA_GO_KR_SERVICE_KEY/.test(playMcpDockerfile), "Dockerfile.playmcp must accept public-data key only through a build arg");
+assert(/ENV MCP_AUTH_MODE=playmcp-untrusted-public/.test(playMcpDockerfile), "Dockerfile.playmcp must explicitly opt into PlayMCP public mode");
+assert(playMcpDockerfile.includes(["ENV DATA_GO_KR_SERVICE_KEY", "${DATA_GO_KR_SERVICE_KEY}"].join("=")), "Dockerfile.playmcp must bake only the build arg value, not a committed literal secret");
+assert(/RUN test -n "\$\{DATA_GO_KR_SERVICE_KEY\}"/.test(playMcpDockerfile), "Dockerfile.playmcp must fail the build when the public-data key build arg is absent");
+assert(/USER node/.test(playMcpDockerfile), "Dockerfile.playmcp runtime must use the non-root node user");
+assert(/HEALTHCHECK[\s\S]*\/healthz/.test(playMcpDockerfile), "Dockerfile.playmcp must healthcheck /healthz");
+assert(/CMD \["node", "dist\/src\/server\.js"\]/.test(playMcpDockerfile), "Dockerfile.playmcp CMD must start built server");
+
 const dockerignore = readFileSync(".dockerignore", "utf8");
 for (const pattern of [".git", ".env", ".env.*", "node_modules", "dist"]) {
   assert(dockerignore.split(/\r?\n/).includes(pattern), `.dockerignore must exclude ${pattern}`);
@@ -167,6 +180,7 @@ for (const pattern of [".env", ".env.*", "node_modules/", "dist/", "coverage/", 
 const secretScanSource = readFileSync("scripts/secret-scan.ts", "utf8");
 assert(/"\.mjs"/.test(secretScanSource), "secret scan must cover checked-in ESM helper scripts");
 assert(/"Dockerfile"/.test(secretScanSource), "secret scan must cover Dockerfile");
+assert(/"Dockerfile\.playmcp"/.test(secretScanSource), "secret scan must cover PlayMCP baked Dockerfile");
 assert(/"\.npmrc"/.test(secretScanSource), "secret scan must cover npm config files");
 assert(/fileName === "\.env"/.test(secretScanSource), "secret scan must cover committed .env files");
 assert(/fileName\.startsWith\("\.env\."\)/.test(secretScanSource), "secret scan must cover committed .env.* files");
@@ -231,13 +245,21 @@ assert(/npm run validate:playmcp/.test(publishImageWorkflow), "image publish wor
 assert(/npm run scan:secrets/.test(publishImageWorkflow), "image publish workflow must scan secrets before publishing");
 assert(/ghcr\.io\/\$\{owner_lc\}\/\$\{repo_name\}/.test(publishImageWorkflow), "image publish workflow must publish to GHCR under the repository owner");
 assert(/docker build --platform linux\/amd64 -t "\$\{IMAGE_SHA_TAG\}" -t "\$\{IMAGE_MAIN_TAG\}" \./.test(publishImageWorkflow), "image publish workflow must build linux/amd64 image with immutable and main tags");
+assert(/IMAGE_PLAYMCP_SHA_TAG/.test(publishImageWorkflow), "image publish workflow must produce an immutable PlayMCP baked image tag");
+assert(/IMAGE_PLAYMCP_MAIN_TAG/.test(publishImageWorkflow), "image publish workflow must produce a moving PlayMCP baked image tag");
+assert(/Dockerfile\.playmcp/.test(publishImageWorkflow), "image publish workflow must build the PlayMCP baked Dockerfile");
+assert(/DATA_GO_KR_SERVICE_KEY repository secret is required to publish the PlayMCP baked image/.test(publishImageWorkflow), "image publish workflow must fail clearly without the public-data secret for baked PlayMCP image");
+assert(/MCP_ENDPOINT="http:\/\/127\.0\.0\.1:\$\{host_port\}\/mcp" npm run smoke/.test(publishImageWorkflow), "image publish workflow must smoke the PlayMCP baked image without bearer auth");
 assertIncludesInOrder(publishImageWorkflow, [
   "Build Docker image",
   "Smoke Docker runtime",
+  "Verify PlayMCP baked image input",
+  "Build PlayMCP baked image",
+  "Smoke PlayMCP baked image",
   "Login to GHCR",
   "Push GHCR image"
 ], "image publish workflow must smoke the image before registry login and push");
-assert(/Runtime secrets: not baked into the image/.test(publishImageWorkflow), "image publish summary must warn that runtime secrets are not baked into the image");
+assert(/default image does not bake secrets; PlayMCP image bakes DATA_GO_KR_SERVICE_KEY/.test(publishImageWorkflow), "image publish summary must distinguish default and PlayMCP baked image secret handling");
 assert(/workflow_dispatch/.test(registrationWorkflow), "registration preflight workflow must be manually dispatchable");
 for (const input of [
   "public_data_smoke_region",
@@ -485,6 +507,11 @@ assert(toolDescriptions.every(description => !/DATA_GO_KR_SERVICE_KEY|MCP_AUTH_T
 assert(toolDescriptions.filter(description => description.includes("공식 전체 신고 건수와 실제 계산 표본 수를 분리")).length >= 3, "API-backed market tool descriptions must disclose official-total versus calculation-sample separation");
 assert(/timingSafeEqual/.test(server), "server must compare bearer tokens with timingSafeEqual");
 assert(/MCP_AUTH_TOKEN is required in production/.test(server), "server must fail fast without MCP_AUTH_TOKEN in production");
+assert(/PLAYMCP_PUBLIC_AUTH_MODE = "playmcp-untrusted-public"/.test(server), "server must name the PlayMCP public mode as an explicit untrusted opt-in");
+assert(/MCP_AUTH_MODE must be \$\{PLAYMCP_PUBLIC_AUTH_MODE\} when set/.test(server), "server must reject unknown MCP_AUTH_MODE values");
+assert(/const playMcpPublicMode = isPlayMcpPublicMode\(\)/.test(server), "server must resolve PlayMCP public mode before auth and host middleware");
+assert(/playMcpPublicMode \? undefined : requiredAllowedHosts\(\)/.test(server), "server must skip host allowlist only in PlayMCP public mode");
+assert(/mcpAuthToken\(playMcpPublicMode\)/.test(server), "server must skip bearer-token requirement only in PlayMCP public mode");
 assert(/MCP_AUTH_TOKEN must be at least/.test(server), "server must reject weak MCP_AUTH_TOKEN values");
 assert(/MAX_MCP_AUTH_TOKEN_LENGTH/.test(server), "server must bound MCP_AUTH_TOKEN length");
 assert(/suppliedToken\.length > MAX_MCP_AUTH_TOKEN_LENGTH/.test(server), "server must reject oversized supplied bearer tokens before timing-safe comparison");

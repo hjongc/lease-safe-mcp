@@ -61,6 +61,9 @@ const REQUIRED_PUBLISH_IMAGE_STEP_NAMES = [
   "Scan for committed secrets",
   "Build Docker image",
   "Smoke Docker runtime",
+  "Verify PlayMCP baked image input",
+  "Build PlayMCP baked image",
+  "Smoke PlayMCP baked image",
   "Push GHCR image",
   "Publish image summary"
 ];
@@ -217,6 +220,7 @@ test("secret scan allows exact placeholders but rejects hidden values beside the
     "=="
   ].join("");
   assert.equal(scanLine("README.md", decodedPublicDataKey, 1).length, 1);
+  assert.deepEqual(scanLine(".github/workflows/publish-image.yml", 'docker build --build-arg DATA_GO_KR_SERVICE_KEY="${DATA_GO_KR_SERVICE_KEY}" .', 1), []);
   assert.deepEqual(scanLine("src/domain.test.ts", VALID_TEST_SERVICE_KEY, 1), []);
   assert.equal(scanLine("src/domain.test.ts", `${VALID_TEST_SERVICE_KEY} ${decodedPublicDataKey}`, 1).length, 1);
 });
@@ -225,6 +229,7 @@ test("secret scan covers production configuration file names", () => {
   assert.equal(shouldScanFileName(".env"), true);
   assert.equal(shouldScanFileName(".env.production"), true);
   assert.equal(shouldScanFileName("Dockerfile"), true);
+  assert.equal(shouldScanFileName("Dockerfile.playmcp"), true);
   assert.equal(shouldScanFileName(".npmrc"), true);
   assert.equal(shouldScanFileName("README.md"), true);
   assert.equal(shouldScanFileName("notes.txt"), false);
@@ -4945,6 +4950,53 @@ test("MCP auth token fails fast when configured too weakly", () => {
       delete process.env[authEnvName];
     } else {
       process.env[authEnvName] = previousAuthToken;
+    }
+  }
+});
+
+test("PlayMCP public image mode starts without bearer token or host allowlist", () => {
+  const authEnvName = "MCP_AUTH" + "_TOKEN";
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousAllowedHosts = process.env.MCP_ALLOWED_HOSTS;
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousAuthToken = process.env[authEnvName];
+  const previousAuthMode = process.env.MCP_AUTH_MODE;
+  try {
+    process.env.NODE_ENV = "production";
+    delete process.env.MCP_ALLOWED_HOSTS;
+    delete process.env[authEnvName];
+    process.env.MCP_AUTH_MODE = "playmcp-untrusted-public";
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+
+    assert.doesNotThrow(() => createApp());
+
+    process.env.MCP_AUTH_MODE = "unknown";
+    assert.throws(() => createApp(), /MCP_AUTH_MODE must be playmcp-untrusted-public when set/);
+  } finally {
+    if (previousNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+    if (previousAllowedHosts === undefined) {
+      delete process.env.MCP_ALLOWED_HOSTS;
+    } else {
+      process.env.MCP_ALLOWED_HOSTS = previousAllowedHosts;
+    }
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+    if (previousAuthToken === undefined) {
+      delete process.env[authEnvName];
+    } else {
+      process.env[authEnvName] = previousAuthToken;
+    }
+    if (previousAuthMode === undefined) {
+      delete process.env.MCP_AUTH_MODE;
+    } else {
+      process.env.MCP_AUTH_MODE = previousAuthMode;
     }
   }
 });

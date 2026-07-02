@@ -228,13 +228,17 @@ Before registering in PlayMCP:
 - Confirm GitHub Actions live public-data smoke is passed, not skipped
 - Confirm the GitHub Actions `Publish Image` workflow succeeded for the submitted commit and use its immutable GHCR image tag
 - Run `npm run check:registration-readiness` on a clean worktree to verify the current commit has passing CI and Registration Preflight evidence
-- Prefer image registration only when PlayMCP exposes runtime secret settings for the submitted image
-- Configure the same `DATA_GO_KR_SERVICE_KEY` and a production `MCP_AUTH_TOKEN` as PlayMCP runtime environment variables or secrets
-- Set `MCP_ALLOWED_HOSTS` to the PlayMCP host or deployment domain
-- After PlayMCP issues the HTTPS endpoint, run `MCP_ENDPOINT=https://<playmcp-host>/mcp MCP_AUTH_TOKEN=... npm run smoke:remote`
+- Prefer the normal `sha-<short-sha>` image when PlayMCP exposes runtime secret settings for the submitted image
+- If PlayMCP has no runtime secret/header settings, use the separate `playmcp-sha-<short-sha>` baked image from the `Publish Image` workflow
+- The PlayMCP baked image includes `DATA_GO_KR_SERVICE_KEY` at build time and runs with `MCP_AUTH_MODE=playmcp-untrusted-public`, so bearer authentication and host allowlist enforcement are disabled only for that image
+- For normal production images, configure the same `DATA_GO_KR_SERVICE_KEY` and a production `MCP_AUTH_TOKEN` as runtime environment variables or secrets
+- For normal production images, set `MCP_ALLOWED_HOSTS` to the PlayMCP host or deployment domain
+- After PlayMCP issues the HTTPS endpoint, run `MCP_ENDPOINT=https://<playmcp-host>/mcp MCP_AUTH_TOKEN=... npm run smoke:remote` for normal authenticated deployments; for the baked PlayMCP image, use `MCP_ENDPOINT=https://<playmcp-host>/mcp npm run smoke`
 - Use `assess_lease_safety` as the demo entry tool
 
-Do not bake secrets into the image with Dockerfile `ENV`, build args, committed files, or hardcoded source. If PlayMCP image registration does not provide runtime secret settings, deploy the same verified image to a secret-capable HTTPS runtime and register that external HTTPS endpoint instead.
+Do not bake secrets into the image for normal production deployments with Dockerfile `ENV`, build args, committed files, or hardcoded source. The only exception is the separate PlayMCP baked image produced from GitHub Actions repository secrets because PlayMCP does not provide runtime secret/header settings; treat it as a contest-only public endpoint image and rotate `DATA_GO_KR_SERVICE_KEY` after the event.
+
+For long-lived production, the safer fallback remains a secret-capable external HTTPS endpoint registered in PlayMCP instead of the baked contest image.
 
 PlayMCP in KC Git-source build:
 

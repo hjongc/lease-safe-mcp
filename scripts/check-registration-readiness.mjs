@@ -24,6 +24,9 @@ const requiredPublishImageStepNames = [
   "Scan for committed secrets",
   "Build Docker image",
   "Smoke Docker runtime",
+  "Verify PlayMCP baked image input",
+  "Build PlayMCP baked image",
+  "Smoke PlayMCP baked image",
   "Push GHCR image",
   "Publish image summary"
 ];
