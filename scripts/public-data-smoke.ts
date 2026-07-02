@@ -4,7 +4,7 @@ import { compactScriptErrorMessage } from "./safe-error.js";
 
 export const PUBLIC_DATA_SMOKE_HOUSING_TYPES = ["apartment", "rowhouse", "single_multi", "officetel"] as const satisfies readonly HousingType[];
 const MAX_PUBLIC_DATA_SMOKE_REGION_LENGTH = 80;
-const PUBLIC_DATA_SMOKE_DEMO_CONCERNS = "대리계약이고 오늘 계약금을 보내라고 합니다. 근저당도 걱정됩니다.";
+const PUBLIC_DATA_SMOKE_DEMO_CONCERNS = "대리계약이고 오늘 계약금을 보내라고 합니다. 근저당도 걱정됩니다. 임대인 세금 체납 확인을 회피합니다.";
 
 type AssessmentRiskEvidenceLevel = "moderate" | "caution" | "high" | "very_high";
 
