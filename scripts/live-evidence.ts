@@ -6,6 +6,12 @@ type EvidenceCategory = {
   readonly pattern: RegExp;
 };
 
+type HousingEvidenceLine = {
+  readonly category: "rent_market" | "sale_market" | "lease_assessment";
+  readonly housingType: string;
+  readonly line: string;
+};
+
 const EVIDENCE_LINE_PATTERN = /^(public_data_smoke_config|legal_dong=ok|rent_market\[|sale_market\[|lease_assessment\[)/;
 
 const REQUIRED_EVIDENCE_CATEGORIES: EvidenceCategory[] = [
@@ -51,6 +57,75 @@ function expectedHousingTypesFromConfig(configLine: string): string[] {
   return housingTypes;
 }
 
+function assertPositiveEvidenceCount(line: string, label: string, pattern: RegExp): void {
+  const match = pattern.exec(line);
+  if (!match?.[1]) {
+    throw new Error(`Malformed live public-data evidence count for ${label}: ${line}`);
+  }
+
+  const count = Number(match[1]);
+  if (!Number.isSafeInteger(count) || count <= 0) {
+    throw new Error(`Live public-data evidence count for ${label} must be positive: ${line}`);
+  }
+}
+
+function assertPositiveEvidenceCounts(lines: string[]): void {
+  for (const line of lines) {
+    if (/^rent_market\[/.test(line)) {
+      assertPositiveEvidenceCount(line, "rent_market", /\bsamples=(\d+)\b/);
+    }
+    if (/^sale_market\[/.test(line)) {
+      assertPositiveEvidenceCount(line, "sale_market", /\bsamples=(\d+)\b/);
+    }
+    if (/^lease_assessment\[/.test(line)) {
+      assertPositiveEvidenceCount(line, "lease_assessment rent", /\brent_samples=(\d+)\b/);
+      assertPositiveEvidenceCount(line, "lease_assessment sale", /\bsale_samples=(\d+)\b/);
+    }
+  }
+}
+
+function assertSingleEvidenceLine(lines: string[], label: string, pattern: RegExp): void {
+  const matches = lines.filter(line => pattern.test(line));
+  if (matches.length !== 1) {
+    throw new Error(`Live public-data evidence must include exactly one ${label} line.`);
+  }
+}
+
+function parseHousingEvidenceLine(line: string): HousingEvidenceLine | undefined {
+  const match = /^(rent_market|sale_market|lease_assessment)\[([A-Za-z0-9_-]+)\]=ok\b/.exec(line);
+  if (!match) return undefined;
+  return {
+    category: match[1] as HousingEvidenceLine["category"],
+    housingType: match[2],
+    line
+  };
+}
+
+function assertStrictHousingEvidenceLineFormats(lines: string[]): void {
+  for (const line of lines) {
+    if (/^(rent_market|sale_market|lease_assessment)\[/.test(line) && !parseHousingEvidenceLine(line)) {
+      throw new Error(`Malformed live public-data housing evidence line: ${line}`);
+    }
+  }
+}
+
+function assertExpectedHousingEvidenceLines(lines: string[], expectedHousingTypes: string[]): void {
+  const expectedTypes = new Set(expectedHousingTypes);
+  const seen = new Set<string>();
+
+  for (const evidenceLine of lines.map(parseHousingEvidenceLine).filter((line): line is HousingEvidenceLine => Boolean(line))) {
+    if (!expectedTypes.has(evidenceLine.housingType)) {
+      throw new Error(`Unexpected live public-data evidence housing type: ${evidenceLine.category}[${evidenceLine.housingType}]`);
+    }
+
+    const key = `${evidenceLine.category}[${evidenceLine.housingType}]`;
+    if (seen.has(key)) {
+      throw new Error(`Duplicate live public-data evidence line: ${key}`);
+    }
+    seen.add(key);
+  }
+}
+
 export function extractLivePublicDataEvidenceLines(logText: string): string[] {
   const lines = logText.split(/\r?\n/).filter(line => EVIDENCE_LINE_PATTERN.test(line));
   if (lines.length === 0) {
@@ -65,12 +140,19 @@ export function extractLivePublicDataEvidenceLines(logText: string): string[] {
     throw new Error(`Missing required live public-data evidence categories: ${missing.join(", ")}`);
   }
 
+  assertSingleEvidenceLine(lines, "public_data_smoke_config", /^public_data_smoke_config /);
+  assertSingleEvidenceLine(lines, "legal_dong=ok", /^legal_dong=ok$/);
+  assertStrictHousingEvidenceLineFormats(lines);
+
   const configLine = lines.find(line => /^public_data_smoke_config /.test(line));
   if (!configLine) {
     throw new Error("Live public-data smoke config evidence line was not found.");
   }
 
-  const missingByHousingType = expectedHousingTypesFromConfig(configLine).flatMap(housingType => {
+  const expectedHousingTypes = expectedHousingTypesFromConfig(configLine);
+  assertExpectedHousingEvidenceLines(lines, expectedHousingTypes);
+
+  const missingByHousingType = expectedHousingTypes.flatMap(housingType => {
     const requiredLines: EvidenceCategory[] = [
       { name: `rent_market[${housingType}]`, pattern: new RegExp(`^rent_market\\[${housingType}\\]=ok\\b`) },
       { name: `sale_market[${housingType}]`, pattern: new RegExp(`^sale_market\\[${housingType}\\]=ok\\b`) },
@@ -82,6 +164,8 @@ export function extractLivePublicDataEvidenceLines(logText: string): string[] {
   if (missingByHousingType.length > 0) {
     throw new Error(`Missing live public-data evidence lines by housing type: ${missingByHousingType.join(", ")}`);
   }
+
+  assertPositiveEvidenceCounts(lines);
 
   return lines;
 }

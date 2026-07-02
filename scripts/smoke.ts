@@ -248,8 +248,9 @@ async function main() {
     if (annotations.title !== tool.title) {
       throw new Error(`Tool ${tool.name} annotation title must match the public tool title`);
     }
-    if (!annotations.readOnlyHint || annotations.destructiveHint || annotations.openWorldHint || !annotations.idempotentHint) {
-      throw new Error(`Tool ${tool.name} annotations must declare a read-only, non-destructive, closed-world, idempotent contract`);
+    const expectedOpenWorldHint = apiBackedToolNames.has(tool.name);
+    if (!annotations.readOnlyHint || annotations.destructiveHint || annotations.openWorldHint !== expectedOpenWorldHint || !annotations.idempotentHint) {
+      throw new Error(`Tool ${tool.name} annotations must declare a read-only, non-destructive, ${expectedOpenWorldHint ? "open-world" : "closed-world"}, idempotent contract`);
     }
     assertInputSchemaDescriptions(tool.name, tool.inputSchema);
   }

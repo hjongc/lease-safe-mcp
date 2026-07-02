@@ -28,7 +28,9 @@ import {
 const SERVICE_NAME = "Lease Safe(전월세안전내비)";
 const VERSION = "0.1.0";
 const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
+const MAX_MCP_MAX_BODY_BYTES = 1024 * 1024;
 const DEFAULT_MCP_RATE_LIMIT_PER_MINUTE = 120;
+const MAX_MCP_RATE_LIMIT_PER_MINUTE = 10_000;
 const MIN_MCP_AUTH_TOKEN_LENGTH = 16;
 const MAX_MCP_AUTH_TOKEN_LENGTH = 4096;
 const MCP_AUTH_TOKEN_PATTERN = /^[\x21-\x7E]+$/;
@@ -82,12 +84,12 @@ const dealYmdSchema = z
   .refine(value => !isFutureDealYmd(value), { message: "DEAL_YMD must not be in the future." })
   .describe("조회할 계약년월 6자리입니다. YYYYMM 형식이며 월은 01부터 12까지이고 미래 월은 넣지 않습니다. 예: 202605.");
 
-function readOnlyAnnotations(title: string): ToolAnnotations {
+function readOnlyAnnotations(title: string, openWorldHint = false): ToolAnnotations {
   return {
     title,
     readOnlyHint: true,
     destructiveHint: false,
-    openWorldHint: false,
+    openWorldHint,
     idempotentHint: true
   };
 }
@@ -203,8 +205,8 @@ export function mcpMaxBodyBytes(): number {
   if (!rawLimit) return DEFAULT_MCP_MAX_BODY_BYTES;
 
   const parsed = parsePlainInteger(rawLimit);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error("MCP_MAX_BODY_BYTES must be a positive integer.");
+  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > MAX_MCP_MAX_BODY_BYTES) {
+    throw new Error(`MCP_MAX_BODY_BYTES must be a positive integer no greater than ${MAX_MCP_MAX_BODY_BYTES}.`);
   }
   return parsed;
 }
@@ -214,8 +216,8 @@ export function mcpRateLimitPerMinute(): number {
   if (!rawLimit) return DEFAULT_MCP_RATE_LIMIT_PER_MINUTE;
 
   const parsed = parsePlainInteger(rawLimit);
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
-    throw new Error("MCP_RATE_LIMIT_PER_MINUTE must be a non-negative integer.");
+  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > MAX_MCP_RATE_LIMIT_PER_MINUTE) {
+    throw new Error(`MCP_RATE_LIMIT_PER_MINUTE must be a non-negative integer no greater than ${MAX_MCP_RATE_LIMIT_PER_MINUTE}.`);
   }
   return parsed;
 }
@@ -474,11 +476,13 @@ function logSecretRedactionValues(): Array<{ envName: string; values: string[] }
     const values = new Set([rawValue]);
     try {
       const decodedValue = decodeURIComponent(rawValue);
-      if (decodedValue.length >= 8) values.add(decodedValue);
+      values.add(decodedValue);
+      values.add(encodeURIComponent(decodedValue));
     } catch {
       // Malformed env values are handled by startup validation; logging redaction stays best-effort.
     }
-    return { envName, values: [...values].sort((a, b) => b.length - a.length) };
+    values.add(encodeURIComponent(rawValue));
+    return { envName, values: [...values].filter(value => value.length >= 8).sort((a, b) => b.length - a.length) };
   }).filter(entry => entry.values.length > 0);
 }
 
@@ -524,7 +528,7 @@ export function createServer(): McpServer {
     {
       title: "전월세 안전 종합 진단",
       description:
-        "전월세안전내비의 대표 진단 도구입니다. 국토교통부 전월세·매매 실거래가를 함께 조회해 보증금의 주변 시세 위치, 매매가 대비 비율, 계약 위험 신호, 입주 보호 행동을 한 번에 정리합니다. 공식 공공데이터 API 키가 런타임에 필요합니다.",
+        "전월세안전내비의 대표 진단 도구입니다. 국토교통부 전월세·매매 실거래가를 함께 조회해 보증금의 주변 시세 위치, 매매가 대비 비율, 계약 위험 신호, 입주 보호 행동을 한 번에 정리합니다. 공식 전체 신고 건수와 실제 계산 표본 수를 분리해 보여줍니다. 공식 공공데이터 API 키가 런타임에 필요합니다.",
       inputSchema: {
         housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("진단할 주택 유형입니다."),
         lawdCd: lawdCdSchema,
@@ -538,7 +542,7 @@ export function createServer(): McpServer {
         contractDate: contractDateSchema,
         concerns: concernsSchema
       },
-      annotations: readOnlyAnnotations("전월세 안전 종합 진단")
+      annotations: readOnlyAnnotations("전월세 안전 종합 진단", true)
     },
     async input => textResult(await assessLeaseSafety(input))
   );
@@ -564,7 +568,7 @@ export function createServer(): McpServer {
       inputSchema: {
         region: z.string().min(2).max(MCP_TEXT_LIMITS.region).describe(`확인할 지역명입니다. ${MCP_TEXT_LIMITS.region}자 이내로 적어주세요. 예: 서울 관악구, 성남시 분당구, 부산 해운대구.`)
       },
-      annotations: readOnlyAnnotations("법정동 코드 확인")
+      annotations: readOnlyAnnotations("법정동 코드 확인", true)
     },
     async input => textResult(await resolveLegalDongCode(input))
   );
@@ -574,7 +578,7 @@ export function createServer(): McpServer {
     {
       title: "전월세 실거래 비교",
       description:
-        "전월세안전내비가 국토교통부 전월세 실거래가 OpenAPI를 호출해 지역·계약월·주택유형 기준 보증금 표본과 사용자의 계약조건을 비교합니다. 공식 공공데이터 API 키가 런타임에 필요합니다.",
+        "전월세안전내비가 국토교통부 전월세 실거래가 OpenAPI를 호출해 지역·계약월·주택유형 기준 보증금 표본과 사용자의 계약조건을 비교합니다. 공식 전체 신고 건수와 실제 계산 표본 수를 분리해 보여줍니다. 공식 공공데이터 API 키가 런타임에 필요합니다.",
       inputSchema: {
         housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("실거래가를 조회할 주택 유형입니다."),
         lawdCd: lawdCdSchema,
@@ -582,7 +586,7 @@ export function createServer(): McpServer {
         depositManwon: depositSchema,
         monthlyRentManwon: monthlyRentSchema
       },
-      annotations: readOnlyAnnotations("전월세 실거래 비교")
+      annotations: readOnlyAnnotations("전월세 실거래 비교", true)
     },
     async input => textResult(await compareRentMarket(input))
   );
@@ -592,14 +596,14 @@ export function createServer(): McpServer {
     {
       title: "매매가 대비 보증금 점검",
       description:
-        "전월세안전내비가 국토교통부 매매 실거래가 OpenAPI를 호출해 입력 보증금이 주변 매매가 중앙값 대비 어느 정도인지 전세가율 관점으로 점검합니다. 공식 공공데이터 API 키가 런타임에 필요합니다.",
+        "전월세안전내비가 국토교통부 매매 실거래가 OpenAPI를 호출해 입력 보증금이 주변 매매가 중앙값 대비 어느 정도인지 전세가율 관점으로 점검합니다. 공식 전체 신고 건수와 실제 계산 표본 수를 분리해 보여줍니다. 공식 공공데이터 API 키가 런타임에 필요합니다.",
       inputSchema: {
         housingType: z.enum(["apartment", "rowhouse", "single_multi", "officetel"]).describe("매매 실거래가를 조회할 주택 유형입니다."),
         lawdCd: lawdCdSchema,
         dealYmd: dealYmdSchema,
         depositManwon: saleComparisonDepositSchema
       },
-      annotations: readOnlyAnnotations("매매가 대비 보증금 점검")
+      annotations: readOnlyAnnotations("매매가 대비 보증금 점검", true)
     },
     async input => textResult(await compareDepositToSaleMarket(input))
   );

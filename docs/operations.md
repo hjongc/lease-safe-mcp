@@ -6,8 +6,8 @@ This runbook is for PlayMCP registration, demo day checks, and post-launch opera
 
 - `DATA_GO_KR_SERVICE_KEY`: required in production and CI live smoke; encoded and decoded keys are accepted, but whitespace is rejected.
 - `MCP_ALLOWED_HOSTS`: required in production for DNS rebinding protection.
-- `MCP_MAX_BODY_BYTES`: optional MCP POST body limit, default `262144`.
-- `MCP_RATE_LIMIT_PER_MINUTE`: optional MCP POST rate limit per client, default `120`, set `0` to disable.
+- `MCP_MAX_BODY_BYTES`: optional MCP POST body limit, default `262144`, maximum `1048576`.
+- `MCP_RATE_LIMIT_PER_MINUTE`: optional MCP POST rate limit per client, default `120`, maximum `10000`, set `0` to disable.
 - `PUBLIC_DATA_TIMEOUT_MS`: optional official public-data timeout, default `8000`, maximum `60000`.
 - `MCP_AUTH_TOKEN`: optional bearer token for private direct deployments; must be a real visible-ASCII token, not a placeholder, at least 16 characters, and free of whitespace when set.
 
@@ -23,9 +23,12 @@ npm run check:github-secret
 gh secret list --repo hjongc/lease-safe-mcp
 gh workflow run CI --repo hjongc/lease-safe-mcp --ref main
 gh workflow run "Registration Preflight" --repo hjongc/lease-safe-mcp --ref main
+npm run check:registration-readiness
 ```
 
 After setting the secret, run `npm run check:github-secret` and confirm that `gh secret list --repo hjongc/lease-safe-mcp` shows `DATA_GO_KR_SERVICE_KEY`. These commands check only secret names and metadata, not the secret value. If the secret is absent, do not treat a green CI run as registration evidence because the live public-data smoke will be skipped.
+
+Before registering, run `npm run check:registration-readiness` from a clean worktree. It fails unless the current commit has the GitHub repository secret configured, `CI` completed successfully with `Live public-data smoke` passed instead of skipped, and `Registration Preflight` completed successfully with its evidence summary published for that exact commit on `main`.
 
 If the default live demo region or month returns zero official samples, rerun the manual `Registration Preflight` workflow with verified public demo inputs:
 
@@ -54,6 +57,7 @@ Collect this evidence before registering or updating the PlayMCP build:
 - GitHub Actions `Registration Preflight` workflow passes on the submitted commit.
 - GitHub Actions `Registration Preflight` job summary shows the submitted commit, workflow run URL, required command, GitHub public-data secret status without printing the value, live public-data requirement, required housing coverage, sanitized and length-limited demo smoke input values, working-tree/staged/committed whitespace diff check coverage, root route minimality smoke coverage, MCP request-id smoke coverage, Docker runtime smoke coverage, non-root runtime evidence, scriptless npm install evidence, and the extracted live public-data evidence lines.
 - Latest GitHub Actions `CI` run is green and its summary shows required housing coverage, working-tree/staged/committed whitespace diff checks, root route minimality smoke evidence, MCP request-id smoke evidence, Docker runtime smoke evidence, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines when the repository secret is configured.
+- `npm run check:registration-readiness` passes on the clean submitted commit, including CI live public-data smoke step success and Registration Preflight evidence-summary success.
 - GitHub Actions `Live public-data smoke` is passed, not skipped, after the repository secret is configured.
 - Docker runtime smoke passes after image build.
 - Demo tool is `assess_lease_safety`.

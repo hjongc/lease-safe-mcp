@@ -3,6 +3,8 @@ import { LEGAL_DONG_API, RENT_API_SPECS, SALE_API_SPECS, renderSources, SOURCES,
 const DEFAULT_PUBLIC_DATA_TIMEOUT_MS = 8000;
 const MAX_PUBLIC_DATA_TIMEOUT_MS = 60000;
 const MAX_PUBLIC_DATA_RESPONSE_BYTES = 1_000_000;
+const MARKET_PAGE_SIZE = 30;
+const MAX_MARKET_RECORDS = 150;
 const STRONG_SAMPLE_COUNT = 10;
 const MIN_MEDIAN_SAMPLE_COUNT = 3;
 const DATA_GO_KR_SERVICE_KEY_PLACEHOLDERS = new Set([
@@ -56,6 +58,7 @@ interface RentMarketSnapshot {
   label: string;
   lawdCd: string;
   dealYmd: string;
+  officialTotalCount?: number;
   sampleCount: number;
   depositSampleCount: number;
   median?: number;
@@ -71,6 +74,7 @@ interface SaleMarketSnapshot {
   label: string;
   lawdCd: string;
   dealYmd: string;
+  officialTotalCount?: number;
   sampleCount: number;
   median?: number;
   max?: number;
@@ -105,6 +109,7 @@ function cleanText(value: string | undefined, fallback = "미확인"): string {
   return trimmed
     .replace(/!\[([^\]\r\n]{0,120})\]\([^) \r\n]{1,500}\)/g, "$1")
     .replace(/\[([^\]\r\n]{1,120})\]\([^) \r\n]{1,500}\)/g, "$1")
+    .replace(/\bhttps?:\/\/[^\s)]+/gi, "[링크 생략]")
     .replace(/<\/?[A-Za-z][^>\r\n]{0,200}>/g, "")
     .replace(/[<>]/g, "")
     .replace(/\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b/g, "[이메일 생략]")
@@ -332,14 +337,16 @@ function dataGoKrServiceKeyRedactionValues(): string[] {
   const rawServiceKey = process.env.DATA_GO_KR_SERVICE_KEY?.trim();
   if (!rawServiceKey) return [];
 
-  const values = [rawServiceKey];
+  const values = new Set([rawServiceKey]);
   try {
     const decoded = decodeURIComponent(rawServiceKey);
-    if (decoded !== rawServiceKey) values.push(decoded);
+    values.add(decoded);
+    values.add(encodeURIComponent(decoded));
   } catch {
     // Redaction must never hide the original public-data failure.
   }
-  return values.sort((a, b) => b.length - a.length);
+  values.add(encodeURIComponent(rawServiceKey));
+  return [...values].filter(value => value.length >= 8).sort((a, b) => b.length - a.length);
 }
 
 function redactDataGoKrServiceKeys(value: string): string {
@@ -351,11 +358,15 @@ function redactDataGoKrServiceKeys(value: string): string {
 }
 
 function compactPublicDataResponseExcerpt(body: string): string {
-  return redactDataGoKrServiceKeys(body.replace(/\s+/g, " ").trim().slice(0, 200));
+  return redactDataGoKrServiceKeys(body.replace(/\s+/g, " ").trim()).slice(0, 200);
+}
+
+function compactPublicDataStatusText(statusText: string): string {
+  return redactDataGoKrServiceKeys(statusText.replace(/\s+/g, " ").trim()).slice(0, 80);
 }
 
 function compactPublicDataFieldValue(value: string): string {
-  return redactDataGoKrServiceKeys(value.replace(/\s+/g, " ").trim().slice(0, 80));
+  return redactDataGoKrServiceKeys(value.replace(/\s+/g, " ").trim()).slice(0, 80);
 }
 
 function assertPublicDataResponseSize(label: string, bytes: number): void {
@@ -364,21 +375,33 @@ function assertPublicDataResponseSize(label: string, bytes: number): void {
   }
 }
 
+function decodePublicDataResponseChunk(label: string, decoder: TextDecoder, value?: Uint8Array, options?: TextDecodeOptions): string {
+  try {
+    return decoder.decode(value, options);
+  } catch {
+    throw new Error(`${label} response returned invalid UTF-8 text.`);
+  }
+}
+
 async function readPublicDataResponseText(label: string, response: Response): Promise<string> {
-  const contentLength = response.headers.get("content-length")?.trim();
-  if (contentLength) {
+  const rawContentLength = response.headers.get("content-length");
+  if (rawContentLength !== null) {
+    const contentLength = rawContentLength.trim();
     const parsedContentLength = parsePlainInteger(contentLength);
+    if (!Number.isSafeInteger(parsedContentLength) || parsedContentLength < 0) {
+      throw new Error(`${label} response returned malformed Content-Length header.`);
+    }
     assertPublicDataResponseSize(label, parsedContentLength);
   }
 
   if (!response.body) {
-    const body = await response.text();
-    assertPublicDataResponseSize(label, Buffer.byteLength(body, "utf8"));
-    return body;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    assertPublicDataResponseSize(label, bytes.byteLength);
+    return decodePublicDataResponseChunk(label, new TextDecoder("utf-8", { fatal: true }), bytes);
   }
 
   const reader = response.body.getReader();
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
   const chunks: string[] = [];
   let totalBytes = 0;
 
@@ -393,9 +416,9 @@ async function readPublicDataResponseText(label: string, response: Response): Pr
         await reader.cancel();
         assertPublicDataResponseSize(label, totalBytes);
       }
-      chunks.push(decoder.decode(value, { stream: true }));
+      chunks.push(decodePublicDataResponseChunk(label, decoder, value, { stream: true }));
     }
-    chunks.push(decoder.decode());
+    chunks.push(decodePublicDataResponseChunk(label, decoder));
     return chunks.join("");
   } finally {
     reader.releaseLock();
@@ -406,7 +429,7 @@ async function fetchPublicDataText(label: string, url: URL): Promise<string> {
   const timeoutMs = publicDataTimeoutMs();
   let response: Response;
   try {
-    response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    response = await fetch(url, { cache: "no-store", method: "GET", redirect: "error", signal: AbortSignal.timeout(timeoutMs) });
   } catch (error) {
     if (isAbortLikeError(error)) {
       throw new Error(`${label} request timed out after ${timeoutMs}ms.`);
@@ -418,7 +441,8 @@ async function fetchPublicDataText(label: string, url: URL): Promise<string> {
   const body = await readPublicDataResponseText(label, response);
   assertPublicDataResponseSize(label, Buffer.byteLength(body, "utf8"));
   if (!response.ok) {
-    const status = response.statusText ? `${response.status} ${response.statusText}` : String(response.status);
+    const compactStatusText = compactPublicDataStatusText(response.statusText);
+    const status = compactStatusText ? `${response.status} ${compactStatusText}` : String(response.status);
     const excerpt = compactPublicDataResponseExcerpt(body);
     throw new Error(`${label} request failed: ${status}${excerpt ? ` - ${excerpt}` : ""}`);
   }
@@ -465,6 +489,32 @@ function assertPublicDataResultCode(label: string, body: string): void {
 function assertPublicDataItemsContainer(label: string, body: string): void {
   if (!/<\s*items\b/i.test(body)) {
     throw new Error(`${label} returned XML without items container.`);
+  }
+}
+
+function publicDataTotalCount(label: string, body: string, itemCount: number): number | undefined {
+  const rawTotalCount = extractTag(body, "totalCount");
+  if (rawTotalCount === undefined) return undefined;
+
+  const totalCount = parsePublicDataInteger(rawTotalCount.trim());
+  if (!Number.isSafeInteger(totalCount)) {
+    throw new Error(`${label} returned invalid totalCount field: ${compactPublicDataFieldValue(rawTotalCount)}`);
+  }
+  if ((totalCount === 0 && itemCount > 0) || (totalCount > 0 && itemCount === 0) || itemCount > totalCount) {
+    throw new Error(`${label} returned inconsistent totalCount field: totalCount=${totalCount}, items=${itemCount}`);
+  }
+  return totalCount;
+}
+
+function assertStablePublicDataTotalCount(label: string, expected: number | undefined, actual: number | undefined): void {
+  if (expected !== undefined && actual !== undefined && actual !== expected) {
+    throw new Error(`${label} returned inconsistent totalCount field: firstPageTotalCount=${expected}, nextPageTotalCount=${actual}`);
+  }
+}
+
+function assertPublicDataPageProgress(label: string, officialTotalCount: number | undefined, currentCount: number, pageCount: number): void {
+  if (officialTotalCount !== undefined && currentCount < Math.min(officialTotalCount, MAX_MARKET_RECORDS) && pageCount < MARKET_PAGE_SIZE) {
+    throw new Error(`${label} returned fewer items than totalCount: totalCount=${officialTotalCount}, items=${currentCount}`);
   }
 }
 
@@ -531,8 +581,8 @@ function legalDongRegionQuery(region: string | undefined): string {
   if (cleaned === "미확인" || cleaned.length < 2) {
     throw new Error("region must include at least 2 meaningful characters for legal-dong lookup.");
   }
-  if (cleaned.includes("[민감번호 생략]") || cleaned.includes("[연락처 생략]") || cleaned.includes("[이메일 생략]") || cleaned.includes("[계좌번호 생략]") || cleaned.includes("[동호수 생략]")) {
-    throw new Error("region must not include personal identifiers, email addresses, phone numbers, payment account details, or household unit details for legal-dong lookup.");
+  if (cleaned.includes("[민감번호 생략]") || cleaned.includes("[연락처 생략]") || cleaned.includes("[이메일 생략]") || cleaned.includes("[계좌번호 생략]") || cleaned.includes("[동호수 생략]") || cleaned.includes("[링크 생략]")) {
+    throw new Error("region must not include personal identifiers, email addresses, phone numbers, URLs, payment account details, or household unit details for legal-dong lookup.");
   }
   if (cleaned.length > MAX_LEGAL_DONG_REGION_LENGTH) {
     throw new Error(`region must be ${MAX_LEGAL_DONG_REGION_LENGTH} characters or fewer for legal-dong lookup.`);
@@ -760,6 +810,72 @@ function extractSaleItems(xml: string, specNameField?: string): SaleRecord[] {
   });
 }
 
+async function fetchMarketXmlPage(label: string, baseUrl: URL, pageNo: number): Promise<string> {
+  const url = new URL(baseUrl);
+  url.searchParams.set("pageNo", String(pageNo));
+  url.searchParams.set("numOfRows", String(MARKET_PAGE_SIZE));
+
+  const xml = await fetchPublicDataText(label, url);
+  const publicDataError = publicDataErrorMessage(xml);
+  if (publicDataError) {
+    throw new Error(`${label} returned error: ${publicDataError}`);
+  }
+  assertPublicDataXmlPayload(label, xml);
+  assertPublicDataResultCode(label, xml);
+  assertPublicDataItemsContainer(label, xml);
+  return xml;
+}
+
+async function fetchRentRecords(label: string, baseUrl: URL, specNameField?: string): Promise<{ records: RentRecord[]; officialTotalCount?: number }> {
+  const records: RentRecord[] = [];
+  let officialTotalCount: number | undefined;
+  let pageNo = 1;
+
+  while (true) {
+    const xml = await fetchMarketXmlPage(label, baseUrl, pageNo);
+    const pageRecords = extractItems(xml, specNameField);
+    const pageTotalCount = publicDataTotalCount(label, xml, pageRecords.length);
+    assertStablePublicDataTotalCount(label, officialTotalCount, pageTotalCount);
+    officialTotalCount ??= pageTotalCount;
+    records.push(...pageRecords);
+    assertPublicDataPageProgress(label, officialTotalCount, records.length, pageRecords.length);
+
+    const targetCount = officialTotalCount === undefined ? pageRecords.length : Math.min(officialTotalCount, MAX_MARKET_RECORDS);
+    if (records.length >= targetCount || pageRecords.length < MARKET_PAGE_SIZE) break;
+    pageNo += 1;
+  }
+
+  return {
+    records: records.slice(0, MAX_MARKET_RECORDS),
+    officialTotalCount
+  };
+}
+
+async function fetchSaleRecords(label: string, baseUrl: URL, specNameField?: string): Promise<{ records: SaleRecord[]; officialTotalCount?: number }> {
+  const records: SaleRecord[] = [];
+  let officialTotalCount: number | undefined;
+  let pageNo = 1;
+
+  while (true) {
+    const xml = await fetchMarketXmlPage(label, baseUrl, pageNo);
+    const pageRecords = extractSaleItems(xml, specNameField);
+    const pageTotalCount = publicDataTotalCount(label, xml, pageRecords.length);
+    assertStablePublicDataTotalCount(label, officialTotalCount, pageTotalCount);
+    officialTotalCount ??= pageTotalCount;
+    records.push(...pageRecords);
+    assertPublicDataPageProgress(label, officialTotalCount, records.length, pageRecords.length);
+
+    const targetCount = officialTotalCount === undefined ? pageRecords.length : Math.min(officialTotalCount, MAX_MARKET_RECORDS);
+    if (records.length >= targetCount || pageRecords.length < MARKET_PAGE_SIZE) break;
+    pageNo += 1;
+  }
+
+  return {
+    records: records.slice(0, MAX_MARKET_RECORDS),
+    officialTotalCount
+  };
+}
+
 async function fetchRentMarketSnapshot(input: {
   housingType: HousingType;
   lawdCd: string;
@@ -778,19 +894,7 @@ async function fetchRentMarketSnapshot(input: {
   url.searchParams.set("LAWD_CD", input.lawdCd);
   url.searchParams.set("DEAL_YMD", input.dealYmd);
   url.searchParams.set("serviceKey", serviceKey);
-  url.searchParams.set("pageNo", "1");
-  url.searchParams.set("numOfRows", "30");
-
-  const xml = await fetchPublicDataText("국토교통부 전월세 실거래 API", url);
-  const publicDataError = publicDataErrorMessage(xml);
-  if (publicDataError) {
-    throw new Error(`국토교통부 실거래 API returned error: ${publicDataError}`);
-  }
-  assertPublicDataXmlPayload("국토교통부 전월세 실거래 API", xml);
-  assertPublicDataResultCode("국토교통부 전월세 실거래 API", xml);
-  assertPublicDataItemsContainer("국토교통부 전월세 실거래 API", xml);
-
-  const records = extractItems(xml, spec.nameField);
+  const { records, officialTotalCount } = await fetchRentRecords("국토교통부 전월세 실거래 API", url, spec.nameField);
   const deposits = records.map(record => record.depositManwon).filter(value => value > 0);
   const sampleCount = records.length;
   const depositSampleCount = deposits.length;
@@ -810,6 +914,7 @@ async function fetchRentMarketSnapshot(input: {
     label: spec.label,
     lawdCd: input.lawdCd,
     dealYmd: input.dealYmd,
+    officialTotalCount,
     sampleCount,
     depositSampleCount,
     median: medianDeposit,
@@ -823,11 +928,14 @@ async function fetchRentMarketSnapshot(input: {
 }
 
 function renderRentMarketSnapshot(snapshot: RentMarketSnapshot): string {
+  const recentRecords = recentMarketRecords(snapshot.records, 5);
   return [
     "## 전월세 실거래 비교",
     `주택유형: ${snapshot.label}`,
     `조회 기준: LAWD_CD ${snapshot.lawdCd}, 계약월 ${snapshot.dealYmd}`,
+    snapshot.officialTotalCount !== undefined ? `공식 전체 신고 건수: ${snapshot.officialTotalCount.toLocaleString("ko-KR")}` : "",
     `신고 표본 수: ${snapshot.sampleCount}`,
+    marketCalculationScope(snapshot.officialTotalCount, snapshot.sampleCount),
     snapshot.depositSampleCount > 0
       ? `보증금 표본 수: ${snapshot.depositSampleCount} / 보증금 중앙값: ${money(snapshot.median)} / 최대값: ${money(snapshot.max)}`
       : snapshot.sampleCount > 0
@@ -839,8 +947,8 @@ function renderRentMarketSnapshot(snapshot: RentMarketSnapshot): string {
     "## 해석",
     snapshot.position,
     "",
-    snapshot.records.slice(0, 5).length > 0
-      ? ["## 최근 표본 일부", ...snapshot.records.slice(0, 5).map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 보증금 ${money(record.depositManwon)} 월세 ${money(record.monthlyRentManwon)}`)].join("\n")
+    recentRecords.length > 0
+      ? ["## 최근 표본 일부", ...recentRecords.map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 보증금 ${money(record.depositManwon)} 월세 ${money(record.monthlyRentManwon)}`)].join("\n")
       : "",
     "",
     "## 공식 출처",
@@ -876,6 +984,28 @@ function saleRatioSignal(ratio: number | undefined): string {
 
 function formatRatio(ratio: number | undefined): string {
   return Number.isFinite(ratio) ? `${(ratio as number).toLocaleString("ko-KR")}%` : "계산 불가";
+}
+
+function marketCalculationScope(officialTotalCount: number | undefined, sampleCount: number): string {
+  return officialTotalCount !== undefined && officialTotalCount > sampleCount
+    ? `계산 표본 범위: 공식 전체 ${officialTotalCount.toLocaleString("ko-KR")}건 중 최대 ${MAX_MARKET_RECORDS.toLocaleString("ko-KR")}건 조회 상한으로 ${sampleCount.toLocaleString("ko-KR")}건을 계산에 사용했습니다.`
+    : "";
+}
+
+function marketCalculationSummary(label: string, officialTotalCount: number | undefined, sampleCount: number): string {
+  if (officialTotalCount === undefined) {
+    return `${label} 신고 표본 ${sampleCount}건을 계산에 사용`;
+  }
+  if (officialTotalCount > sampleCount) {
+    return `${label} 공식 전체 신고 ${officialTotalCount.toLocaleString("ko-KR")}건 중 최대 ${MAX_MARKET_RECORDS.toLocaleString("ko-KR")}건 조회 상한으로 현재 조회 표본 ${sampleCount.toLocaleString("ko-KR")}건을 계산에 사용`;
+  }
+  return `${label} 공식 전체 신고 ${officialTotalCount.toLocaleString("ko-KR")}건 중 현재 조회 표본 ${sampleCount.toLocaleString("ko-KR")}건을 계산에 사용`;
+}
+
+function recentMarketRecords<T extends { contractDate: string }>(records: T[], count: number): T[] {
+  return [...records]
+    .sort((left, right) => right.contractDate.localeCompare(left.contractDate))
+    .slice(0, count);
 }
 
 function assessmentRiskSummary(
@@ -950,19 +1080,7 @@ async function fetchSaleMarketSnapshot(input: {
   url.searchParams.set("LAWD_CD", input.lawdCd);
   url.searchParams.set("DEAL_YMD", input.dealYmd);
   url.searchParams.set("serviceKey", serviceKey);
-  url.searchParams.set("pageNo", "1");
-  url.searchParams.set("numOfRows", "30");
-
-  const xml = await fetchPublicDataText("국토교통부 매매 실거래 API", url);
-  const publicDataError = publicDataErrorMessage(xml);
-  if (publicDataError) {
-    throw new Error(`국토교통부 매매 실거래 API returned error: ${publicDataError}`);
-  }
-  assertPublicDataXmlPayload("국토교통부 매매 실거래 API", xml);
-  assertPublicDataResultCode("국토교통부 매매 실거래 API", xml);
-  assertPublicDataItemsContainer("국토교통부 매매 실거래 API", xml);
-
-  const records = extractSaleItems(xml, spec.nameField);
+  const { records, officialTotalCount } = await fetchSaleRecords("국토교통부 매매 실거래 API", url, spec.nameField);
   const saleAmounts = records.map(record => record.dealAmountManwon).filter(value => value > 0);
   const sampleCount = saleAmounts.length;
   const medianSale = median(saleAmounts);
@@ -974,6 +1092,7 @@ async function fetchSaleMarketSnapshot(input: {
     label: spec.label,
     lawdCd: input.lawdCd,
     dealYmd: input.dealYmd,
+    officialTotalCount,
     sampleCount,
     median: medianSale,
     max,
@@ -986,11 +1105,14 @@ async function fetchSaleMarketSnapshot(input: {
 }
 
 function renderSaleMarketSnapshot(snapshot: SaleMarketSnapshot): string {
+  const recentRecords = recentMarketRecords(snapshot.records, 5);
   return [
     "## 매매가 대비 보증금 점검",
     `주택유형: ${snapshot.label}`,
     `조회 기준: LAWD_CD ${snapshot.lawdCd}, 계약월 ${snapshot.dealYmd}`,
+    snapshot.officialTotalCount !== undefined ? `공식 전체 신고 건수: ${snapshot.officialTotalCount.toLocaleString("ko-KR")}` : "",
     `매매 표본 수: ${snapshot.sampleCount}`,
+    marketCalculationScope(snapshot.officialTotalCount, snapshot.sampleCount),
     snapshot.sampleCount > 0 ? `매매가 중앙값: ${money(snapshot.median)} / 최대값: ${money(snapshot.max)}` : "조회된 매매 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
     sampleReliability("매매", snapshot.sampleCount),
     `입력 보증금: ${money(snapshot.userDeposit)}`,
@@ -999,8 +1121,8 @@ function renderSaleMarketSnapshot(snapshot: SaleMarketSnapshot): string {
     "## 해석",
     snapshot.signal,
     "",
-    snapshot.records.slice(0, 5).length > 0
-      ? ["## 매매 표본 일부", ...snapshot.records.slice(0, 5).map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 매매가 ${money(record.dealAmountManwon)}`)].join("\n")
+    recentRecords.length > 0
+      ? ["## 매매 표본 일부", ...recentRecords.map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 매매가 ${money(record.dealAmountManwon)}`)].join("\n")
       : "",
     "",
     "## 확인 필요",
@@ -1061,6 +1183,8 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
     "전입신고, 확정일자, 임대차신고, 보증보험 가능 여부, 임대인 납세·체납 관련 확인 가능 서류를 같은 날 공식 경로로 확인",
     "특약에 잔금 전 추가 근저당 금지, 등기 변동 시 해제·반환 조건, 하자·수리 책임을 문서화"
   );
+  const recentRentRecords = recentMarketRecords(rentMarket.records, 3);
+  const recentSaleRecords = recentMarketRecords(saleMarket.records, 3);
 
   return [
     "## 전월세 안전 종합 진단",
@@ -1073,8 +1197,10 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
     "## 핵심 판단",
     lineItems([
       `위험도 근거: ${riskSummary.reasons.join(" / ")}`,
+      marketCalculationSummary("전월세", rentMarket.officialTotalCount, rentMarket.sampleCount),
       `전월세 신고 표본 ${rentMarket.sampleCount}건, 보증금 산출 표본 ${rentMarket.depositSampleCount}건, 보증금 중앙값 ${money(rentMarket.median)}`,
       sampleReliability("전월세", rentMarket.sampleCount, rentMarket.depositSampleCount),
+      marketCalculationSummary("매매", saleMarket.officialTotalCount, saleMarket.sampleCount),
       `매매 신고 표본 ${saleMarket.sampleCount}건, 매매가 중앙값 ${money(saleMarket.median)}`,
       sampleReliability("매매", saleMarket.sampleCount),
       `매매가 대비 보증금 비율 ${ratioLine}: ${saleMarket.signal}`,
@@ -1088,12 +1214,12 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
     lineItems(immediateActions),
     "",
     "## 실거래 근거",
-    rentMarket.records.slice(0, 3).length > 0
-      ? ["전월세 표본", ...rentMarket.records.slice(0, 3).map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 보증금 ${money(record.depositManwon)} 월세 ${money(record.monthlyRentManwon)}`)].join("\n")
+    recentRentRecords.length > 0
+      ? ["전월세 표본", ...recentRentRecords.map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 보증금 ${money(record.depositManwon)} 월세 ${money(record.monthlyRentManwon)}`)].join("\n")
       : "전월세 표본: 조회된 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
     "",
-    saleMarket.records.slice(0, 3).length > 0
-      ? ["매매 표본", ...saleMarket.records.slice(0, 3).map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 매매가 ${money(record.dealAmountManwon)}`)].join("\n")
+    recentSaleRecords.length > 0
+      ? ["매매 표본", ...recentSaleRecords.map(record => `- ${record.contractDate} ${record.legalDong ?? ""} ${record.name ?? ""} 매매가 ${money(record.dealAmountManwon)}`)].join("\n")
       : "매매 표본: 조회된 표본이 없습니다. 계약월이나 지역을 넓혀 다시 확인하세요.",
     "",
     "## 공식 출처",

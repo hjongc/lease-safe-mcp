@@ -37,7 +37,7 @@ const packageLockJson = JSON.parse(readFileSync("package-lock.json", "utf8")) as
   packages?: Record<string, { engines?: Record<string, string> }>;
 };
 
-for (const file of ["Dockerfile", ".dockerignore", ".gitignore", ".npmrc", ".github/workflows/ci.yml", ".github/workflows/registration-preflight.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/docker-image-reference.ts", "scripts/live-evidence.ts", "scripts/registration-preflight.ts", "scripts/require-registration-env.mjs", "scripts/rate-limit-smoke.ts"]) {
+for (const file of ["Dockerfile", ".dockerignore", ".gitignore", ".npmrc", ".github/workflows/ci.yml", ".github/workflows/registration-preflight.yml", ".github/dependabot.yml", "README.md", "SECURITY.md", "docs/data-design.md", "docs/submission.md", "docs/operations.md", "package-lock.json", "src/server.ts", "src/domain.ts", "src/sources.ts", "scripts/check-registration-readiness.mjs", "scripts/docker-image-reference.ts", "scripts/live-evidence.ts", "scripts/registration-preflight.ts", "scripts/require-registration-env.mjs", "scripts/rate-limit-smoke.ts"]) {
   readFileSync(file, "utf8");
 }
 
@@ -61,6 +61,7 @@ assert(packageJson.scripts?.["smoke:http"], "HTTP smoke script is required");
 assert(packageJson.scripts?.["smoke:docker"], "Docker smoke script is required");
 assert(packageJson.scripts?.["smoke:rate-limit"], "rate-limit smoke script is required");
 assert(packageJson.scripts?.["check:github-secret"], "GitHub secret presence check script is required");
+assert(packageJson.scripts?.["check:registration-readiness"], "registration readiness check script is required");
 assert(packageJson.scripts?.preflight, "preflight script is required");
 assert(packageJson.scripts?.["preflight:registration"], "registration preflight script is required");
 assert(/require-registration-env\.mjs/.test(packageJson.scripts?.["preflight:registration"] ?? ""), "registration preflight must check required live-data env before building");
@@ -68,6 +69,7 @@ assert(packageJson.scripts?.["validate:playmcp"], "PlayMCP validation script is 
 
 const registrationEnvCheck = readFileSync("scripts/require-registration-env.mjs", "utf8");
 const githubSecretCheck = readFileSync("scripts/check-github-secret.mjs", "utf8");
+const registrationReadinessCheck = readFileSync("scripts/check-registration-readiness.mjs", "utf8");
 assert(/decodeURIComponent/.test(registrationEnvCheck), "registration env check must accept encoded data.go.kr service keys");
 assert(/not a placeholder/.test(registrationEnvCheck), "registration env check must reject placeholder public-data keys before build");
 assert(/requiredEnvName\} must not contain whitespace/.test(registrationEnvCheck), "registration env check must reject whitespace in public-data keys before build");
@@ -81,6 +83,18 @@ assert(/PUBLIC_DATA_SMOKE_HOUSING_TYPES must include all supported housing types
 assert(/isValidRepositorySlug/.test(githubSecretCheck), "GitHub secret check must validate repository slugs before gh calls");
 assert(/spawnSync\("gh", \["secret", "list", "--repo", repo\]/.test(githubSecretCheck), "GitHub secret check must list secret names without reading secret values");
 assert(/A green CI run can still skip live public-data smoke/.test(githubSecretCheck), "GitHub secret check must warn when CI can pass without live public-data evidence");
+assert(/isValidRepositorySlug/.test(registrationReadinessCheck), "registration readiness check must validate repository slugs before gh calls");
+assert(/isValidBranchName/.test(registrationReadinessCheck), "registration readiness check must validate branch names before gh calls");
+assert(/git", \["status", "--porcelain"\]/.test(registrationReadinessCheck), "registration readiness check must require a clean worktree");
+assert(/DATA_GO_KR_SERVICE_KEY/.test(registrationReadinessCheck), "registration readiness check must require the public-data GitHub secret");
+assert(/"run",\s*"list"[\s\S]*"--workflow"[\s\S]*"CI"/.test(registrationReadinessCheck), "registration readiness check must inspect CI workflow runs");
+assert(/"run",\s*"list"[\s\S]*"--workflow"[\s\S]*"Registration Preflight"/.test(registrationReadinessCheck), "registration readiness check must inspect Registration Preflight workflow runs");
+assert(/run\.headSha === headSha/.test(registrationReadinessCheck), "registration readiness check must bind workflow evidence to the current commit");
+assert(/conclusion !== "success"/.test(registrationReadinessCheck), "registration readiness check must fail unless workflow runs succeeded");
+assert(/requireSuccessfulStep/.test(registrationReadinessCheck), "registration readiness check must inspect required workflow steps");
+assert(/"Live public-data smoke"/.test(registrationReadinessCheck), "registration readiness check must require CI live public-data smoke to pass, not skip");
+assert(/"Run registration preflight"/.test(registrationReadinessCheck), "registration readiness check must require registration preflight execution");
+assert(/"Publish registration evidence summary"/.test(registrationReadinessCheck), "registration readiness check must require the registration evidence summary step");
 
 const dockerfile = readFileSync("Dockerfile", "utf8");
 assert((dockerfile.match(/^FROM node:20-bookworm-slim@sha256:[a-f0-9]{64}/gm) ?? []).length === 3, "Dockerfile must pin every Node base image stage by digest");
@@ -362,6 +376,7 @@ assert(/DATA_GO_KR_SERVICE_KEY is required in production/.test(server), "server 
 assert(/DATA_GO_KR_SERVICE_KEY must not contain whitespace/.test(domain), "domain must reject whitespace in public-data keys before official API calls");
 assert(toolDescriptions.some(description => description.includes("공식 공공데이터 API 키가 런타임에 필요합니다.")), "API-backed tool descriptions must explain runtime public-data key requirements without env names");
 assert(toolDescriptions.every(description => !/DATA_GO_KR_SERVICE_KEY|MCP_AUTH_TOKEN|MCP_ALLOWED_HOSTS|PUBLIC_DATA_TIMEOUT_MS/.test(description)), "public tool descriptions must not expose runtime configuration names");
+assert(toolDescriptions.filter(description => description.includes("공식 전체 신고 건수와 실제 계산 표본 수를 분리")).length >= 3, "API-backed market tool descriptions must disclose official-total versus calculation-sample separation");
 assert(/timingSafeEqual/.test(server), "server must compare bearer tokens with timingSafeEqual");
 assert(/MCP_AUTH_TOKEN must be at least/.test(server), "server must reject weak MCP_AUTH_TOKEN values");
 assert(/MAX_MCP_AUTH_TOKEN_LENGTH/.test(server), "server must bound MCP_AUTH_TOKEN length");
@@ -376,8 +391,12 @@ assert(/Bearer realm="lease-safe"/.test(server), "server must use a stable beare
 assert(/requireMcpBearerToken/.test(server), "server must authenticate MCP POST requests before parsing request bodies");
 assert(/parsePlainInteger/.test(server), "server must parse runtime numeric settings as plain integers");
 assert(/MCP_MAX_BODY_BYTES/.test(server), "server must support a bounded MCP request body size");
+assert(/MAX_MCP_MAX_BODY_BYTES/.test(server), "server must cap the configurable MCP request body size");
+assert(/MCP_MAX_BODY_BYTES must be a positive integer no greater than/.test(server), "server must fail fast when MCP_MAX_BODY_BYTES exceeds the production cap");
 assert(/express\.json\(\{ limit: `\$\{maxBodyBytes\}b` \}\)/.test(server), "server JSON parser limit must match MCP_MAX_BODY_BYTES");
 assert(/MCP_RATE_LIMIT_PER_MINUTE/.test(server), "server must support MCP request rate limiting");
+assert(/MAX_MCP_RATE_LIMIT_PER_MINUTE/.test(server), "server must cap the configurable MCP rate limit");
+assert(/MCP_RATE_LIMIT_PER_MINUTE must be a non-negative integer no greater than/.test(server), "server must fail fast when MCP_RATE_LIMIT_PER_MINUTE exceeds the production cap");
 assert(/requireMcpJsonContentType/.test(server), "server must reject non-JSON MCP POST requests before transport handling");
 assert(/MCP POST requests must use application\/json/.test(server), "server must return a clear non-JSON MCP POST error");
 assert(/rejectCompressedMcpRequest/.test(server), "server must reject compressed MCP request bodies before JSON parsing");
@@ -395,6 +414,16 @@ assert(/context = "for lease safety assessment"/.test(domain), "flagship assessm
 assert(/assertRequiredPositiveManwon\("depositManwon",\s*input\.depositManwon,\s*"for deposit-to-sale comparison"\)/.test(domain), "deposit-to-sale comparison must fail clearly on zero deposit");
 assert(/sampleReliability/.test(domain), "market outputs must disclose sample reliability");
 assert(/전후월, 인접동, 같은 면적대 실거래/.test(domain), "low-sample market outputs must tell users how to strengthen evidence");
+assert(/publicDataTotalCount/.test(domain), "market parsers must validate official totalCount metadata");
+assert(/inconsistent totalCount field/.test(domain), "market parsers must fail clearly on contradictory official totalCount metadata");
+assert(/fewer items than totalCount/.test(domain), "market parsers must fail clearly when pagination ends before official totalCount");
+assert(/공식 전체 신고 건수/.test(domain), "market outputs must disclose official totalCount metadata when present");
+assert(/계산 표본 범위/.test(domain), "market outputs must disclose when official record caps limit calculation samples");
+assert(/marketCalculationSummary/.test(domain), "flagship assessment must disclose capped market calculation samples");
+assert(/MAX_MARKET_RECORDS/.test(domain), "market pagination must cap the number of official records fetched for one lookup");
+assert(/MARKET_PAGE_SIZE/.test(domain), "market pagination must use an explicit public-data page size");
+assert(/fetchMarketXmlPage/.test(domain), "market lookups must fetch official pages through a shared bounded reader");
+assert(/recentMarketRecords/.test(domain), "market outputs must render evidence records in newest-first order");
 assert(/계약금·가계약금 송금을 보류/.test(domain), "flagship assessment must prioritize rushed deposit-payment pressure");
 assert(/위임장 원본 범위/.test(domain), "flagship assessment must prioritize proxy-contract verification");
 assert(/말소 조건, 잔금 전 등기부 재발급/.test(domain), "flagship assessment must prioritize senior-rights verification");
@@ -409,11 +438,16 @@ assert(/등기부\|등기/.test(domain), "official help router must infer regist
 assert(/publicDataTextFromOptionalTag/.test(domain), "domain must normalize official public-data text fields before rendering");
 assert(/decodeXmlTextContent/.test(domain), "domain must decode XML entities in official public-data text fields before rendering");
 assert(/compactPublicDataFieldValue/.test(domain), "domain must bound and redact invalid official public-data field excerpts");
+assert(/redactDataGoKrServiceKeys\(body\.replace[\s\S]*\)\.slice\(0,\s*200\)/.test(domain), "public-data response excerpts must redact secrets before truncation");
+assert(/redactDataGoKrServiceKeys\(value\.replace[\s\S]*\)\.slice\(0,\s*80\)/.test(domain), "public-data field excerpts must redact secrets before truncation");
 assert(/request failed before receiving a response: \$\{redactDataGoKrServiceKeys\(message\)\}/.test(domain), "domain must redact public-data network error messages");
+assert(/encodeURIComponent\(decoded\)/.test(domain), "domain public-data redaction must cover encoded variants of decoded service keys");
 assert(!/request failed before receiving a response:[\s\S]*\{\s*cause:\s*error\s*\}/.test(domain), "domain must not attach raw public-data network error causes");
 assert(/동호수 생략/.test(domain), "domain must redact household unit details from user-rendered text");
 assert(/household unit details for legal-dong lookup/.test(domain), "legal-dong lookup must reject household unit details before API calls");
+assert(/URLs[\s\S]*for legal-dong lookup/.test(domain), "legal-dong lookup must reject URLs before official API calls");
 assert(/계좌번호 생략/.test(domain), "domain must redact account-number-like payment details from user-rendered text");
+assert(/링크 생략/.test(domain), "domain must redact bare user-provided URLs before rendering");
 assert(/\.replace\(\/!\\\[/.test(domain) && /\.replace\(\/<\\\/\?\[A-Za-z\]/.test(domain), "domain must strip user-provided markdown media and HTML tags before rendering");
 assert(/parsePublicDataInteger/.test(domain), "domain must reject non-integer official public-data money fields");
 assert(/parsePublicDataDecimal/.test(domain), "domain must reject exponent-style official public-data decimal fields");
@@ -434,7 +468,16 @@ assert(/isFutureDealYmd/.test(domain), "domain must reject future public-data de
 assert(/dealYmdSchema[\s\S]*\.refine\(value => !isFutureDealYmd\(value\)/.test(server), "server must reject future MCP deal months");
 assert(/PUBLIC_DATA_TIMEOUT_MS/.test(domain), "domain must support a bounded public-data timeout");
 assert(/parsePlainInteger/.test(domain), "domain must parse public-data timeout as a plain integer");
+assert(/method:\s*"GET"/.test(domain), "public-data fetches must explicitly use GET requests");
+assert(/cache:\s*"no-store"/.test(domain), "public-data fetches must bypass HTTP cache for registration evidence");
+assert(/redirect:\s*"error"/.test(domain), "public-data fetches must fail fast instead of following redirects");
+assert(/compactPublicDataStatusText/.test(domain), "public-data HTTP status text must be bounded and redacted before rendering errors");
+assert(/redactDataGoKrServiceKeys\(statusText\.replace[\s\S]*\)\.slice\(0,\s*80\)/.test(domain), "public-data HTTP status text must redact secrets before truncation");
 assert(/MAX_PUBLIC_DATA_RESPONSE_BYTES/.test(domain), "domain must bound official public-data response sizes");
+assert(/rawContentLength !== null/.test(domain), "domain must distinguish missing Content-Length from an empty malformed header");
+assert(/malformed Content-Length header/.test(domain), "domain must fail clearly on malformed public-data Content-Length headers");
+assert(/new TextDecoder\("utf-8",\s*\{\s*fatal:\s*true\s*\}\)/.test(domain), "domain must reject invalid UTF-8 public-data response bytes");
+assert(/invalid UTF-8 text/.test(domain), "domain must fail clearly on invalid UTF-8 public-data responses");
 assert(/region must not include control characters, line breaks, tabs, or Markdown backticks for legal-dong lookup/.test(domain), "legal-dong lookup must reject markdown/control characters before official API calls");
 assert(/Unknown official source id/.test(sources), "source renderer must fail fast on unknown official source ids");
 assert(/Duplicate official source id/.test(sources), "source renderer must fail fast on duplicate source ids");
@@ -451,6 +494,7 @@ assert(/REQUEST_ID_PATTERN/.test(server), "server must validate incoming request
 assert(/compactLogError/.test(server), "server must log compact internal error summaries");
 assert(/LOG_SECRET_ENV_NAMES/.test(server), "server log compaction must know runtime secret env names");
 assert(/redactLogSecrets/.test(server), "server log compaction must redact configured runtime secrets");
+assert(/encodeURIComponent\(decodedValue\)/.test(server), "server log redaction must redact encoded variants of decoded runtime secrets");
 assert(/DATA_GO_KR_SERVICE_KEY/.test(server) && /MCP_AUTH_TOKEN/.test(server), "server log redaction must cover public-data and bearer secrets");
 assert(/X-Content-Type-Options/.test(server), "server must set X-Content-Type-Options");
 assert(/X-Frame-Options/.test(server), "server must set X-Frame-Options");
@@ -552,7 +596,8 @@ for (const apiBackedTool of readmeApiBackedTools) {
 assert(/description must not expose runtime configuration names/.test(smoke), "smoke must reject public tool descriptions that expose runtime env names");
 assert(/description must explain the runtime public-data key requirement/.test(smoke), "smoke must require public-data key wording for API-backed tool descriptions");
 assert(/annotation title must match the public tool title/.test(smoke), "smoke must verify tool annotation titles match public titles");
-assert(/read-only, non-destructive, closed-world, idempotent contract/.test(smoke), "smoke must verify strict read-only tool annotation values");
+assert(/expectedOpenWorldHint = apiBackedToolNames\.has\(tool\.name\)/.test(smoke), "smoke must derive open-world annotations from API-backed tool metadata");
+assert(/read-only, non-destructive, \$\{expectedOpenWorldHint \? "open-world" : "closed-world"\}, idempotent contract/.test(smoke), "smoke must verify strict read-only tool annotation values");
 for (const offlineTool of [
   "check_lease_red_flags",
   "build_move_in_protection_plan",
@@ -692,6 +737,7 @@ assert(/lease_assessment\[\$\{housingType\}\]=ok/.test(publicDataSmoke), "public
 assert(/MONEY_INPUT_LIMITS\.depositManwon/.test(publicDataSmoke), "public-data smoke must reuse the bounded deposit input limit");
 assert(/plain positive integer/.test(publicDataSmoke), "public-data smoke must require a plain integer deposit value");
 assert(/control characters, line breaks, tabs, or Markdown backticks/.test(publicDataSmoke), "public-data smoke must reject summary-breaking region characters");
+assert(/URLs/.test(publicDataSmoke), "public-data smoke must reject URL-like region inputs");
 assert(/payment account details/.test(publicDataSmoke), "public-data smoke must reject account-number-like region inputs");
 assert(/household unit details/.test(publicDataSmoke), "public-data smoke must reject household-unit region inputs");
 assert(/isAllZeroLawdCd/.test(publicDataSmoke), "public-data smoke must reject all-zero LAWD_CD values before API calls");
@@ -715,6 +761,14 @@ assert(/Missing live public-data evidence lines by housing type/.test(liveEviden
 assert(/Duplicate live public-data evidence housing types/.test(liveEvidence), "shared live evidence extractor must fail clearly on duplicate housing-type coverage");
 assert(/Unsupported live public-data evidence housing types/.test(liveEvidence), "shared live evidence extractor must fail clearly on unsupported housing-type coverage");
 assert(/Missing supported live public-data evidence housing types/.test(liveEvidence), "shared live evidence extractor must fail clearly on missing supported housing-type coverage");
+assert(/assertPositiveEvidenceCounts/.test(liveEvidence), "shared live evidence extractor must reject non-positive evidence sample counts");
+assert(/rent_samples/.test(liveEvidence) && /sale_samples/.test(liveEvidence), "shared live evidence extractor must validate flagship rent and sale sample counts");
+assert(/assertSingleEvidenceLine/.test(liveEvidence), "shared live evidence extractor must reject duplicate singleton evidence lines");
+assert(/exactly one/.test(liveEvidence), "shared live evidence extractor must explain duplicate singleton evidence failures clearly");
+assert(/assertStrictHousingEvidenceLineFormats/.test(liveEvidence), "shared live evidence extractor must reject malformed housing evidence lines");
+assert(/Malformed live public-data housing evidence line/.test(liveEvidence), "shared live evidence extractor must fail clearly on malformed housing evidence lines");
+assert(/assertExpectedHousingEvidenceLines/.test(liveEvidence), "shared live evidence extractor must reject unexpected or duplicate housing evidence lines");
+assert(/Unexpected live public-data evidence housing type/.test(liveEvidence), "shared live evidence extractor must fail clearly on unexpected evidence housing types");
 
 const releasePreflight = readFileSync("scripts/release-preflight.ts", "utf8");
 const registrationPreflight = readFileSync("scripts/registration-preflight.ts", "utf8");

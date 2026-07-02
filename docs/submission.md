@@ -28,8 +28,8 @@ Required:
 Optional:
 
 - `MCP_AUTH_TOKEN`: real bearer token of at least 16 visible ASCII characters without whitespace for direct deployments that need private access control; placeholders are rejected
-- `MCP_MAX_BODY_BYTES`: MCP POST request body limit, default `262144`
-- `MCP_RATE_LIMIT_PER_MINUTE`: MCP POST rate limit per client, default `120`, set `0` to disable
+- `MCP_MAX_BODY_BYTES`: MCP POST request body limit, default `262144`, maximum `1048576`
+- `MCP_RATE_LIMIT_PER_MINUTE`: MCP POST rate limit per client, default `120`, maximum `10000`, set `0` to disable
 - `PUBLIC_DATA_TIMEOUT_MS`: official public-data API timeout, default `8000`, maximum `60000`
 - `PORT`: HTTP port, default `3000`, integer `1..65535`
 
@@ -94,6 +94,8 @@ DATA_GO_KR_SERVICE_KEY=... npm run preflight:registration
 Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_KEY` is configured as a GitHub repository secret, CI also runs the live public-data smoke in registration mode and publishes the required housing coverage plus the extracted live public-data evidence lines in the job summary.
 
 Before trusting CI live-smoke evidence, run `npm run check:github-secret` and confirm the GitHub repository secret exists. This check reads only GitHub secret names and metadata, not the secret value.
+
+For the final go/no-go check, run `npm run check:registration-readiness` from a clean worktree. It fails unless the current commit has the GitHub repository secret configured, the `CI` workflow completed successfully with `Live public-data smoke` passed instead of skipped, and the `Registration Preflight` workflow completed successfully with its evidence summary published for that exact commit on `main`.
 
 For shareable registration evidence, trigger the manual GitHub Actions **Registration Preflight** workflow on the submitted commit. This workflow runs `npm run preflight:registration`, includes working-tree, staged, and committed whitespace diff checks, fails when `DATA_GO_KR_SERVICE_KEY` is missing instead of treating live public-data smoke as optional, and publishes a GitHub Actions job summary with the commit, workflow run URL, required command, GitHub public-data secret status without printing the value, live public-data requirement, required housing coverage, sanitized, length-limited demo smoke input values, root route minimality smoke coverage, MCP request-id smoke coverage, Docker runtime smoke coverage, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines.
 

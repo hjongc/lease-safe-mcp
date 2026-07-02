@@ -88,7 +88,7 @@ Optional request-size hardening is available for deployments with stricter ingre
 MCP_MAX_BODY_BYTES=262144
 ```
 
-The default MCP request body limit is 262144 bytes. Invalid values fail at startup instead of silently changing runtime behavior.
+The default MCP request body limit is 262144 bytes, and the maximum accepted value is 1048576 bytes. Invalid values fail at startup instead of silently changing runtime behavior.
 
 Optional MCP request rate limiting is available for public deployments:
 
@@ -96,7 +96,7 @@ Optional MCP request rate limiting is available for public deployments:
 MCP_RATE_LIMIT_PER_MINUTE=120
 ```
 
-The default MCP POST rate limit is 120 requests per client per minute. Set `MCP_RATE_LIMIT_PER_MINUTE=0` to disable it when an upstream gateway already enforces stricter limits.
+The default MCP POST rate limit is 120 requests per client per minute, and the maximum accepted value is 10000. Set `MCP_RATE_LIMIT_PER_MINUTE=0` to disable it when an upstream gateway already enforces stricter limits.
 
 Optional public-data timeout tuning is available when the deployment ingress has a tighter request budget:
 
@@ -152,6 +152,14 @@ DATA_GO_KR_SERVICE_KEY=... npm run preflight:registration
 
 For registration evidence in GitHub Actions, run the manual **Registration Preflight** workflow after adding `DATA_GO_KR_SERVICE_KEY` as a repository secret. Unlike the normal CI workflow, this workflow fails instead of skipping when the live public-data key is missing.
 
+Final registration readiness gate:
+
+```bash
+npm run check:registration-readiness
+```
+
+`npm run check:registration-readiness` fails unless the worktree is clean, `DATA_GO_KR_SERVICE_KEY` exists as a GitHub repository secret, the latest `CI` run for the current commit on `main` completed successfully with `Live public-data smoke` passed instead of skipped, and the manual `Registration Preflight` workflow completed successfully for the same commit with its evidence summary published. It reads only GitHub secret names and workflow metadata, never the secret value.
+
 Live public-data smoke before production rollout:
 
 ```bash
@@ -202,6 +210,7 @@ Before registering in PlayMCP:
 - Run the manual GitHub Actions `Registration Preflight` workflow on the submitted commit
 - Confirm the latest GitHub Actions CI run is green
 - Confirm GitHub Actions live public-data smoke is passed, not skipped
+- Run `npm run check:registration-readiness` on a clean worktree to verify the current commit has passing CI and Registration Preflight evidence
 - Configure the same `DATA_GO_KR_SERVICE_KEY` as a PlayMCP runtime environment variable
 - Set `MCP_ALLOWED_HOSTS` to the PlayMCP host or deployment domain
 - Use `assess_lease_safety` as the demo entry tool
