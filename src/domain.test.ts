@@ -1545,6 +1545,57 @@ test("legal dong helper calls official API and exposes LAWD code", async () => {
   }
 });
 
+test("legal dong helper retries with district token when full region has no data", async () => {
+  const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
+  const previousFetch = globalThis.fetch;
+  const queries: string[] = [];
+  try {
+    process.env[PUBLIC_DATA_KEY_ENV_NAME] = VALID_TEST_SERVICE_KEY;
+    globalThis.fetch = async input => {
+      const url = new URL(String(input));
+      const query = url.searchParams.get("locatadd_nm") ?? "";
+      queries.push(query);
+      if (query === "서울 관악구") {
+        return new Response(
+          JSON.stringify({ RESULT: { resultCode: "INFO-3", resultMsg: "데이터없음 에러" } }),
+          { headers: { "content-type": "text/html;charset=UTF-8" } }
+        );
+      }
+      assert.equal(query, "관악구");
+      return new Response(JSON.stringify({
+        StanReginCd: [
+          {
+            head: [
+              { totalCount: 1 },
+              { RESULT: { resultCode: "INFO-000", resultMsg: "NORMAL SERVICE" } }
+            ]
+          },
+          {
+            row: [
+              {
+                region_cd: "1162010100",
+                locatadd_nm: "서울특별시 관악구 봉천동"
+              }
+            ]
+          }
+        ]
+      }), { headers: { "content-type": "text/html;charset=UTF-8" } });
+    };
+
+    const text = await resolveLegalDongCode({ region: "서울 관악구" });
+    assert.deepEqual(queries, ["서울 관악구", "관악구"]);
+    assert.match(text, /11620/);
+    assert.match(text, /locatadd_nm=관악구/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) {
+      delete process.env[PUBLIC_DATA_KEY_ENV_NAME];
+    } else {
+      process.env[PUBLIC_DATA_KEY_ENV_NAME] = previousKey;
+    }
+  }
+});
+
 test("legal dong helper normalizes official region text fields", async () => {
   const previousKey = process.env[PUBLIC_DATA_KEY_ENV_NAME];
   const previousFetch = globalThis.fetch;

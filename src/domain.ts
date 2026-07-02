@@ -433,6 +433,10 @@ function compactPublicDataFieldValue(value: string): string {
   return redactDataGoKrServiceKeys(value.replace(/\s+/g, " ").trim()).slice(0, 80);
 }
 
+function bodyLooksLikeHtml(body: string): boolean {
+  return /^\s*(?:<!doctype\s+html\b|<html\b|<head\b|<body\b|<\?xml[^>]*\?>\s*<[^>]*html\b)/i.test(body);
+}
+
 function assertPublicDataResponseSize(label: string, bytes: number): void {
   if (!Number.isSafeInteger(bytes) || bytes < 0 || bytes > MAX_PUBLIC_DATA_RESPONSE_BYTES) {
     throw new Error(`${label} response must be ${MAX_PUBLIC_DATA_RESPONSE_BYTES} bytes or fewer.`);
@@ -450,7 +454,7 @@ function decodePublicDataResponseChunk(label: string, decoder: TextDecoder, valu
 function assertNonHtmlPublicDataContentType(label: string, response: Response, body: string): void {
   const contentType = response.headers.get("content-type");
   if (contentType === null) return;
-  if (/\b(?:text\/html|application\/xhtml\+xml)\b/i.test(contentType)) {
+  if (/\b(?:text\/html|application\/xhtml\+xml)\b/i.test(contentType) && bodyLooksLikeHtml(body)) {
     const excerpt = compactPublicDataResponseExcerpt(body);
     throw new Error(`${label} response returned browser HTML Content-Type ${compactPublicDataContentType(contentType)} instead of official API data${excerpt ? ` - ${excerpt}` : ""}.`);
   }
@@ -610,6 +614,16 @@ function publicDataText(value: string | undefined, label: string): string | unde
 
 function parseLegalDongRows(payload: unknown): LegalDongRecord[] {
   const root = asRecord(payload);
+  const directResult = asRecord(root?.RESULT);
+  const directResultCode = typeof directResult?.resultCode === "string" ? directResult.resultCode : undefined;
+  if (directResultCode === "INFO-3") {
+    return [];
+  }
+  if (directResultCode && !["INFO-000", "INFO-0", "00", "000"].includes(directResultCode)) {
+    const directResultMsg = typeof directResult?.resultMsg === "string" ? directResult.resultMsg : "legal-dong API error";
+    throw new Error(`행정표준코드 법정동코드 API returned error: ${directResultCode} ${redactDataGoKrServiceKeys(directResultMsg)}`);
+  }
+
   if (!Array.isArray(root?.StanReginCd)) {
     throw new Error("행정표준코드 법정동코드 API returned unrecognized JSON payload.");
   }
@@ -669,29 +683,46 @@ function legalDongRegionQuery(region: string | undefined): string {
   return cleaned;
 }
 
+function legalDongRegionQueryCandidates(region: string): string[] {
+  const candidates = [region];
+  const parts = region.split(/\s+/).filter(Boolean);
+  if (parts.length > 1) {
+    candidates.push(parts.slice(1).join(" "));
+    candidates.push(parts[parts.length - 1]);
+  }
+  return [...new Set(candidates)];
+}
+
 export async function resolveLegalDongCode(input: { region: string }): Promise<string> {
   const region = legalDongRegionQuery(input.region);
   const serviceKey = dataGoKrServiceKey();
-  const url = new URL(LEGAL_DONG_API.endpoint);
-  url.searchParams.set("ServiceKey", serviceKey);
-  url.searchParams.set("pageNo", "1");
-  url.searchParams.set("numOfRows", "20");
-  url.searchParams.set("type", "json");
-  url.searchParams.set("locatadd_nm", region);
+  let matches: LegalDongRecord[] = [];
+  let matchedQuery = region;
 
-  const body = await fetchPublicDataText("행정표준코드 법정동코드 API", url);
-  const publicDataError = publicDataErrorMessage(body);
-  if (publicDataError) {
-    throw new Error(`행정표준코드 법정동코드 API returned error: ${publicDataError}`);
-  }
+  for (const query of legalDongRegionQueryCandidates(region)) {
+    const url = new URL(LEGAL_DONG_API.endpoint);
+    url.searchParams.set("ServiceKey", serviceKey);
+    url.searchParams.set("pageNo", "1");
+    url.searchParams.set("numOfRows", "20");
+    url.searchParams.set("type", "json");
+    url.searchParams.set("locatadd_nm", query);
 
-  let payload: unknown;
-  try {
-    payload = JSON.parse(body);
-  } catch (error) {
-    throw new Error(`행정표준코드 법정동코드 API returned invalid JSON: ${(error as Error).message}`);
+    const body = await fetchPublicDataText("행정표준코드 법정동코드 API", url);
+    const publicDataError = publicDataErrorMessage(body);
+    if (publicDataError) {
+      throw new Error(`행정표준코드 법정동코드 API returned error: ${publicDataError}`);
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(body);
+    } catch (error) {
+      throw new Error(`행정표준코드 법정동코드 API returned invalid JSON: ${(error as Error).message}`);
+    }
+    matches = parseLegalDongRows(payload);
+    matchedQuery = query;
+    if (matches.length > 0) break;
   }
-  const matches = parseLegalDongRows(payload);
 
   return [
     "## 법정동 코드 확인",
@@ -703,7 +734,7 @@ export async function resolveLegalDongCode(input: { region: string }): Promise<s
     lineItems([
       `공식 API: ${LEGAL_DONG_API.endpoint}`,
       "필수 파라미터: ServiceKey, pageNo, numOfRows, type=json",
-      `검색 파라미터: locatadd_nm=${region}`,
+      `검색 파라미터: locatadd_nm=${matchedQuery}`,
       "응답의 region_cd 10자리 중 앞 5자리를 국토부 전월세 실거래 API의 LAWD_CD로 사용"
     ]),
     "",
