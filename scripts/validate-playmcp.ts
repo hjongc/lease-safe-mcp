@@ -213,6 +213,7 @@ assertIncludesInOrder(ci, [
   "Publish live public-data status"
 ], "CI evidence gates must run in release-risk order");
 assert(/DATA_GO_KR_SERVICE_KEY/.test(ci), "CI must support optional live public-data smoke through DATA_GO_KR_SERVICE_KEY");
+assert(/PUBLIC_DATA_TIMEOUT_MS:\s*"30000"/.test(ci), "CI live public-data smoke must use a 30s timeout for slow official APIs");
 assert(/REQUIRE_LIVE_PUBLIC_DATA:\s*"1"/.test(ci), "CI live public-data smoke must use registration-mode coverage rules when a key is configured");
 assert(/tee live-public-data-smoke\.log/.test(ci), "CI live public-data smoke must capture output for evidence extraction");
 assert(/docker build --platform linux\/amd64 -t lease-safe-mcp-ci \./.test(ci), "CI Docker build must explicitly target linux/amd64 for PlayMCP runtime compatibility");
@@ -284,6 +285,7 @@ for (const envName of [
   }
 }
 assert(/PUBLIC_DATA_SMOKE_HOUSING_TYPES:\s*apartment,rowhouse,single_multi,officetel/.test(registrationWorkflow), "registration preflight workflow must explicitly request every supported housing type");
+assert(/PUBLIC_DATA_TIMEOUT_MS:\s*"30000"/.test(registrationWorkflow), "registration preflight workflow must use a 30s timeout for slow official APIs");
 assert(/Verify registration secrets/.test(registrationWorkflow), "registration preflight workflow must fail fast when registration secrets are missing");
 assert(/repository secret is required for registration evidence/.test(registrationWorkflow), "registration preflight workflow must explain the missing secret clearly");
 assert(/production MCP authentication evidence/.test(registrationWorkflow), "registration preflight workflow must explain missing MCP auth secret evidence clearly");
@@ -1056,6 +1058,7 @@ assert(/docker_image_platform=\$\{REQUIRED_IMAGE_OS_ARCH\}/.test(dockerSmoke), "
 assert(/command:\s*"npm"[\s\S]*args:\s*\["run",\s*"smoke:public-data"\]/.test(releasePreflight), "release preflight must include npm run smoke:public-data");
 assert(/DATA_GO_KR_SERVICE_KEY/.test(releasePreflight), "release preflight must gate live public-data smoke on DATA_GO_KR_SERVICE_KEY");
 assert(/REQUIRE_LIVE_PUBLIC_DATA/.test(releasePreflight), "release preflight must support requiring live public-data smoke");
+assert(/registrationPublicDataTimeoutMs = "30000"/.test(releasePreflight), "registration release preflight must use a 30s public-data timeout by default");
 assert(/name:\s*"Live public-data smoke"[\s\S]*env:\s*\{[\s\S]*REQUIRE_LIVE_PUBLIC_DATA:\s*"1"[\s\S]*captureOutput:\s*true/.test(releasePreflight), "release preflight live smoke must run in registration coverage mode before evidence extraction");
 assert(/extractLivePublicDataEvidenceLines/.test(releasePreflight), "release preflight must validate captured live public-data evidence lines");
 assert(/captureOutput:\s*true/.test(releasePreflight), "release preflight must capture live public-data smoke output for evidence validation");

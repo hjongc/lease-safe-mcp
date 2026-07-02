@@ -37,6 +37,8 @@ Optional:
 - `PUBLIC_DATA_TIMEOUT_MS`: official public-data API timeout, default `8000`, maximum `60000`; blank configured values are rejected
 - `PORT`: HTTP port, default `3000`, integer `1..65535`; blank configured values are rejected
 
+GitHub CI and Registration Preflight evidence runs set `PUBLIC_DATA_TIMEOUT_MS=30000` for slow official housing API responses.
+
 Do not commit runtime secrets. Configure them in PlayMCP or deployment environment settings.
 
 Do not bake secrets into the image for normal production deployments with Dockerfile `ENV`, build args, committed files, or hardcoded source. If PlayMCP image registration provides runtime secret settings, use the normal immutable `sha-<short-sha>` image and configure secrets at runtime.

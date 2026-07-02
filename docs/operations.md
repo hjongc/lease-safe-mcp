@@ -13,6 +13,7 @@ This runbook is for PlayMCP registration, demo day checks, and post-launch opera
 - `MCP_AUTH_TOKEN`: required in production for MCP POST authentication; must be a real visible-ASCII token, not a placeholder, at least 16 characters, and free of whitespace.
 
 The server fails at startup when required production settings are missing or malformed. Fix configuration instead of adding fallback data.
+GitHub CI and Registration Preflight evidence runs set `PUBLIC_DATA_TIMEOUT_MS=30000` so slow official housing API responses are still judged by real upstream data instead of the local 8000ms default.
 
 ## Secret Setup
 

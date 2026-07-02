@@ -107,6 +107,7 @@ PUBLIC_DATA_TIMEOUT_MS=8000
 ```
 
 The default official public-data API timeout is 8000ms, with a maximum accepted value of 60000ms. Invalid or blank configured values fail before requests are made.
+CI and registration evidence runs set this to 30000ms because the official housing APIs can be slower while still returning valid data.
 
 ## Run Locally
 

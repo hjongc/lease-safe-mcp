@@ -40,6 +40,7 @@ jobs:
       PUBLIC_DATA_SMOKE_LAWD_CD: ${{ inputs.public_data_smoke_lawd_cd }}
       PUBLIC_DATA_SMOKE_DEAL_YMD: ${{ inputs.public_data_smoke_deal_ymd }}
       PUBLIC_DATA_SMOKE_DEPOSIT_MANWON: ${{ inputs.public_data_smoke_deposit_manwon }}
+      PUBLIC_DATA_TIMEOUT_MS: "30000"
       PUBLIC_DATA_SMOKE_HOUSING_TYPES: apartment,rowhouse,single_multi,officetel
 
     steps:

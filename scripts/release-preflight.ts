@@ -19,6 +19,7 @@ const dockerTag = dockerImageReferenceFromEnv("PREFLIGHT_DOCKER_TAG", undefined,
 const dockerPlatform = "linux/amd64";
 const hasPublicDataKey = Boolean(process.env.DATA_GO_KR_SERVICE_KEY?.trim());
 const requireLivePublicData = process.env.REQUIRE_LIVE_PUBLIC_DATA === "1";
+const registrationPublicDataTimeoutMs = "30000";
 
 const steps: Step[] = [
   {
@@ -90,6 +91,7 @@ const steps: Step[] = [
     command: "npm",
     args: ["run", "smoke:public-data"],
     env: {
+      PUBLIC_DATA_TIMEOUT_MS: process.env.PUBLIC_DATA_TIMEOUT_MS ?? registrationPublicDataTimeoutMs,
       REQUIRE_LIVE_PUBLIC_DATA: "1"
     },
     skip: !hasPublicDataKey && !requireLivePublicData,
