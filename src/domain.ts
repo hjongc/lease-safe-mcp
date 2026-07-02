@@ -447,11 +447,12 @@ function decodePublicDataResponseChunk(label: string, decoder: TextDecoder, valu
   }
 }
 
-function assertNonHtmlPublicDataContentType(label: string, response: Response): void {
+function assertNonHtmlPublicDataContentType(label: string, response: Response, body: string): void {
   const contentType = response.headers.get("content-type");
   if (contentType === null) return;
   if (/\b(?:text\/html|application\/xhtml\+xml)\b/i.test(contentType)) {
-    throw new Error(`${label} response returned browser HTML Content-Type ${compactPublicDataContentType(contentType)} instead of official API data.`);
+    const excerpt = compactPublicDataResponseExcerpt(body);
+    throw new Error(`${label} response returned browser HTML Content-Type ${compactPublicDataContentType(contentType)} instead of official API data${excerpt ? ` - ${excerpt}` : ""}.`);
   }
 }
 
@@ -518,7 +519,7 @@ async function fetchPublicDataText(label: string, url: URL): Promise<string> {
     const excerpt = compactPublicDataResponseExcerpt(body);
     throw new Error(`${label} request failed: ${status}${excerpt ? ` - ${excerpt}` : ""}`);
   }
-  assertNonHtmlPublicDataContentType(label, response);
+  assertNonHtmlPublicDataContentType(label, response, body);
   return body;
 }
 

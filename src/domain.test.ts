@@ -3421,7 +3421,7 @@ test("public-data successful HTML responses fail before parsing", async () => {
 
     await assert.rejects(
       compareRentMarket({ housingType: "apartment", lawdCd: "11620", dealYmd: "202605" }),
-      /국토교통부 전월세 실거래 API response returned browser HTML Content-Type text\/html; charset=utf-8 instead of official API data/
+      /국토교통부 전월세 실거래 API response returned browser HTML Content-Type text\/html; charset=utf-8 instead of official API data - <html><body>approval gateway<\/body><\/html>\./
     );
   } finally {
     globalThis.fetch = previousFetch;
