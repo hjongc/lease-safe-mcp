@@ -7,6 +7,7 @@ import { compactScriptErrorMessage } from "./safe-error.js";
 const imageTag = dockerImageReferenceFromEnv("DOCKER_SMOKE_IMAGE", "PREFLIGHT_DOCKER_TAG", "lease-safe-mcp-preflight");
 const containerName = `lease-safe-mcp-smoke-${process.pid}`;
 const DEFAULT_MCP_MAX_BODY_BYTES = 256 * 1024;
+const REQUIRED_IMAGE_OS_ARCH = "linux/amd64";
 const publicDataSmokeKey = [
   "LeaseSafePublicDataSmokeKey",
   "OnlyForDockerSmoke1234567890+/",
@@ -109,6 +110,13 @@ async function verifyContainerRunsAsNonRoot(containerId: string): Promise<void> 
   }
   if (!/^\d+$/.test(uid)) {
     throw new Error(`Docker runtime returned an invalid numeric uid: ${uid}`);
+  }
+}
+
+async function verifyImageOsArchitecture(): Promise<void> {
+  const osArchitecture = await collectOutput("docker", ["image", "inspect", "-f", "{{.Os}}/{{.Architecture}}", imageTag]);
+  if (osArchitecture !== REQUIRED_IMAGE_OS_ARCH) {
+    throw new Error(`Docker image must be built for ${REQUIRED_IMAGE_OS_ARCH}, got ${osArchitecture}.`);
   }
 }
 
@@ -724,6 +732,8 @@ async function main() {
   const authToken = process.env.DOCKER_SMOKE_MCP_AUTH_TOKEN ?? process.env.MCP_AUTH_TOKEN ?? "smoke-token-for-preflight";
 
   console.log(`Starting Docker smoke container ${containerName} from ${imageTag}`);
+  await verifyImageOsArchitecture();
+  console.log(`docker_image_platform=${REQUIRED_IMAGE_OS_ARCH}`);
   const containerId = await collectOutput("docker", [
     "run",
     "--rm",

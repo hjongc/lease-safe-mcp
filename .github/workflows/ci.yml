@@ -52,6 +52,9 @@ jobs:
       - name: Validate PlayMCP readiness
         run: npm run validate:playmcp
 
+      - name: Check official source freshness
+        run: npm run check:sources
+
       - name: Smoke local MCP HTTP server
         run: npm run smoke:http
 
@@ -64,7 +67,7 @@ jobs:
       - name: Build Docker image
         run: |
           for attempt in 1 2 3; do
-            if docker build -t lease-safe-mcp-ci .; then
+            if docker build --platform linux/amd64 -t lease-safe-mcp-ci .; then
               exit 0
             fi
             echo "Docker build attempt ${attempt} failed; retrying after transient registry/network error..."
@@ -103,6 +106,7 @@ jobs:
             fi
             echo "- Required housing coverage: ${PUBLIC_DATA_SMOKE_HOUSING_TYPES}"
             echo "- Whitespace diff checks: working tree, staged diff, and submitted commit executed"
+            echo "- Official source freshness: executed with 45-day reviewedAt gate"
             echo "- Root route minimality smoke: executed in local HTTP and Docker runtime smoke"
             echo "- API-backed missing-key smoke: executed when DATA_GO_KR_SERVICE_KEY is absent"
             echo "- MCP request-id smoke: executed in local HTTP and Docker runtime smoke"
@@ -123,6 +127,9 @@ jobs:
               echo '```'
             else
               echo "Live public-data evidence lines were not collected in this CI run."
+              if [ -n "${DATA_GO_KR_SERVICE_KEY}" ]; then
+                evidence_status=1
+              fi
             fi
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$evidence_status" -ne 0 ]; then

@@ -124,6 +124,7 @@ jobs:
             echo "- Demo smoke deal month: \`${SAFE_PUBLIC_DATA_SMOKE_DEAL_YMD}\`"
             echo "- Demo smoke deposit: \`${SAFE_PUBLIC_DATA_SMOKE_DEPOSIT_MANWON}\` manwon"
             echo "- Whitespace diff checks: working tree, staged diff, and submitted commit included"
+            echo "- Official source freshness: included with 45-day reviewedAt gate"
             echo "- Root route minimality smoke: included in local HTTP and Docker runtime smoke"
             echo "- API-backed missing-key smoke: included when DATA_GO_KR_SERVICE_KEY is absent"
             echo "- MCP request-id smoke: included in local HTTP and Docker runtime smoke"

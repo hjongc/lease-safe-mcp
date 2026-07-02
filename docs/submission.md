@@ -11,10 +11,14 @@ Lease Safe(전월세안전내비) is a Korean lease-safety MCP server for people
 - Transport: Streamable HTTP
 - Endpoint path: `/mcp`
 - Health path: `/healthz` with minimal liveness metadata and Docker `HEALTHCHECK`
-- Source build: Git repository + `Dockerfile`
+- Preferred build: Docker image or Git repository + `Dockerfile`, only when runtime secret settings are available
 - Git URL: `https://github.com/hjongc/lease-safe-mcp.git`
+- Immutable image: `ghcr.io/hjongc/lease-safe-mcp:sha-<short-sha>`
+- Moving image: `ghcr.io/hjongc/lease-safe-mcp:main`
+- Container platform: `linux/amd64`
 - Container runtime user: non-root `node`
-- Container smoke: image starts in production mode and passes `/healthz`, root route minimality, and MCP handshake/list-tools
+- Container smoke: image is `linux/amd64`, starts in production mode, and passes `/healthz`, root route minimality, and MCP handshake/list-tools
+- Remote endpoint smoke: `MCP_ENDPOINT=https://<playmcp-host>/mcp MCP_AUTH_TOKEN=... npm run smoke:remote` after PlayMCP issues the endpoint
 - Branch: `main`
 - Demo entry tool: `assess_lease_safety`
 
@@ -34,6 +38,10 @@ Optional:
 - `PORT`: HTTP port, default `3000`, integer `1..65535`; blank configured values are rejected
 
 Do not commit runtime secrets. Configure them in PlayMCP or deployment environment settings.
+
+Do not bake secrets into the image with Dockerfile `ENV`, build args, committed files, or hardcoded source. If PlayMCP image registration does not provide runtime secret settings, deploy the verified image to a secret-capable HTTPS runtime and register that external HTTPS endpoint in PlayMCP instead.
+
+Use the immutable `sha-<short-sha>` GHCR image from the `Publish Image` workflow for submission evidence. If PlayMCP cannot pull private GHCR packages, make the package public or deploy the same image to a runtime that can authenticate to GHCR.
 
 The production server fails at startup if `MCP_ALLOWED_HOSTS`, `DATA_GO_KR_SERVICE_KEY`, or `MCP_AUTH_TOKEN` is missing, or if official source registry metadata is invalid or stale. This is intentional: missing official-data configuration, unauthenticated MCP exposure, or broken official-source evidence should be fixed before the demo, not hidden until a user calls the flagship tool.
 
@@ -91,16 +99,16 @@ Before registration:
 DATA_GO_KR_SERVICE_KEY=... MCP_AUTH_TOKEN=... npm run preflight:registration
 ```
 
-Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_KEY` is configured as a GitHub repository secret, CI also runs the live public-data smoke in registration mode and publishes the required housing coverage plus the extracted live public-data evidence lines in the job summary.
+Then confirm the latest GitHub Actions CI run is green. If `DATA_GO_KR_SERVICE_KEY` is configured as a GitHub repository secret, CI also runs the live public-data smoke in registration mode and publishes the official source freshness gate, required housing coverage, and extracted live public-data evidence lines in the job summary.
 
 Before trusting CI live-smoke evidence, run `npm run check:github-secret` and confirm the GitHub repository secrets exist. This check reads only GitHub secret names and metadata, not secret values.
 
-For the final go/no-go check, run `npm run check:registration-readiness` from a clean worktree. It fails unless local `HEAD` matches the remote `main` HEAD, the current commit has the GitHub repository secrets configured, the `CI` workflow completed successfully with `Live public-data smoke` passed instead of skipped and `Publish live public-data status` succeeded inside the `Quality Gate` job, and the `Registration Preflight` workflow completed successfully with its evidence summary published inside the `Registration Evidence` job for that exact commit on `main`.
+For the final go/no-go check, run `npm run check:registration-readiness` from a clean worktree. It fails unless local `HEAD` matches the remote `main` HEAD, the current commit has the GitHub repository secrets configured, the `CI` workflow completed successfully with every required `Quality Gate` evidence step passed, including official source freshness, Docker build/runtime, live public-data smoke, and `Publish live public-data status`, the `Registration Preflight` workflow completed successfully with its evidence summary published inside the `Registration Evidence` job, and the `Publish Image` workflow published the verified GHCR image for that exact commit on `main`.
 
-For shareable registration evidence, trigger the manual GitHub Actions **Registration Preflight** workflow on the submitted commit. This workflow runs `npm run preflight:registration`, includes working-tree, staged, and committed whitespace diff checks, fails when `DATA_GO_KR_SERVICE_KEY` or `MCP_AUTH_TOKEN` is missing instead of treating registration evidence as optional, and publishes a GitHub Actions job summary with the commit, workflow run URL, required command, GitHub public-data and MCP auth secret status without printing values, live public-data requirement, required housing coverage, sanitized, length-limited demo smoke input values, root route minimality smoke coverage, API-backed missing-key smoke coverage when applicable, MCP request-id smoke coverage, Docker runtime smoke coverage, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines.
+For shareable registration evidence, trigger the manual GitHub Actions **Registration Preflight** workflow on the submitted commit. This workflow runs `npm run preflight:registration`, includes working-tree, staged, and committed whitespace diff checks, fails when `DATA_GO_KR_SERVICE_KEY` or `MCP_AUTH_TOKEN` is missing instead of treating registration evidence as optional, and publishes a GitHub Actions job summary with the commit, workflow run URL, required command, GitHub public-data and MCP auth secret status without printing values, official source freshness coverage, live public-data requirement, required housing coverage, sanitized, length-limited demo smoke input values, root route minimality smoke coverage, API-backed missing-key smoke coverage when applicable, MCP request-id smoke coverage, Docker runtime smoke coverage, non-root runtime evidence, scriptless npm install evidence, and extracted live public-data evidence lines.
 
 CI also runs `npm run smoke:docker` after building the image, so registration should use a commit whose Docker image has been proven to boot and answer MCP requests before the optional live API smoke.
 
-The live public-data smoke is intentionally stricter than a connectivity check: `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` must be positive, `npm run preflight:registration` must cover every supported housing type, rent, sale, and flagship assessment API paths must return positive sample counts plus official `totalCount` evidence for the configured demo region/month, and the captured output must produce extractable registration evidence lines. The shareable log evidence should include `legal_dong=ok`, `rent_market[...]`, `sale_market[...]`, and `lease_assessment[...]` lines for every supported housing type. A zero-sample official response means the demo input is not registration-ready yet.
+The live public-data smoke is intentionally stricter than a connectivity check: `PUBLIC_DATA_SMOKE_DEPOSIT_MANWON` must be positive, `npm run preflight:registration` must cover every supported housing type, rent, sale, and flagship assessment API paths must return positive sample counts plus official `totalCount` evidence for the configured demo region/month, and the captured output must produce extractable registration evidence lines. The shareable log evidence should include a `legal_dong=ok lawd_cd=...` line matching the configured LAWD code, plus `rent_market[...]`, `sale_market[...]`, and `lease_assessment[...]` lines for every supported housing type. Each flagship `lease_assessment[...]` line must include `risk_level=high` or `risk_level=very_high`, proving the high-risk demo concerns are classified as high risk against live official data. A zero-sample official response or low-risk flagship demo result means the demo input is not registration-ready yet.
 
 Use `docs/operations.md` as the final registration runbook. Registration is not evidence-complete until `npm run preflight:registration`, the GitHub Actions **Registration Preflight** workflow summary, and the GitHub Actions live public-data smoke are passed, not skipped.

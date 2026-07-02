@@ -4,6 +4,9 @@ import { compactScriptErrorMessage } from "./safe-error.js";
 
 export const PUBLIC_DATA_SMOKE_HOUSING_TYPES = ["apartment", "rowhouse", "single_multi", "officetel"] as const satisfies readonly HousingType[];
 const MAX_PUBLIC_DATA_SMOKE_REGION_LENGTH = 80;
+const PUBLIC_DATA_SMOKE_DEMO_CONCERNS = "대리계약이고 오늘 계약금을 보내라고 합니다. 근저당도 걱정됩니다.";
+
+type AssessmentRiskEvidenceLevel = "moderate" | "caution" | "high" | "very_high";
 
 export function positiveSampleCount(text: string, label: string, pattern: RegExp): number {
   const match = text.match(pattern);
@@ -31,6 +34,33 @@ export function positiveOfficialTotalCount(text: string, label: string, pattern:
   }
 
   return count;
+}
+
+export function assessmentRiskEvidenceLevel(text: string, label: string): AssessmentRiskEvidenceLevel {
+  const match = /종합 위험도:\s*(매우 높음|높음|주의|보통)\s*\(\d+\/100\)/.exec(text);
+  if (!match?.[1]) {
+    throw new Error(`${label} smoke did not return a parseable assessment risk level.`);
+  }
+
+  if (match[1] === "매우 높음") return "very_high";
+  if (match[1] === "높음") return "high";
+  if (match[1] === "주의") return "caution";
+  return "moderate";
+}
+
+function assertHighRiskDemoAssessment(text: string, label: string): AssessmentRiskEvidenceLevel {
+  const riskLevel = assessmentRiskEvidenceLevel(text, label);
+  if (riskLevel !== "high" && riskLevel !== "very_high") {
+    throw new Error(`${label} smoke returned risk_level=${riskLevel}; registration demo evidence must prove a high-risk flagship scenario.`);
+  }
+
+  for (const required of ["계약금·가계약금 송금", "위임장", "근저당"]) {
+    if (!text.includes(required)) {
+      throw new Error(`${label} smoke did not return required high-risk demo action text: ${required}`);
+    }
+  }
+
+  return riskLevel;
 }
 
 export function publicDataSmokeHousingTypes(): HousingType[] {
@@ -125,16 +155,19 @@ export function publicDataSmokeDealYmd(): string {
   return dealYmd;
 }
 
-export function assertLegalDongSmokeMatchesLawdCd(text: string, lawdCd: string): void {
+export function assertLegalDongSmokeMatchesLawdCd(text: string, lawdCd: string): string {
   if (!/^\d{5}$/.test(lawdCd)) {
     throw new Error("PUBLIC_DATA_SMOKE_LAWD_CD must be exactly 5 digits.");
   }
   if (isAllZeroLawdCd(lawdCd)) {
     throw new Error("PUBLIC_DATA_SMOKE_LAWD_CD must not be 00000.");
   }
-  if (!text.includes(`LAWD_CD ${lawdCd}`)) {
+  const returnedLawdCodes = [...text.matchAll(/\bLAWD_CD (\d{5})\b/g)].map(match => match[1]);
+  const matchedLawdCd = returnedLawdCodes.find(returnedLawdCd => returnedLawdCd === lawdCd);
+  if (!matchedLawdCd) {
     throw new Error(`Legal-dong smoke did not return the configured LAWD_CD ${lawdCd}.`);
   }
+  return matchedLawdCd;
 }
 
 export function publicDataSmokeConfigLine(region: string, lawdCd: string, dealYmd: string, housingTypes: HousingType[], depositManwon: number, registrationMode: boolean): string {
@@ -155,8 +188,8 @@ async function main() {
   console.log(publicDataSmokeConfigLine(region, lawdCd, dealYmd, housingTypes, deposit, process.env.REQUIRE_LIVE_PUBLIC_DATA === "1"));
 
   const legalDong = await resolveLegalDongCode({ region });
-  assertLegalDongSmokeMatchesLawdCd(legalDong, lawdCd);
-  console.log("legal_dong=ok");
+  const legalDongLawdCd = assertLegalDongSmokeMatchesLawdCd(legalDong, lawdCd);
+  console.log(`legal_dong=ok lawd_cd=${legalDongLawdCd}`);
 
   for (const housingType of housingTypes) {
     const rentMarket = await compareRentMarket({
@@ -186,17 +219,19 @@ async function main() {
       lawdCd,
       dealYmd,
       region,
+      contractType: "jeonse",
       depositManwon: deposit,
-      concerns: "공공데이터 실 API 스모크"
+      concerns: PUBLIC_DATA_SMOKE_DEMO_CONCERNS
     });
-    if (!assessment.includes("전월세 안전 종합 진단") || !assessment.includes("매매가 대비 보증금 비율")) {
+    if (!assessment.includes("전월세 안전 종합 진단") || !assessment.includes("## 한 줄 결론") || !assessment.includes("매매가 대비 보증금 비율")) {
       throw new Error(`One-shot assessment smoke did not return the expected summary: ${housingType}`);
     }
+    const assessmentRiskLevel = assertHighRiskDemoAssessment(assessment, `Lease-assessment[${housingType}]`);
     const assessmentRentCount = positiveSampleCount(assessment, `Lease-assessment[${housingType}] rent`, /전월세 신고 표본\s*([\d,]+)건/);
     const assessmentSaleCount = positiveSampleCount(assessment, `Lease-assessment[${housingType}] sale`, /매매 신고 표본\s*([\d,]+)건/);
     const assessmentRentOfficialTotalCount = positiveOfficialTotalCount(assessment, `Lease-assessment[${housingType}] rent`, /전월세 공식 전체 신고\s*([\d,]+)건/);
     const assessmentSaleOfficialTotalCount = positiveOfficialTotalCount(assessment, `Lease-assessment[${housingType}] sale`, /매매 공식 전체 신고\s*([\d,]+)건/);
-    console.log(`lease_assessment[${housingType}]=ok rent_samples=${assessmentRentCount} rent_official_total=${assessmentRentOfficialTotalCount} sale_samples=${assessmentSaleCount} sale_official_total=${assessmentSaleOfficialTotalCount}`);
+    console.log(`lease_assessment[${housingType}]=ok rent_samples=${assessmentRentCount} rent_official_total=${assessmentRentOfficialTotalCount} sale_samples=${assessmentSaleCount} sale_official_total=${assessmentSaleOfficialTotalCount} risk_level=${assessmentRiskLevel}`);
   }
 }
 

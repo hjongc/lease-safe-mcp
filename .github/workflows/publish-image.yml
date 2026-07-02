@@ -1,0 +1,99 @@
+name: Publish Image
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    branches:
+      - main
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit SHA, branch, or tag to publish
+        required: true
+        default: main
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-image-${{ github.event.workflow_run.head_sha || inputs.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-image:
+    name: Publish GHCR Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || inputs.ref || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Validate PlayMCP readiness
+        run: npm run validate:playmcp
+
+      - name: Scan for committed secrets
+        run: npm run scan:secrets
+
+      - name: Prepare image metadata
+        shell: bash
+        run: |
+          owner_lc="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          repo_name="${GITHUB_REPOSITORY#*/}"
+          short_sha="$(git rev-parse --short=12 HEAD)"
+          image="ghcr.io/${owner_lc}/${repo_name}"
+          {
+            echo "IMAGE=${image}"
+            echo "IMAGE_SHA_TAG=${image}:sha-${short_sha}"
+            echo "IMAGE_MAIN_TAG=${image}:main"
+            echo "PUBLISHED_HEAD_SHA=$(git rev-parse HEAD)"
+          } >> "$GITHUB_ENV"
+
+      - name: Build Docker image
+        run: docker build --platform linux/amd64 -t "${IMAGE_SHA_TAG}" -t "${IMAGE_MAIN_TAG}" .
+
+      - name: Smoke Docker runtime
+        run: npm run smoke:docker
+        env:
+          DOCKER_SMOKE_IMAGE: ${{ env.IMAGE_SHA_TAG }}
+
+      - name: Login to GHCR
+        shell: bash
+        run: printf '%s' "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push GHCR image
+        run: |
+          docker push "${IMAGE_SHA_TAG}"
+          docker push "${IMAGE_MAIN_TAG}"
+
+      - name: Publish image summary
+        shell: bash
+        run: |
+          {
+            echo "## Lease Safe Image"
+            echo ""
+            echo "- Commit: \`${PUBLISHED_HEAD_SHA}\`"
+            echo "- Immutable image: \`${IMAGE_SHA_TAG}\`"
+            echo "- Moving main image: \`${IMAGE_MAIN_TAG}\`"
+            echo "- Platform: \`linux/amd64\`"
+            echo "- Docker runtime smoke: passed before push"
+            echo "- Runtime secrets: not baked into the image; configure them in PlayMCP runtime secret settings or an external HTTPS runtime"
+          } >> "$GITHUB_STEP_SUMMARY"

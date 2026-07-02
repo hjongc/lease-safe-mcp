@@ -16,6 +16,7 @@ interface Step {
 }
 
 const dockerTag = dockerImageReferenceFromEnv("PREFLIGHT_DOCKER_TAG", undefined, "lease-safe-mcp-preflight");
+const dockerPlatform = "linux/amd64";
 const hasPublicDataKey = Boolean(process.env.DATA_GO_KR_SERVICE_KEY?.trim());
 const requireLivePublicData = process.env.REQUIRE_LIVE_PUBLIC_DATA === "1";
 
@@ -51,6 +52,11 @@ const steps: Step[] = [
     args: ["run", "validate:playmcp"]
   },
   {
+    name: "Official source freshness",
+    command: "npm",
+    args: ["run", "check:sources"]
+  },
+  {
     name: "Local MCP HTTP smoke",
     command: "npm",
     args: ["run", "smoke:http"]
@@ -68,7 +74,7 @@ const steps: Step[] = [
   {
     name: "Docker build",
     command: "docker",
-    args: ["build", "-t", dockerTag, "."],
+    args: ["build", "--platform", dockerPlatform, "-t", dockerTag, "."],
     attempts: 3
   },
   {
@@ -164,6 +170,7 @@ async function runStep(step: Step): Promise<void> {
 async function main() {
   console.log("Lease Safe release preflight");
   console.log(`Docker tag: ${dockerTag}`);
+  console.log(`Docker platform: ${dockerPlatform}`);
   if (requireLivePublicData) {
     console.log("Registration mode: live public-data smoke is required.");
   }

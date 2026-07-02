@@ -22,7 +22,7 @@ import {
 } from "./domain.js";
 import { MCP_TEXT_LIMITS, compactLogError, createApp, createServer, handleHttpServerListenError, httpHost, httpPort, mcpMaxBodyBytes, mcpRateLimitPerMinute, pruneExpiredRateLimitWindows } from "./server.js";
 import { MAX_SOURCE_REVIEW_AGE_DAYS, assertFreshSourceReviews, assertValidSourceRegistry, renderSources, sourceReviewAgeDays, type SourceRecord } from "./sources.js";
-import { assertLegalDongSmokeMatchesLawdCd, positiveOfficialTotalCount, positiveSampleCount, publicDataSmokeConfigLine, publicDataSmokeDealYmd, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes, publicDataSmokeLawdCd, publicDataSmokeRegion } from "../scripts/public-data-smoke.js";
+import { assessmentRiskEvidenceLevel, assertLegalDongSmokeMatchesLawdCd, positiveOfficialTotalCount, positiveSampleCount, publicDataSmokeConfigLine, publicDataSmokeDealYmd, publicDataSmokeDepositManwon, publicDataSmokeHousingTypes, publicDataSmokeLawdCd, publicDataSmokeRegion } from "../scripts/public-data-smoke.js";
 import { compactScriptErrorMessage } from "../scripts/safe-error.js";
 import { scanLine, shouldScanFileName } from "../scripts/secret-scan.js";
 import { extractLivePublicDataEvidenceLines } from "../scripts/live-evidence.js";
@@ -38,10 +38,48 @@ const VALID_TEST_SERVICE_KEY = [
 const VALID_TEST_SERVICE_KEY_ENCODED = encodeURIComponent(VALID_TEST_SERVICE_KEY);
 const VALID_TEST_AUTH_TOKEN = "strong-test-token";
 const FUTURE_DEAL_YMD = "999912";
+const REQUIRED_CI_QUALITY_GATE_STEP_NAMES = [
+  "Check whitespace diffs",
+  "Scan for committed secrets",
+  "Test",
+  "Validate PlayMCP readiness",
+  "Check official source freshness",
+  "Smoke local MCP HTTP server",
+  "Smoke MCP rate limit",
+  "Audit production dependencies",
+  "Build Docker image",
+  "Smoke Docker runtime",
+  "Live public-data smoke",
+  "Publish live public-data status"
+];
+const REQUIRED_REGISTRATION_EVIDENCE_STEP_NAMES = [
+  "Run registration preflight",
+  "Publish registration evidence summary"
+];
+const REQUIRED_PUBLISH_IMAGE_STEP_NAMES = [
+  "Validate PlayMCP readiness",
+  "Scan for committed secrets",
+  "Build Docker image",
+  "Smoke Docker runtime",
+  "Push GHCR image",
+  "Publish image summary"
+];
 
 type ToolInputSchema = {
   safeParse(input: unknown): { success: boolean };
 };
+
+function successfulWorkflowStep(name: string): { name: string; conclusion: "success" } {
+  return { name, conclusion: "success" };
+}
+
+function workflowJobsJson(jobs: Array<{
+  name: string;
+  conclusion: "success";
+  steps: Array<{ name: string; conclusion: "success" }>;
+}>): string {
+  return JSON.stringify({ jobs });
+}
 
 function reviewedSource(overrides: Partial<SourceRecord> = {}): SourceRecord {
   return {
@@ -537,7 +575,15 @@ test("registration readiness check requires CI live public-data summary evidence
       "  exit 0",
       "fi",
       "if [ \"$1\" = \"run\" ] && [ \"$2\" = \"view\" ]; then",
-      "  printf '%s\\n' '{\"jobs\":[{\"name\":\"Quality Gate\",\"conclusion\":\"success\",\"steps\":[{\"name\":\"Live public-data smoke\",\"conclusion\":\"success\"}]}]}'",
+      `  printf '%s\\n' '${workflowJobsJson([
+        {
+          name: "Quality Gate",
+          conclusion: "success",
+          steps: REQUIRED_CI_QUALITY_GATE_STEP_NAMES
+            .filter(stepName => stepName !== "Publish live public-data status")
+            .map(successfulWorkflowStep)
+        }
+      ])}'`,
       "  exit 0",
       "fi",
       "echo \"unexpected gh call: $*\" >&2",
@@ -601,8 +647,25 @@ test("registration readiness check binds required steps to the required workflow
       "  printf '%s\\n' '[{\"databaseId\":601,\"conclusion\":\"success\",\"status\":\"completed\",\"headSha\":\"submitted-head\",\"url\":\"https://example.test/registration\"}]'",
       "  exit 0",
       "fi",
+      "if [ \"$1\" = \"run\" ] && [ \"$2\" = \"list\" ] && [ \"$workflow\" = \"Publish Image\" ]; then",
+      "  printf '%s\\n' '[{\"databaseId\":701,\"conclusion\":\"success\",\"status\":\"completed\",\"headSha\":\"submitted-head\",\"url\":\"https://example.test/publish\"}]'",
+      "  exit 0",
+      "fi",
       "if [ \"$1\" = \"run\" ] && [ \"$2\" = \"view\" ] && [ \"$3\" = \"501\" ]; then",
-      "  printf '%s\\n' '{\"jobs\":[{\"name\":\"Quality Gate\",\"conclusion\":\"success\",\"steps\":[{\"name\":\"Live public-data smoke\",\"conclusion\":\"success\"}]},{\"name\":\"Loose Evidence Job\",\"conclusion\":\"success\",\"steps\":[{\"name\":\"Publish live public-data status\",\"conclusion\":\"success\"}]}]}'",
+      `  printf '%s\\n' '${workflowJobsJson([
+        {
+          name: "Quality Gate",
+          conclusion: "success",
+          steps: REQUIRED_CI_QUALITY_GATE_STEP_NAMES
+            .filter(stepName => stepName !== "Publish live public-data status")
+            .map(successfulWorkflowStep)
+        },
+        {
+          name: "Loose Evidence Job",
+          conclusion: "success",
+          steps: [successfulWorkflowStep("Publish live public-data status")]
+        }
+      ])}'`,
       "  exit 0",
       "fi",
       "echo \"unexpected gh call: $*\" >&2",
@@ -666,12 +729,38 @@ test("registration readiness check passes with complete CI and registration evid
       "  printf '%s\\n' '[{\"databaseId\":401,\"conclusion\":\"success\",\"status\":\"completed\",\"headSha\":\"submitted-head\",\"url\":\"https://example.test/registration\"}]'",
       "  exit 0",
       "fi",
+      "if [ \"$1\" = \"run\" ] && [ \"$2\" = \"list\" ] && [ \"$workflow\" = \"Publish Image\" ]; then",
+      "  printf '%s\\n' '[{\"databaseId\":501,\"conclusion\":\"success\",\"status\":\"completed\",\"headSha\":\"submitted-head\",\"url\":\"https://example.test/publish\"}]'",
+      "  exit 0",
+      "fi",
       "if [ \"$1\" = \"run\" ] && [ \"$2\" = \"view\" ] && [ \"$3\" = \"301\" ]; then",
-      "  printf '%s\\n' '{\"jobs\":[{\"name\":\"Quality Gate\",\"conclusion\":\"success\",\"steps\":[{\"name\":\"Live public-data smoke\",\"conclusion\":\"success\"},{\"name\":\"Publish live public-data status\",\"conclusion\":\"success\"}]}]}'",
+      `  printf '%s\\n' '${workflowJobsJson([
+        {
+          name: "Quality Gate",
+          conclusion: "success",
+          steps: REQUIRED_CI_QUALITY_GATE_STEP_NAMES.map(successfulWorkflowStep)
+        }
+      ])}'`,
       "  exit 0",
       "fi",
       "if [ \"$1\" = \"run\" ] && [ \"$2\" = \"view\" ] && [ \"$3\" = \"401\" ]; then",
-      "  printf '%s\\n' '{\"jobs\":[{\"name\":\"Registration Evidence\",\"conclusion\":\"success\",\"steps\":[{\"name\":\"Run registration preflight\",\"conclusion\":\"success\"},{\"name\":\"Publish registration evidence summary\",\"conclusion\":\"success\"}]}]}'",
+      `  printf '%s\\n' '${workflowJobsJson([
+        {
+          name: "Registration Evidence",
+          conclusion: "success",
+          steps: REQUIRED_REGISTRATION_EVIDENCE_STEP_NAMES.map(successfulWorkflowStep)
+        }
+      ])}'`,
+      "  exit 0",
+      "fi",
+      "if [ \"$1\" = \"run\" ] && [ \"$2\" = \"view\" ] && [ \"$3\" = \"501\" ]; then",
+      `  printf '%s\\n' '${workflowJobsJson([
+        {
+          name: "Publish GHCR Image",
+          conclusion: "success",
+          steps: REQUIRED_PUBLISH_IMAGE_STEP_NAMES.map(successfulWorkflowStep)
+        }
+      ])}'`,
       "  exit 0",
       "fi",
       "echo \"unexpected gh call: $*\" >&2",
@@ -690,6 +779,7 @@ test("registration readiness check passes with complete CI and registration evid
     assert.match(processStdout(result), /github_secrets=DATA_GO_KR_SERVICE_KEY,MCP_AUTH_TOKEN status=present repo=hjongc\/lease-safe-mcp/);
     assert.match(processStdout(result), /ci_run=https:\/\/example\.test\/ci/);
     assert.match(processStdout(result), /registration_preflight_run=https:\/\/example\.test\/registration/);
+    assert.match(processStdout(result), /publish_image_run=https:\/\/example\.test\/publish/);
   } finally {
     rmSync(fakeBinDir, { recursive: true, force: true });
   }
@@ -815,9 +905,50 @@ test("preflight scripts reject unsafe Docker image references before running Doc
   assert.match(processStderr(dockerSmoke), /DOCKER_SMOKE_IMAGE must be a plain Docker image reference/);
 });
 
+test("remote PlayMCP smoke rejects unsafe endpoint config before network calls", () => {
+  const missingEndpoint = runBuiltScript("dist/scripts/remote-smoke.js", {
+    MCP_ENDPOINT: "",
+    MCP_AUTH_TOKEN: "fixture-token-ok"
+  });
+  assert.notEqual(missingEndpoint.status, 0);
+  assert.match(processStderr(missingEndpoint), /MCP_ENDPOINT is required for remote PlayMCP smoke/);
+
+  const insecureEndpoint = runBuiltScript("dist/scripts/remote-smoke.js", {
+    MCP_ENDPOINT: "http://example.test/mcp",
+    MCP_AUTH_TOKEN: "fixture-token-ok"
+  });
+  assert.notEqual(insecureEndpoint.status, 0);
+  assert.match(processStderr(insecureEndpoint), /MCP_ENDPOINT must be an HTTPS PlayMCP endpoint/);
+
+  const endpointWithQuery = runBuiltScript("dist/scripts/remote-smoke.js", {
+    MCP_ENDPOINT: "https://example.test/mcp?token=leak",
+    MCP_AUTH_TOKEN: "fixture-token-ok"
+  });
+  assert.notEqual(endpointWithQuery.status, 0);
+  assert.match(processStderr(endpointWithQuery), /must not include userinfo, query strings, or fragments/);
+
+  const wrongPath = runBuiltScript("dist/scripts/remote-smoke.js", {
+    MCP_ENDPOINT: "https://example.test/api",
+    MCP_AUTH_TOKEN: "fixture-token-ok"
+  });
+  assert.notEqual(wrongPath.status, 0);
+  assert.match(processStderr(wrongPath), /must point to the Streamable HTTP \/mcp path/);
+
+  const weakToken = runBuiltScript("dist/scripts/remote-smoke.js", {
+    MCP_ENDPOINT: "https://example.test/mcp",
+    MCP_AUTH_TOKEN: "too-short"
+  });
+  assert.notEqual(weakToken.status, 0);
+  assert.match(processStderr(weakToken), /MCP_AUTH_TOKEN must be a production bearer token without whitespace/);
+});
+
 test("public-data smoke requires positive live sample counts", () => {
   assert.equal(positiveSampleCount("신고 표본 수: 1,234", "rent", /신고 표본 수:\s*([\d,]+)/), 1234);
   assert.equal(positiveOfficialTotalCount("공식 전체 신고 건수: 2,345", "rent", /공식 전체 신고 건수:\s*([\d,]+)/), 2345);
+  assert.equal(assessmentRiskEvidenceLevel("종합 위험도: 매우 높음 (90/100)", "assessment"), "very_high");
+  assert.equal(assessmentRiskEvidenceLevel("종합 위험도: 높음 (60/100)", "assessment"), "high");
+  assert.equal(assessmentRiskEvidenceLevel("종합 위험도: 주의 (30/100)", "assessment"), "caution");
+  assert.equal(assessmentRiskEvidenceLevel("종합 위험도: 보통 (10/100)", "assessment"), "moderate");
   assert.throws(
     () => positiveSampleCount("매매 표본 수: 0", "sale", /매매 표본 수:\s*([\d,]+)/),
     /returned 0 samples/
@@ -833,6 +964,10 @@ test("public-data smoke requires positive live sample counts", () => {
   assert.throws(
     () => positiveOfficialTotalCount("신고 표본 수: 12", "rent", /공식 전체 신고 건수:\s*([\d,]+)/),
     /parseable official total count/
+  );
+  assert.throws(
+    () => assessmentRiskEvidenceLevel("종합 위험도: 계산 불가", "assessment"),
+    /parseable assessment risk level/
   );
 });
 
@@ -1026,7 +1161,7 @@ test("public-data smoke requires legal-dong proof for configured LAWD code", () 
     "- 서울특별시 관악구 봉천동: 법정동코드 1162010100 / LAWD_CD 11620"
   ].join("\n");
 
-  assert.doesNotThrow(() => assertLegalDongSmokeMatchesLawdCd(legalDongText, "11620"));
+  assert.equal(assertLegalDongSmokeMatchesLawdCd(legalDongText, "11620"), "11620");
   assert.throws(
     () => assertLegalDongSmokeMatchesLawdCd(legalDongText, "11110"),
     /did not return the configured LAWD_CD 11110/
@@ -1052,7 +1187,7 @@ test("live evidence extractor requires every public-data proof category", () => 
   const evidence = extractLivePublicDataEvidenceLines([
     "noise before evidence",
     'public_data_smoke_config registration_mode=true region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse,single_multi,officetel deposit_manwon=30000',
-    "legal_dong=ok",
+    "legal_dong=ok lawd_cd=11620",
     "rent_market[apartment]=ok samples=12 official_total=12",
     "rent_market[rowhouse]=ok samples=11 official_total=11",
     "rent_market[single_multi]=ok samples=10 official_total=10",
@@ -1061,16 +1196,16 @@ test("live evidence extractor requires every public-data proof category", () => 
     "sale_market[rowhouse]=ok samples=7 official_total=7",
     "sale_market[single_multi]=ok samples=6 official_total=6",
     "sale_market[officetel]=ok samples=5 official_total=5",
-    "lease_assessment[apartment]=ok rent_samples=12 rent_official_total=12 sale_samples=9 sale_official_total=9",
-    "lease_assessment[rowhouse]=ok rent_samples=11 rent_official_total=11 sale_samples=7 sale_official_total=7",
-    "lease_assessment[single_multi]=ok rent_samples=10 rent_official_total=10 sale_samples=6 sale_official_total=6",
-    "lease_assessment[officetel]=ok rent_samples=8 rent_official_total=8 sale_samples=5 sale_official_total=5",
+    "lease_assessment[apartment]=ok rent_samples=12 rent_official_total=12 sale_samples=9 sale_official_total=9 risk_level=high",
+    "lease_assessment[rowhouse]=ok rent_samples=11 rent_official_total=11 sale_samples=7 sale_official_total=7 risk_level=high",
+    "lease_assessment[single_multi]=ok rent_samples=10 rent_official_total=10 sale_samples=6 sale_official_total=6 risk_level=high",
+    "lease_assessment[officetel]=ok rent_samples=8 rent_official_total=8 sale_samples=5 sale_official_total=5 risk_level=high",
     "noise after evidence"
   ].join("\n"));
 
   assert.deepEqual(evidence, [
     'public_data_smoke_config registration_mode=true region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse,single_multi,officetel deposit_manwon=30000',
-    "legal_dong=ok",
+    "legal_dong=ok lawd_cd=11620",
     "rent_market[apartment]=ok samples=12 official_total=12",
     "rent_market[rowhouse]=ok samples=11 official_total=11",
     "rent_market[single_multi]=ok samples=10 official_total=10",
@@ -1079,10 +1214,10 @@ test("live evidence extractor requires every public-data proof category", () => 
     "sale_market[rowhouse]=ok samples=7 official_total=7",
     "sale_market[single_multi]=ok samples=6 official_total=6",
     "sale_market[officetel]=ok samples=5 official_total=5",
-    "lease_assessment[apartment]=ok rent_samples=12 rent_official_total=12 sale_samples=9 sale_official_total=9",
-    "lease_assessment[rowhouse]=ok rent_samples=11 rent_official_total=11 sale_samples=7 sale_official_total=7",
-    "lease_assessment[single_multi]=ok rent_samples=10 rent_official_total=10 sale_samples=6 sale_official_total=6",
-    "lease_assessment[officetel]=ok rent_samples=8 rent_official_total=8 sale_samples=5 sale_official_total=5"
+    "lease_assessment[apartment]=ok rent_samples=12 rent_official_total=12 sale_samples=9 sale_official_total=9 risk_level=high",
+    "lease_assessment[rowhouse]=ok rent_samples=11 rent_official_total=11 sale_samples=7 sale_official_total=7 risk_level=high",
+    "lease_assessment[single_multi]=ok rent_samples=10 rent_official_total=10 sale_samples=6 sale_official_total=6 risk_level=high",
+    "lease_assessment[officetel]=ok rent_samples=8 rent_official_total=8 sale_samples=5 sale_official_total=5 risk_level=high"
   ]);
 });
 
@@ -1094,7 +1229,7 @@ test("live evidence extractor rejects empty or partial evidence", () => {
   assert.throws(
     () => extractLivePublicDataEvidenceLines([
       'public_data_smoke_config registration_mode=true region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse,single_multi,officetel deposit_manwon=30000',
-      "legal_dong=ok",
+      "legal_dong=ok lawd_cd=11620",
       "rent_market[apartment]=ok samples=12 official_total=12"
     ].join("\n")),
     /Missing required live public-data evidence categories: sale_market, lease_assessment/
@@ -1102,17 +1237,17 @@ test("live evidence extractor rejects empty or partial evidence", () => {
   assert.throws(
     () => extractLivePublicDataEvidenceLines([
       'public_data_smoke_config registration_mode=false region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment deposit_manwon=30000',
-      "legal_dong=ok",
+      "legal_dong=ok lawd_cd=11620",
       "rent_market[apartment]=ok samples=12 official_total=12",
       "sale_market[apartment]=ok samples=9 official_total=9",
-      "lease_assessment[apartment]=ok rent_samples=12 rent_official_total=12 sale_samples=9 sale_official_total=9"
+      "lease_assessment[apartment]=ok rent_samples=12 rent_official_total=12 sale_samples=9 sale_official_total=9 risk_level=high"
     ].join("\n")),
     /registration_mode=true/
   );
   assert.throws(
     () => extractLivePublicDataEvidenceLines([
       'public_data_smoke_config registration_mode=true region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse,single_multi,officetel deposit_manwon=30000',
-      "legal_dong=ok",
+      "legal_dong=ok lawd_cd=11620",
       "rent_market[apartment]=ok samples=12 official_total=12",
       "rent_market[rowhouse]=ok samples=11 official_total=11",
       "rent_market[single_multi]=ok samples=10 official_total=10",
@@ -1120,10 +1255,10 @@ test("live evidence extractor rejects empty or partial evidence", () => {
       "sale_market[apartment]=ok samples=9 official_total=9",
       "sale_market[single_multi]=ok samples=6 official_total=6",
       "sale_market[officetel]=ok samples=5 official_total=5",
-      "lease_assessment[apartment]=ok rent_samples=12 rent_official_total=12 sale_samples=9 sale_official_total=9",
-      "lease_assessment[rowhouse]=ok rent_samples=11 rent_official_total=11 sale_samples=7 sale_official_total=7",
-      "lease_assessment[single_multi]=ok rent_samples=10 rent_official_total=10 sale_samples=6 sale_official_total=6",
-      "lease_assessment[officetel]=ok rent_samples=8 rent_official_total=8 sale_samples=5 sale_official_total=5"
+      "lease_assessment[apartment]=ok rent_samples=12 rent_official_total=12 sale_samples=9 sale_official_total=9 risk_level=high",
+      "lease_assessment[rowhouse]=ok rent_samples=11 rent_official_total=11 sale_samples=7 sale_official_total=7 risk_level=high",
+      "lease_assessment[single_multi]=ok rent_samples=10 rent_official_total=10 sale_samples=6 sale_official_total=6 risk_level=high",
+      "lease_assessment[officetel]=ok rent_samples=8 rent_official_total=8 sale_samples=5 sale_official_total=5 risk_level=high"
     ].join("\n")),
     /Missing live public-data evidence lines by housing type: sale_market\[rowhouse\]/
   );
@@ -1131,7 +1266,7 @@ test("live evidence extractor rejects empty or partial evidence", () => {
 
 test("live evidence extractor rejects malformed housing type coverage", () => {
   const validProofLines = [
-    "legal_dong=ok",
+    "legal_dong=ok lawd_cd=11620",
     "rent_market[apartment]=ok samples=12 official_total=12",
     "rent_market[rowhouse]=ok samples=11 official_total=11",
     "rent_market[single_multi]=ok samples=10 official_total=10",
@@ -1140,10 +1275,10 @@ test("live evidence extractor rejects malformed housing type coverage", () => {
     "sale_market[rowhouse]=ok samples=7 official_total=7",
     "sale_market[single_multi]=ok samples=6 official_total=6",
     "sale_market[officetel]=ok samples=5 official_total=5",
-    "lease_assessment[apartment]=ok rent_samples=12 rent_official_total=12 sale_samples=9 sale_official_total=9",
-    "lease_assessment[rowhouse]=ok rent_samples=11 rent_official_total=11 sale_samples=7 sale_official_total=7",
-    "lease_assessment[single_multi]=ok rent_samples=10 rent_official_total=10 sale_samples=6 sale_official_total=6",
-    "lease_assessment[officetel]=ok rent_samples=8 rent_official_total=8 sale_samples=5 sale_official_total=5"
+    "lease_assessment[apartment]=ok rent_samples=12 rent_official_total=12 sale_samples=9 sale_official_total=9 risk_level=high",
+    "lease_assessment[rowhouse]=ok rent_samples=11 rent_official_total=11 sale_samples=7 sale_official_total=7 risk_level=high",
+    "lease_assessment[single_multi]=ok rent_samples=10 rent_official_total=10 sale_samples=6 sale_official_total=6 risk_level=high",
+    "lease_assessment[officetel]=ok rent_samples=8 rent_official_total=8 sale_samples=5 sale_official_total=5 risk_level=high"
   ];
 
   assert.throws(
@@ -1172,7 +1307,7 @@ test("live evidence extractor rejects malformed housing type coverage", () => {
 test("live evidence extractor rejects non-positive evidence sample counts", () => {
   const configLine = 'public_data_smoke_config registration_mode=true region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse,single_multi,officetel deposit_manwon=30000';
   const validProofLines = [
-    "legal_dong=ok",
+    "legal_dong=ok lawd_cd=11620",
     "rent_market[apartment]=ok samples=12 official_total=12",
     "rent_market[rowhouse]=ok samples=11 official_total=11",
     "rent_market[single_multi]=ok samples=10 official_total=10",
@@ -1181,10 +1316,10 @@ test("live evidence extractor rejects non-positive evidence sample counts", () =
     "sale_market[rowhouse]=ok samples=7 official_total=7",
     "sale_market[single_multi]=ok samples=6 official_total=6",
     "sale_market[officetel]=ok samples=5 official_total=5",
-    "lease_assessment[apartment]=ok rent_samples=12 rent_official_total=12 sale_samples=9 sale_official_total=9",
-    "lease_assessment[rowhouse]=ok rent_samples=11 rent_official_total=11 sale_samples=7 sale_official_total=7",
-    "lease_assessment[single_multi]=ok rent_samples=10 rent_official_total=10 sale_samples=6 sale_official_total=6",
-    "lease_assessment[officetel]=ok rent_samples=8 rent_official_total=8 sale_samples=5 sale_official_total=5"
+    "lease_assessment[apartment]=ok rent_samples=12 rent_official_total=12 sale_samples=9 sale_official_total=9 risk_level=high",
+    "lease_assessment[rowhouse]=ok rent_samples=11 rent_official_total=11 sale_samples=7 sale_official_total=7 risk_level=high",
+    "lease_assessment[single_multi]=ok rent_samples=10 rent_official_total=10 sale_samples=6 sale_official_total=6 risk_level=high",
+    "lease_assessment[officetel]=ok rent_samples=8 rent_official_total=8 sale_samples=5 sale_official_total=5 risk_level=high"
   ];
 
   assert.throws(
@@ -1197,7 +1332,7 @@ test("live evidence extractor rejects non-positive evidence sample counts", () =
   assert.throws(
     () => extractLivePublicDataEvidenceLines([
       configLine,
-      ...validProofLines.map(line => line === "lease_assessment[rowhouse]=ok rent_samples=11 rent_official_total=11 sale_samples=7 sale_official_total=7" ? "lease_assessment[rowhouse]=ok rent_samples=11 rent_official_total=11 sale_samples=0 sale_official_total=7" : line)
+      ...validProofLines.map(line => line === "lease_assessment[rowhouse]=ok rent_samples=11 rent_official_total=11 sale_samples=7 sale_official_total=7 risk_level=high" ? "lease_assessment[rowhouse]=ok rent_samples=11 rent_official_total=11 sale_samples=0 sale_official_total=7 risk_level=high" : line)
     ].join("\n")),
     /evidence count for lease_assessment sale must be positive/
   );
@@ -1218,9 +1353,16 @@ test("live evidence extractor rejects non-positive evidence sample counts", () =
   assert.throws(
     () => extractLivePublicDataEvidenceLines([
       configLine,
-      ...validProofLines.map(line => line === "lease_assessment[officetel]=ok rent_samples=8 rent_official_total=8 sale_samples=5 sale_official_total=5" ? "lease_assessment[officetel]=ok rent_samples=8 rent_official_total=7 sale_samples=5 sale_official_total=5" : line)
+      ...validProofLines.map(line => line === "lease_assessment[officetel]=ok rent_samples=8 rent_official_total=8 sale_samples=5 sale_official_total=5 risk_level=high" ? "lease_assessment[officetel]=ok rent_samples=8 rent_official_total=7 sale_samples=5 sale_official_total=5 risk_level=high" : line)
     ].join("\n")),
     /official_total for lease_assessment rent must be greater than or equal to samples/
+  );
+  assert.throws(
+    () => extractLivePublicDataEvidenceLines([
+      configLine,
+      ...validProofLines.map(line => line === "lease_assessment[apartment]=ok rent_samples=12 rent_official_total=12 sale_samples=9 sale_official_total=9 risk_level=high" ? "lease_assessment[apartment]=ok rent_samples=12 rent_official_total=12 sale_samples=9 sale_official_total=9 risk_level=moderate" : line)
+    ].join("\n")),
+    /Malformed live public-data housing evidence line/
   );
   assert.throws(
     () => extractLivePublicDataEvidenceLines([
@@ -1234,7 +1376,7 @@ test("live evidence extractor rejects non-positive evidence sample counts", () =
 test("live evidence extractor rejects unexpected or duplicate evidence lines", () => {
   const configLine = 'public_data_smoke_config registration_mode=true region="서울 관악구" lawd_cd=11620 deal_ymd=202605 housing_types=apartment,rowhouse,single_multi,officetel deposit_manwon=30000';
   const validProofLines = [
-    "legal_dong=ok",
+    "legal_dong=ok lawd_cd=11620",
     "rent_market[apartment]=ok samples=12 official_total=12",
     "rent_market[rowhouse]=ok samples=11 official_total=11",
     "rent_market[single_multi]=ok samples=10 official_total=10",
@@ -1243,10 +1385,10 @@ test("live evidence extractor rejects unexpected or duplicate evidence lines", (
     "sale_market[rowhouse]=ok samples=7 official_total=7",
     "sale_market[single_multi]=ok samples=6 official_total=6",
     "sale_market[officetel]=ok samples=5 official_total=5",
-    "lease_assessment[apartment]=ok rent_samples=12 rent_official_total=12 sale_samples=9 sale_official_total=9",
-    "lease_assessment[rowhouse]=ok rent_samples=11 rent_official_total=11 sale_samples=7 sale_official_total=7",
-    "lease_assessment[single_multi]=ok rent_samples=10 rent_official_total=10 sale_samples=6 sale_official_total=6",
-    "lease_assessment[officetel]=ok rent_samples=8 rent_official_total=8 sale_samples=5 sale_official_total=5"
+    "lease_assessment[apartment]=ok rent_samples=12 rent_official_total=12 sale_samples=9 sale_official_total=9 risk_level=high",
+    "lease_assessment[rowhouse]=ok rent_samples=11 rent_official_total=11 sale_samples=7 sale_official_total=7 risk_level=high",
+    "lease_assessment[single_multi]=ok rent_samples=10 rent_official_total=10 sale_samples=6 sale_official_total=6 risk_level=high",
+    "lease_assessment[officetel]=ok rent_samples=8 rent_official_total=8 sale_samples=5 sale_official_total=5 risk_level=high"
   ];
 
   assert.throws(
@@ -1277,7 +1419,7 @@ test("live evidence extractor rejects unexpected or duplicate evidence lines", (
     () => extractLivePublicDataEvidenceLines([
       configLine,
       ...validProofLines,
-      "legal_dong=ok"
+      "legal_dong=ok lawd_cd=11620"
     ].join("\n")),
     /exactly one legal_dong=ok/
   );
@@ -1302,6 +1444,20 @@ test("live evidence extractor rejects unexpected or duplicate evidence lines", (
       ...validProofLines
     ].join("\n")),
     /lawd_cd must not be 00000/
+  );
+  assert.throws(
+    () => extractLivePublicDataEvidenceLines([
+      configLine,
+      ...validProofLines.map(line => line === "legal_dong=ok lawd_cd=11620" ? "legal_dong=ok lawd_cd=00000" : line)
+    ].join("\n")),
+    /legal-dong evidence lawd_cd must not be 00000/
+  );
+  assert.throws(
+    () => extractLivePublicDataEvidenceLines([
+      configLine,
+      ...validProofLines.map(line => line === "legal_dong=ok lawd_cd=11620" ? "legal_dong=ok lawd_cd=11110" : line)
+    ].join("\n")),
+    /legal-dong evidence lawd_cd 11110 must match smoke config lawd_cd 11620/
   );
   assert.throws(
     () => extractLivePublicDataEvidenceLines([
@@ -4361,6 +4517,8 @@ test("one-shot lease assessment combines rent, sale, red flags, and actions", as
     assert.match(text, /조회 기준: LAWD_CD 11620, 계약월 202605/);
     assert.match(text, /입력 지역 메모: 서울 관악구/);
     assert.match(text, /종합 위험도: 매우 높음/);
+    assert.match(text, /## 한 줄 결론/);
+    assert.match(text, /매우 높음 위험입니다\. 계약금·서명은 보류/);
     assert.match(text, /위험도 근거:/);
     assert.match(text, /지역명 메모는 표시용이며, 공식 실거래 조회와 시세 계산은 LAWD_CD와 계약월 기준/);
     assert.match(text, /전월세 신고 표본 1건/);

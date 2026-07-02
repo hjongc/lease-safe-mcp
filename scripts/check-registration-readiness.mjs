@@ -1,6 +1,32 @@
 import { spawnSync } from "node:child_process";
 
 const requiredSecretNames = ["DATA_GO_KR_SERVICE_KEY", "MCP_AUTH_TOKEN"];
+const requiredCiQualityGateStepNames = [
+  "Check whitespace diffs",
+  "Scan for committed secrets",
+  "Test",
+  "Validate PlayMCP readiness",
+  "Check official source freshness",
+  "Smoke local MCP HTTP server",
+  "Smoke MCP rate limit",
+  "Audit production dependencies",
+  "Build Docker image",
+  "Smoke Docker runtime",
+  "Live public-data smoke",
+  "Publish live public-data status"
+];
+const requiredRegistrationEvidenceStepNames = [
+  "Run registration preflight",
+  "Publish registration evidence summary"
+];
+const requiredPublishImageStepNames = [
+  "Validate PlayMCP readiness",
+  "Scan for committed secrets",
+  "Build Docker image",
+  "Smoke Docker runtime",
+  "Push GHCR image",
+  "Publish image summary"
+];
 const repo = process.env.GITHUB_REPOSITORY?.trim() || "hjongc/lease-safe-mcp";
 const branch = process.env.REGISTRATION_READY_BRANCH?.trim() || "main";
 
@@ -27,6 +53,7 @@ function fail(message, hints = []) {
   if (isValidRepositorySlug(repo) && isValidBranchName(branch)) {
     console.error(`Run: gh workflow run CI --repo ${repo} --ref ${branch}`);
     console.error(`Run: gh workflow run "Registration Preflight" --repo ${repo} --ref ${branch}`);
+    console.error(`Run: gh workflow run "Publish Image" --repo ${repo} --ref ${branch}`);
   } else {
     console.error("Set GITHUB_REPOSITORY and REGISTRATION_READY_BRANCH to safe GitHub values before checking registration readiness.");
   }
@@ -147,7 +174,7 @@ function requireSuccessfulWorkflowRun(workflowName, headSha) {
   return matchingRun;
 }
 
-function requireSuccessfulJobStep(run, workflowName, jobName, stepName) {
+function requireSuccessfulJobSteps(run, workflowName, jobName, stepNames) {
   const details = ghJson([
     "run",
     "view",
@@ -176,13 +203,15 @@ function requireSuccessfulJobStep(run, workflowName, jobName, stepName) {
     fail(`${workflowName} workflow required job "${jobName}" did not include step details: ${run.url}`);
   }
 
-  const matchingStep = matchingJob.steps.find(step => step.name === stepName);
+  for (const stepName of stepNames) {
+    const matchingStep = matchingJob.steps.find(step => step.name === stepName);
 
-  if (!matchingStep) {
-    fail(`${workflowName} workflow required job "${jobName}" did not include required step: ${stepName}.`);
-  }
-  if (matchingStep.conclusion !== "success") {
-    fail(`${workflowName} workflow required job "${jobName}" step "${stepName}" concluded ${matchingStep.conclusion}, not success: ${run.url}`);
+    if (!matchingStep) {
+      fail(`${workflowName} workflow required job "${jobName}" did not include required step: ${stepName}.`);
+    }
+    if (matchingStep.conclusion !== "success") {
+      fail(`${workflowName} workflow required job "${jobName}" step "${stepName}" concluded ${matchingStep.conclusion}, not success: ${run.url}`);
+    }
   }
 }
 
@@ -192,12 +221,13 @@ requireRemoteBranchHead(headSha);
 requireGitHubSecrets();
 const ciRun = requireSuccessfulWorkflowRun("CI", headSha);
 const registrationRun = requireSuccessfulWorkflowRun("Registration Preflight", headSha);
-requireSuccessfulJobStep(ciRun, "CI", "Quality Gate", "Live public-data smoke");
-requireSuccessfulJobStep(ciRun, "CI", "Quality Gate", "Publish live public-data status");
-requireSuccessfulJobStep(registrationRun, "Registration Preflight", "Registration Evidence", "Run registration preflight");
-requireSuccessfulJobStep(registrationRun, "Registration Preflight", "Registration Evidence", "Publish registration evidence summary");
+const publishImageRun = requireSuccessfulWorkflowRun("Publish Image", headSha);
+requireSuccessfulJobSteps(ciRun, "CI", "Quality Gate", requiredCiQualityGateStepNames);
+requireSuccessfulJobSteps(registrationRun, "Registration Preflight", "Registration Evidence", requiredRegistrationEvidenceStepNames);
+requireSuccessfulJobSteps(publishImageRun, "Publish Image", "Publish GHCR Image", requiredPublishImageStepNames);
 
 console.log(`registration_readiness=ok repo=${repo} branch=${branch} head_sha=${headSha}`);
 console.log(`github_secrets=${requiredSecretNames.join(",")} status=present repo=${repo}`);
 console.log(`ci_run=${ciRun.url}`);
 console.log(`registration_preflight_run=${registrationRun.url}`);
+console.log(`publish_image_run=${publishImageRun.url}`);

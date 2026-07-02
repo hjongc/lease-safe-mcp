@@ -1177,6 +1177,16 @@ function assessmentDecisionGate(
   return guidance;
 }
 
+function assessmentOneLineConclusion(riskSummary: AssessmentRiskSummary): string {
+  if (riskSummary.level === "매우 높음" || riskSummary.level === "높음") {
+    return `${riskSummary.level} 위험입니다. 계약금·서명은 보류하고 등기부, 대리권, 선순위 권리, 보증보험, 임대인 체납 확인을 문서로 끝낸 뒤 판단하세요.`;
+  }
+  if (riskSummary.level === "주의") {
+    return "주의 단계입니다. 바로 진행하지 말고 같은 날 등기부 재확인, 보증보험 가능 여부, 전입·확정일자·임대차신고 가능 여부를 맞춰보세요.";
+  }
+  return "현재 입력과 공식 시세 표본만으로는 높은 위험을 단정하기 어렵습니다. 그래도 잔금 전 등기부 재발급과 입주 보호 절차 확인은 생략하지 마세요.";
+}
+
 async function fetchSaleMarketSnapshot(input: {
   housingType: HousingType;
   lawdCd: string;
@@ -1307,6 +1317,9 @@ export async function assessLeaseSafety(input: LeaseProfileInput & {
     `주택유형: ${rentMarket.label}`,
     `입력 조건: 보증금 ${money(input.depositManwon)} / 월세 ${money(input.monthlyRentManwon)}`,
     `종합 위험도: ${riskSummary.level} (${riskSummary.score}/100)`,
+    "",
+    "## 한 줄 결론",
+    assessmentOneLineConclusion(riskSummary),
     "",
     "## 핵심 판단",
     lineItems([

@@ -23,7 +23,7 @@ It uses official public data and reviewed official guidance to help users:
 - Required tool annotations included
 - Compact Korean markdown outputs
 - Dockerfile included for PlayMCP in KC Git source build
-- GitHub Actions CI runs secret scan, tests, PlayMCP validation, local MCP HTTP smoke, MCP boundary rejection smoke, rate-limit smoke, production dependency audit, Docker build, and Docker runtime smoke
+- GitHub Actions CI runs secret scan, tests, PlayMCP validation, local MCP HTTP smoke, MCP boundary rejection smoke, rate-limit smoke, production dependency audit, `linux/amd64` Docker build, and Docker runtime smoke
 
 ## Data Sources
 
@@ -130,6 +130,12 @@ Smoke:
 MCP_ENDPOINT=http://127.0.0.1:3000/mcp npm run smoke
 ```
 
+Remote PlayMCP endpoint smoke after registration:
+
+```bash
+MCP_ENDPOINT=https://<playmcp-host>/mcp MCP_AUTH_TOKEN=... npm run smoke:remote
+```
+
 Start a local server and run the MCP HTTP smoke in one command:
 
 ```bash
@@ -142,7 +148,7 @@ Release preflight:
 npm run preflight
 ```
 
-`npm run preflight` runs working-tree, staged, and committed whitespace diff checks, secret scan, unit tests, PlayMCP validation, local MCP HTTP smoke with root route minimality, API-backed missing-key failure checks when `DATA_GO_KR_SERVICE_KEY` is absent, DNS-rebinding Host rejection, unsupported-method, invalid-JSON, unsupported-content-type, bearer-auth, malformed `Content-Length`, and oversized-request rejection checks, MCP rate-limit smoke, production dependency audit, Docker build, Docker runtime smoke with the same MCP boundary checks, and live public-data smoke with extracted evidence-line validation when `DATA_GO_KR_SERVICE_KEY` is set.
+`npm run preflight` runs working-tree, staged, and committed whitespace diff checks, secret scan, unit tests, PlayMCP validation, official source freshness validation with a 45-day `reviewedAt` gate, local MCP HTTP smoke with root route minimality, API-backed missing-key failure checks when `DATA_GO_KR_SERVICE_KEY` is absent, DNS-rebinding Host rejection, unsupported-method, invalid-JSON, unsupported-content-type, bearer-auth, malformed `Content-Length`, and oversized-request rejection checks, MCP rate-limit smoke, production dependency audit, `linux/amd64` Docker build, Docker runtime smoke with image-platform evidence and the same MCP boundary checks, and live public-data smoke with extracted evidence-line validation when `DATA_GO_KR_SERVICE_KEY` is set.
 
 Registration preflight:
 
@@ -160,7 +166,7 @@ Final registration readiness gate:
 npm run check:registration-readiness
 ```
 
-`npm run check:registration-readiness` fails unless the worktree is clean, local `HEAD` matches the remote `main` HEAD, `DATA_GO_KR_SERVICE_KEY` and `MCP_AUTH_TOKEN` exist as GitHub repository secrets, the latest `CI` run for that commit on `main` completed successfully with `Live public-data smoke` passed instead of skipped and `Publish live public-data status` succeeded inside the `Quality Gate` job, and the manual `Registration Preflight` workflow completed successfully for the same commit with its evidence summary published inside the `Registration Evidence` job. It reads only GitHub secret names and workflow metadata, never secret values.
+`npm run check:registration-readiness` fails unless the worktree is clean, local `HEAD` matches the remote `main` HEAD, `DATA_GO_KR_SERVICE_KEY` and `MCP_AUTH_TOKEN` exist as GitHub repository secrets, the latest `CI` run for that commit on `main` completed successfully with every required `Quality Gate` evidence step passed, including official source freshness, Docker build/runtime, live public-data smoke, and `Publish live public-data status`, and the manual `Registration Preflight` workflow completed successfully for the same commit with its evidence summary published inside the `Registration Evidence` job. It reads only GitHub secret names and workflow metadata, never secret values.
 
 Live public-data smoke before production rollout:
 
@@ -168,7 +174,7 @@ Live public-data smoke before production rollout:
 DATA_GO_KR_SERVICE_KEY=... npm run smoke:public-data
 ```
 
-By default, the live public-data smoke checks legal-dong lookup, rent-market APIs for all four housing types, sale-market APIs for all four housing types, and the flagship one-shot assessment for every selected housing type. Successful registration evidence includes `legal_dong=ok`, `rent_market[...]`, `sale_market[...]`, and `lease_assessment[...]` log lines for every selected housing type, with positive sample counts and official `totalCount` evidence.
+By default, the live public-data smoke checks legal-dong lookup, rent-market APIs for all four housing types, sale-market APIs for all four housing types, and the flagship one-shot assessment for every selected housing type using the high-risk demo concerns from the submission pack. Successful registration evidence includes a `legal_dong=ok lawd_cd=...` line that must match the configured LAWD code, plus `rent_market[...]`, `sale_market[...]`, and `lease_assessment[...]` log lines for every selected housing type, with positive sample counts, official `totalCount` evidence, and `risk_level=high` or `risk_level=very_high` for the flagship demo assessment.
 
 Optional overrides:
 
@@ -192,13 +198,21 @@ The repository includes `.github/workflows/ci.yml` for `main`. It runs:
 - `npm test`
 - `npm run scan:secrets`
 - `npm run validate:playmcp`
+- `npm run check:sources`
 - `npm run smoke:http`
 - `npm run smoke:rate-limit`
 - `npm audit --omit=dev`
-- `docker build -t lease-safe-mcp-ci .`
+- `docker build --platform linux/amd64 -t lease-safe-mcp-ci .`
 - `npm run smoke:docker`
 
-If the GitHub repository has a `DATA_GO_KR_SERVICE_KEY` secret, CI also runs the live public-data smoke against all supported housing types in registration mode and publishes the required housing coverage plus the extracted live public-data evidence lines in the job summary. Without that secret, the live API smoke is skipped and local pre-submission smoke should be run with the key.
+If the GitHub repository has a `DATA_GO_KR_SERVICE_KEY` secret, CI also runs the live public-data smoke against all supported housing types in registration mode and publishes the official source freshness gate, required housing coverage, and extracted live public-data evidence lines in the job summary. Without that secret, the live API smoke is skipped and local pre-submission smoke should be run with the key.
+
+The `Publish Image` workflow publishes the verified container to GHCR after CI succeeds on `main`, and can also be dispatched manually. It builds `linux/amd64`, runs Docker runtime smoke before registry login and push, then publishes:
+
+- Immutable image: `ghcr.io/hjongc/lease-safe-mcp:sha-<short-sha>`
+- Moving main image: `ghcr.io/hjongc/lease-safe-mcp:main`
+
+Use the immutable `sha-<short-sha>` tag for PlayMCP registration evidence. If PlayMCP cannot pull private GHCR packages, make the package public or deploy the same image to a runtime that can authenticate to GHCR.
 
 ## Submission Checklist
 
@@ -212,10 +226,15 @@ Before registering in PlayMCP:
 - Run the manual GitHub Actions `Registration Preflight` workflow on the submitted commit
 - Confirm the latest GitHub Actions CI run is green
 - Confirm GitHub Actions live public-data smoke is passed, not skipped
+- Confirm the GitHub Actions `Publish Image` workflow succeeded for the submitted commit and use its immutable GHCR image tag
 - Run `npm run check:registration-readiness` on a clean worktree to verify the current commit has passing CI and Registration Preflight evidence
-- Configure the same `DATA_GO_KR_SERVICE_KEY` and a production `MCP_AUTH_TOKEN` as PlayMCP runtime environment variables
+- Prefer image registration only when PlayMCP exposes runtime secret settings for the submitted image
+- Configure the same `DATA_GO_KR_SERVICE_KEY` and a production `MCP_AUTH_TOKEN` as PlayMCP runtime environment variables or secrets
 - Set `MCP_ALLOWED_HOSTS` to the PlayMCP host or deployment domain
+- After PlayMCP issues the HTTPS endpoint, run `MCP_ENDPOINT=https://<playmcp-host>/mcp MCP_AUTH_TOKEN=... npm run smoke:remote`
 - Use `assess_lease_safety` as the demo entry tool
+
+Do not bake secrets into the image with Dockerfile `ENV`, build args, committed files, or hardcoded source. If PlayMCP image registration does not provide runtime secret settings, deploy the same verified image to a secret-capable HTTPS runtime and register that external HTTPS endpoint instead.
 
 PlayMCP in KC Git-source build:
 
